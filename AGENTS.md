@@ -1,0 +1,102 @@
+# AGENTS.md
+
+Guidance for AI coding agents working in this repository.
+
+## What this is
+
+A VS Code extension that opens a WinForms `Form.Designer.cs` as a visual canvas and edits it,
+running natively on macOS, Linux and Windows with no Wine.
+
+Three components, one authoritative contract:
+
+| Component | Path | Language |
+|---|---|---|
+| Roslyn engine (parse + surgical patch) | `engine/` | C# / .NET 10 |
+| Extension host + engine client | `extension/src/` | TypeScript |
+| Design canvas | `extension/media/` | vanilla JS/CSS |
+
+Read `SCHEMA.md` before changing anything that crosses a process boundary. It is the contract;
+if a component disagrees with it, the component is wrong.
+
+## Invariants — do not break these
+
+These are load-bearing. Each has caused or prevented a real bug.
+
+1. **The `.Designer.cs` file is the source of truth.** Never regenerate
+   `InitializeComponent()` from the schema. Emit `TextChange`s over the original `SourceText`
+   only. Rewriting the method destroys the ~42% of statements the schema cannot model
+   (ADR 0001).
+2. **Never write a `locked` control.** No property edits, no deletion. If the diff logic is
+   uncertain, emit nothing.
+3. **Never write a refused form.** If `analysis.refuses` is non-empty, `generate` returns
+   `ok: false` and the file is untouched (ADR 0003).
+4. **stdout is a protocol channel.** The engine speaks newline-delimited JSON on stdout.
+   Diagnostics go to stderr, always. One stray `Console.WriteLine` corrupts the stream.
+5. **`vsce`'s `--ignore-other-target-folders` is a documented no-op in 4.x.** Prune
+   `extension/bin/` yourself before packaging, or every platform's binary ships in every
+   `.vsix` (ADR 0002).
+6. **Do not add a local undo stack to the canvas.** Undo is delegated to VS Code via
+   `CustomDocumentEditEvent`. A private stack plus the document events applies one Ctrl+Z
+   twice and diverges from the file (ADR 0004).
+7. **`saveCustomDocumentAs` refuses on purpose.** Writing `doc.text` to a new path would copy
+   a snapshot while the canvas stayed keyed to the original. Don't "fix" it.
+8. **There is no automatic fallback to the text editor** when a custom editor fails to open.
+   VS Code shows its Error Editor with a bare OK. The only escape hatch is the message thrown
+   from `openCustomDocument`, which must name the `Open as Text` command.
+
+## Verifying
+
+```bash
+./test/run-all.sh                      # everything; skip integration with MACFORMS_SKIP_INTEGRATION=1
+node test/verify.sh                    # Roslyn invariants + real WinForms compile
+node test/e2e.js                       # canvas -> host -> engine -> file
+node extension/test/hostHarness.js     # DOM harness over the canvas code
+node test/run-integration.js           # real VS Code; needs a display
+```
+
+Integration tests reach internals through the hidden `macforms._testSeam` command, because the
+webview is unreachable from the extension host API. Each case runs the real production path,
+not a simulation.
+
+One thing that tier cannot drive: VS Code routes Ctrl+Z to custom editors via a keybinding
+implementation the extension host API cannot dispatch, so `executeCommand('undo')` does not
+reach it. The suite therefore asserts that *our* undo continuation restores the file
+byte-for-byte. Don't replace that assertion with a command-based one — it will silently pass
+without testing anything.
+
+The **compile tier** is the one that matters most: it builds the generated C# as a real
+`net*-windows` WinForms project. Diff inspection does not prove the product claim.
+
+`MF_DEBUG=1` prints every span the patcher emits, to stderr.
+
+## Working here
+
+- `fixtures/` is **hand-authored** on purpose — the measurement corpus is GPL-3.0 or
+  unlicensed. See `fixtures/README.md`. Author fixtures so tests can assert exact diffs.
+- Measured limits, not guesses: **47.9%** per-form coverage ceiling for the 10 handled types,
+  **41.6%** of real forms use `ApplyResources`, **40.9%** use `Dock`/`Anchor`. Those drive the
+  refusals. Re-measure before changing the type table.
+- Type resolution is **purely syntactic** — we never load an assembly. A type we don't
+  recognise is locked, not an error.
+- Adding a type to `engine/src/TypeTable.cs` requires a row in the canvas `HANDLED` list too,
+  or it renders as a locked box with no way to tell why.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via the `gh` CLI. No remote is configured yet — add one first.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Defaults kept: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+Use the vocabulary in `CONTEXT.md` — in particular **Modelled Control** vs **Locked Control**,
+**Coverage**, **Refusal**, and **Surgical Patch**. If a change contradicts an ADR, surface it
+rather than silently overriding it.
