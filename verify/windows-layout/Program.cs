@@ -1,4 +1,4 @@
-// Verifies MacForms' Form Schema against what WinForms ACTUALLY does at runtime.
+// Verifies VSCForms' Form Schema against what WinForms ACTUALLY does at runtime.
 //
 // This is the only test that can catch a semantically-wrong-but-syntactically-valid
 // patch. Every other tier checks that the code compiles and that the diff is minimal;
@@ -8,7 +8,7 @@
 // Runs on Windows only, because instantiating System.Windows.Forms requires the
 // Windows Desktop runtime. See scripts/run-windows-layout.sh.
 //
-// Usage: MacFormsLayoutCheck <schema.json> [scale-tolerance]
+// Usage: VSCFormsLayoutCheck <schema.json> [scale-tolerance]
 
 using System.Globalization;
 using System.Text.Json;
@@ -21,7 +21,7 @@ internal static class Program
     {
         if (args.Length < 1)
         {
-            Console.Error.WriteLine("usage: MacFormsLayoutCheck <schema.json>");
+            Console.Error.WriteLine("usage: VSCFormsLayoutCheck <schema.json>");
             return 2;
         }
 
@@ -81,7 +81,7 @@ internal static class Program
 
             // Size is only comparable for controls that do not compute their own. An
             // AutoSize control sizes itself from the font, so asserting our declared width
-            // against it would fail for a reason that has nothing to do with MacForms.
+            // against it would fail for a reason that has nothing to do with VSCForms.
             bool autoSize = found is Label or CheckBox or RadioButton or LinkLabel
                             || found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b;
             if (!autoSize)

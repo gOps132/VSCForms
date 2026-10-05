@@ -5,8 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>MacForms.Engine</RootNamespace>
-    <AssemblyName>macforms-engine</AssemblyName>
+    <RootNamespace>VSCForms.Engine</RootNamespace>
+    <AssemblyName>vscforms-engine</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebugType>none</DebugType>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

@@ -18,7 +18,7 @@ How the three processes fit together, and why the boundaries are where they are.
 └──────────────────┬─────────────────────────┘
                    │ stdio
 ┌──────────────────▼─────────────────────────┐
-│  macforms-engine (.NET 10, Roslyn 5.9.0)   │
+│  vscforms-engine (.NET 10, Roslyn 5.9.0)   │
 │  parse:    C# → Form Schema                │
 │  generate: Form Schema → TextChange[]       │
 └────────────────────────────────────────────┘
@@ -113,12 +113,12 @@ See [ADR 0002](adr/0002-distribution.md).
 | End-to-end | canvas → host → engine → file, through the actual message contract | 21 |
 | Integration | VS Code's own semantics: editor selection, dirty marker, undo continuations, Save As refusal | 17 |
 
-The compile tier matters most — it is the only one that checks the actual claim, that MacForms
+The compile tier matters most — it is the only one that checks the actual claim, that VSCForms
 writes C# which still builds. It needs the WindowsDesktop reference pack from NuGet on first
 run, and skips cleanly offline.
 
 The integration tier needs a display. It reaches internals through the hidden
-`macforms._testSeam` command because the webview is unreachable from the extension host API;
+`vscforms._testSeam` command because the webview is unreachable from the extension host API;
 each case runs the real production path rather than a simulation.
 
 One thing it cannot drive: VS Code routes Ctrl+Z to custom editors via a keybinding

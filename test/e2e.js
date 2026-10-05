@@ -14,7 +14,7 @@ const cp = require('child_process');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const ENGINE = path.join(ROOT, 'engine/bin/Debug/net10.0/macforms-engine');
+const ENGINE = path.join(ROOT, 'engine/bin/Debug/net10.0/vscforms-engine');
 const CANVAS = path.join(ROOT, 'extension/media/canvas.js');
 
 let failures = 0;

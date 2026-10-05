@@ -56,7 +56,7 @@ These are load-bearing. Each has caused or prevented a real bug.
 ## Verifying
 
 ```bash
-./test/run-all.sh                      # everything; skip integration with MACFORMS_SKIP_INTEGRATION=1
+./test/run-all.sh                      # everything; skip integration with VSCFORMS_SKIP_INTEGRATION=1
 node test/verify.sh                    # Roslyn invariants + real WinForms compile
 node test/e2e.js                       # canvas -> host -> engine -> file
 node extension/test/hostHarness.js     # DOM harness over the canvas code
@@ -64,7 +64,7 @@ node test/run-integration.js           # real VS Code; needs a display
 ./scripts/run-windows-layout.sh example   # schema vs real WinForms runtime; Windows only
 ```
 
-Integration tests reach internals through the hidden `macforms._testSeam` command, because the
+Integration tests reach internals through the hidden `vscforms._testSeam` command, because the
 webview is unreachable from the extension host API. Each case runs the real production path,
 not a simulation.
 

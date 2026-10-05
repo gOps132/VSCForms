@@ -47,7 +47,7 @@ jobs:
       - run: node extension/test/hostHarness.js
       - run: node test/e2e.js
 
-  # The only tier that can prove MacForms is SEMANTICALLY correct, not merely valid.
+  # The only tier that can prove VSCForms is SEMANTICALLY correct, not merely valid.
   #
   # Instantiates the real form and compares each control's runtime bounds against the Form
   # Schema. Every other tier checks that the code compiles and that the diff is minimal;
@@ -114,18 +114,18 @@ jobs:
             osx-x64)     T=darwin-x64 ;;
           esac
           mkdir -p extension/bin/$T
-          cp engine/bin/Release/net10.0/${{ matrix.rid }}/macforms-engine* extension/bin/$T/
-          chmod +x extension/bin/$T/macforms-engine 2>/dev/null || true
+          cp engine/bin/Release/net10.0/${{ matrix.rid }}/vscforms-engine* extension/bin/$T/
+          chmod +x extension/bin/$T/vscforms-engine 2>/dev/null || true
           ls -la extension/bin/$T/
       - name: verify only this target is present
         # vsce's --ignore-other-target-folders is a documented no-op in 4.x, so a stray
         # binary would silently bloat the package.
         shell: bash
         run: test "$(ls extension/bin | wc -l)" -eq 1 || (echo "stale targets present" && exit 1)
-      - run: cd extension && npx vsce package --target ${{ env.TARGET }} --out ../dist/macforms-${{ matrix.rid }}.vsix
+      - run: cd extension && npx vsce package --target ${{ env.TARGET }} --out ../dist/vscforms-${{ matrix.rid }}.vsix
         env:
           TARGET: ${{ matrix.rid == 'win-x64' && 'win32-x64' || matrix.rid == 'osx-arm64' && 'darwin-arm64' || matrix.rid == 'osx-x64' && 'darwin-x64' || matrix.rid }}
       - uses: actions/upload-artifact@v4
         with:
-          name: macforms-${{ matrix.rid }}
+          name: vscforms-${{ matrix.rid }}
           path: dist/*.vsix

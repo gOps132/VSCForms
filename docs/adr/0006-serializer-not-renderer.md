@@ -1,6 +1,6 @@
 # The target is the serializer, not the renderer
 
-MacForms aims to be faithful to the WinForms **design-time serializer**. It does not, and
+VSCForms aims to be faithful to the WinForms **design-time serializer**. It does not, and
 cannot, reproduce the WinForms **designer renderer**.
 
 ## Context
@@ -20,7 +20,7 @@ ControlDesigner swaps Control.WindowTarget   →  ControlDesigner.WndProc(WM_PAI
 So a control's appearance is whatever its `OnPaint` draws, executed by a CLR on Windows.
 Controls that do not self-paint delegate to native window classes — `ListView`, `TreeView`,
 `TextBox`, `ComboBox`, `TrackBar` — which are `comctl32`/`USER32` classes. There is no
-portable description of any of it in any file MacForms can read.
+portable description of any of it in any file VSCForms can read.
 
 This is not a difficulty estimate. `System.Windows.Forms.Primitives` P/Invokes ~700 Win32
 entrypoints, `System.Private.Windows.GdiPlus` ~400 `Gdip*` calls, and there is no POSIX
@@ -47,7 +47,7 @@ output rather than a preview of the runtime.
    was known.
 3. **The dialects are declared, not guessed.** Code-behind generation respects `.editorconfig`:
    `dotnet_style_qualification_for_field`, `..._for_property`, plus `<ImplicitUsings>` from the
-   csproj. MacForms infers the dialect from file content, which works, but reading the
+   csproj. VSCForms infers the dialect from file content, which works, but reading the
    declaration would be more principled.
 4. **Every attempt at the renderer has failed.** Mono's `mwf-designer` is archived — blocked on
    `WS_EX_TRANSPARENT` and a GDI+/Cairo model mismatch. Visual Studio for Mac, the only

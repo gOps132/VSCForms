@@ -46,7 +46,7 @@ const tsc = cp.spawnSync('npx', ['tsc', '-p', './'], { cwd: EXT, stdio: 'inherit
 if (tsc.status !== 0) process.exit(tsc.status || 1);
 
 // 3. package
-const outFile = path.join(ROOT, 'dist', `macforms-${triple}.vsix`);
+const outFile = path.join(ROOT, 'dist', `vscforms-${triple}.vsix`);
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
 console.log(`packaging for ${triple}…`);

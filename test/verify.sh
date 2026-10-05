@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MacForms verification suite.
+# VSCForms verification suite.
 #
 # Two tiers, per docs: the fast hermetic loop and the real compile gate.
 #   [roslyn]  parses clean; untouched file round-trips byte-identical; edits are surgical
@@ -7,7 +7,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-ENGINE=./engine/bin/Debug/net10.0/macforms-engine
+ENGINE=./engine/bin/Debug/net10.0/vscforms-engine
 PASS=0; FAIL=0
 ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
 bad()  { echo "  FAIL  $1"; FAIL=$((FAIL+1)); }

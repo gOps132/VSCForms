@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace MacForms.Engine;
+namespace VSCForms.Engine;
 
 /// <summary>Data transfer objects for the Form Schema. See SCHEMA.md — this file implements it.</summary>
 public sealed class FormSchema

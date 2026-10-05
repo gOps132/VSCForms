@@ -1,9 +1,9 @@
 {
-  "name": "macforms",
-  "displayName": "WinForms Designer (cross-platform)",
+  "name": "vscforms",
+  "displayName": "VSCForms",
   "description": "Visually design WinForms forms from Form.Designer.cs on macOS, Linux and Windows. Roslyn-accurate, surgical edits, no Wine.",
   "version": "0.1.0",
-  "publisher": "macforms",
+  "publisher": "gOps132",
   "license": "MIT",
   "engines": {
     "vscode": "^1.80.0"
@@ -25,13 +25,13 @@
     "virtualWorkspaces": false
   },
   "activationEvents": [
-    "onCustomEditor:macforms.formDesigner"
+    "onCustomEditor:vscforms.formDesigner"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "customEditors": [
       {
-        "viewType": "macforms.formDesigner",
+        "viewType": "vscforms.formDesigner",
         "displayName": "WinForms Designer",
         "selector": [
           {
@@ -46,37 +46,47 @@
     ],
     "commands": [
       {
-        "command": "macforms.openInDesigner",
-        "title": "WinForms: Open in Designer",
-        "category": "WinForms"
+        "command": "vscforms.openInDesigner",
+        "title": "Open in Designer",
+        "category": "VSCForms"
       },
       {
-        "command": "macforms.openInTextEditor",
-        "title": "WinForms: Open as Text",
-        "category": "WinForms"
+        "command": "vscforms.openInTextEditor",
+        "title": "Open as Text",
+        "category": "VSCForms"
       },
       {
-        "command": "macforms.restartEngine",
-        "title": "WinForms: Restart Design Engine",
-        "category": "WinForms"
+        "command": "vscforms.restartEngine",
+        "title": "Restart Design Engine",
+        "category": "VSCForms"
       },
       {
-        "command": "macforms._testSeam",
-        "title": "MacForms: (internal test seam)",
-        "category": "WinForms"
+        "command": "vscforms._testSeam",
+        "title": "(internal test seam)",
+        "category": "VSCForms"
       }
     ],
+    "configuration": {
+      "title": "VSCForms",
+      "properties": {
+        "vscforms.enginePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the design engine binary. Leave empty to use the engine bundled with this extension. Only useful when developing the extension against an engine built by hand."
+        }
+      }
+    },
     "menus": {
       "editor/title": [
         {
-          "command": "macforms.openInTextEditor",
+          "command": "vscforms.openInTextEditor",
           "when": "resourceExtname == .cs",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "macforms._testSeam",
+          "command": "vscforms._testSeam",
           "when": "false"
         }
       ]

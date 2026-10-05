@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies the project generator, and closes the loop it exists to serve: that MacForms can
+# Verifies the project generator, and closes the loop it exists to serve: that VSCForms can
 # read a form the generator produced.
 #
 # The last part is the point. A generator whose output our own tool cannot parse would be a
@@ -14,7 +14,7 @@ ok()  { echo "  PASS  $1"; PASS=$((PASS+1)); }
 bad() { echo "  FAIL  $1"; FAIL=$((FAIL+1)); }
 sect(){ echo; echo "== $1"; }
 
-ENGINE=./engine/bin/Debug/net10.0/macforms-engine
+ENGINE=./engine/bin/Debug/net10.0/vscforms-engine
 GEN=./scripts/new-project.sh
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
@@ -86,7 +86,7 @@ if grep -q "project builds" <<<"$OUT"; then ok "generator's own build check pass
 else bad "the generated project did not build"; fi
 
 # --------------------------------------------------- THE LOOP WE CARE ABOUT
-sect "MacForms can read the form the generator produced"
+sect "VSCForms can read the form the generator produced"
 SCHEMA=$(printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$DIR/Form1.Designer.cs" | "$ENGINE" 2>/dev/null)
 if [ -z "$SCHEMA" ]; then bad "engine produced no output"; else
   echo "$SCHEMA" | python3 -c "
@@ -102,7 +102,7 @@ assert f['text']=='Form1', ('text', f['text'])
 assert s['controls']==[], s['controls']
 assert s['analysis']['coveragePercent']==100.0
 " && ok "reads the templated dialect (text + clientSize, not an empty form)" \
-  || bad "MacForms cannot read its own generated output"
+  || bad "VSCForms cannot read its own generated output"
 fi
 
 sect "a control added to a generated form still compiles"
@@ -127,7 +127,7 @@ CH=$(diff /tmp/gen-before.cs "$DIR/Form1.Designer.cs" | grep -c '^<')
 [ "$CH" -eq 0 ] && ok "the insert is purely additive" || bad "insert removed $CH line(s)"
 
 if (cd "$DIR" && dotnet build -v q --nologo 2>&1 | grep -q "Build succeeded"); then
-  ok "a form MacForms edited still builds as a real WinForms project"
+  ok "a form VSCForms edited still builds as a real WinForms project"
 else
   bad "edited generated form FAILED to build"
   (cd "$DIR" && dotnet build -v q --nologo 2>&1 | grep -E "error" | head -4 | sed 's/^/        /')

@@ -1,4 +1,4 @@
-namespace MacForms.Engine;
+namespace VSCForms.Engine;
 
 /// <summary>
 /// The Handled Types: control types with modelled rendering and editable appearance.

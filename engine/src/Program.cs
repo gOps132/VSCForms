@@ -1,7 +1,7 @@
 using System.Text;
 using Microsoft.CodeAnalysis.Text;
 
-namespace MacForms.Engine;
+namespace VSCForms.Engine;
 
 /// <summary>
 /// Long-lived stdio process. One JSON request per line in, one JSON response per line out.
@@ -21,7 +21,7 @@ public static class Program
         using var reader = new StreamReader(stdin, new UTF8Encoding(false));
         using var writer = new StreamWriter(stdout) { AutoFlush = true, NewLine = "\n" };
 
-        Log(stderr, $"macforms-engine ready ({typeof(Program).Assembly.GetName().Version})");
+        Log(stderr, $"vscforms-engine ready ({typeof(Program).Assembly.GetName().Version})");
 
         string? line;
         while ((line = reader.ReadLine()) is not null)
@@ -133,7 +133,7 @@ public static class Program
 
     private static void Log(TextWriter w, string msg)
     {
-        w.WriteLine($"[macforms-engine] {msg}");
+        w.WriteLine($"[vscforms-engine] {msg}");
         w.Flush();
     }
 }

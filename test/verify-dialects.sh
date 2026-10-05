@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verification for the two NON-classic Designer dialects.
 #
-# MacForms reads three dialects, all of which occur in real projects:
+# VSCForms reads three dialects, all of which occur in real projects:
 #
 #   classic   this.btn.Location = new System.Drawing.Point(1, 2);
 #   templated this.btn.Location = new Point(1, 2);           implicit usings
@@ -12,7 +12,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-ENGINE=./engine/bin/Debug/net10.0/macforms-engine
+ENGINE=./engine/bin/Debug/net10.0/vscforms-engine
 PASS=0; FAIL=0
 ok()  { echo "  PASS  $1"; PASS=$((PASS+1)); }
 bad() { echo "  FAIL  $1"; FAIL=$((FAIL+1)); }
@@ -106,7 +106,7 @@ sect "[templated] adding a control"
 # the BARE convention. Once the designer has touched it and written `this.`, inserts use `this.`
 # — which the "this-style" case below covers.
 tweak "$F" "
-s['form']['text']='Renamed by MacForms'
+s['form']['text']='Renamed by VSCForms'
 s['controls'].append({'id':'btnOk','type':'System.Windows.Forms.Button','children':[],
  'properties':{'x':300,'y':200,'width':90,'height':30,'text':'OK','tabIndex':0},'locked':False})
 s['analysis']['modelledCount']+=1" >/dev/null
@@ -116,7 +116,7 @@ for part in "private System.Windows.Forms.Button btnOk;" \
             "btnOk.Location = new System.Drawing.Point(300, 200);" \
             "btnOk.Name = \"btnOk\";" \
             "Controls.Add(btnOk);" \
-            'Text = "Renamed by MacForms";'; do
+            'Text = "Renamed by VSCForms";'; do
   grep -qF "$part" "$F" || MISSING="$MISSING\n        - $part"
 done
 [ -z "$MISSING" ] && ok "emits field, init, properties, Controls.Add and the renamed Text" \

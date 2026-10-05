@@ -33,11 +33,11 @@ let passes = 0;
  *
  * `driveCommit` writes the file directly, which proves the engine works but skips the host
  * entirely — so it cannot observe the dirty marker, the edit event, or undo. This variant
- * hands the schema to `macforms._testSeam`, which runs the same `commit()` the canvas runs.
+ * hands the schema to `vscforms._testSeam`, which runs the same `commit()` the canvas runs.
  */
 async function driveHostCommit(vscode, path_, mutate) {
     const exe = path.join(ENGINE_BIN, triple(),
-        process.platform === 'win32' ? 'macforms-engine.exe' : 'macforms-engine');
+        process.platform === 'win32' ? 'vscforms-engine.exe' : 'vscforms-engine');
     const { spawn } = require('child_process');
     const rpc = (req) => new Promise((res, rej) => {
         const c = spawn(exe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -56,7 +56,7 @@ async function driveHostCommit(vscode, path_, mutate) {
     assert.ok(parsed.ok, 'engine parse failed: ' + JSON.stringify(parsed).slice(0, 160));
     mutate(parsed.schema);
     const wasChanged = await vscode.commands.executeCommand(
-        'macforms._testSeam', 'commit', vscode.Uri.file(path_), parsed.schema);
+        'vscforms._testSeam', 'commit', vscode.Uri.file(path_), parsed.schema);
     return wasChanged === true;
 }
 
@@ -64,7 +64,7 @@ async function driveCommit(vscode, path_, mutate) {
     const { spawn } = require('child_process');
     const t = triple();
     const exe = path.join(ENGINE_BIN, t,
-        process.platform === 'win32' ? 'macforms-engine.exe' : 'macforms-engine');
+        process.platform === 'win32' ? 'vscforms-engine.exe' : 'vscforms-engine');
     const rpc = (req) => new Promise((res, rej) => {
         const c = spawn(exe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
         let buf = '';
@@ -115,13 +115,13 @@ async function waitFor(fn, ms = 8000, label = 'condition') {
     throw new Error(`timed out waiting for ${label}`);
 }
 
-function activate(vscode) { return vscode.extensions.getExtension('macforms.macforms'); }
+function activate(vscode) { return vscode.extensions.getExtension('gOps132.vscforms'); }
 
 /** The active editor is a custom editor whose viewType is ours? */
 function isOurEditor(vscode) {
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
     return tab && tab.input instanceof vscode.TabInputCustom
-        && tab.input.viewType === 'macforms.formDesigner';
+        && tab.input.viewType === 'vscforms.formDesigner';
 }
 
 async function run(vscode) {
@@ -134,7 +134,7 @@ async function run(vscode) {
     // compiled `main` cannot be require()d from the test runner (it resolves 'vscode' itself),
     // and `ext.exports` is consumed by the activation promise.
     const seam = async (which) => {
-        const r = await vscode.commands.executeCommand('macforms._testSeam', which);
+        const r = await vscode.commands.executeCommand('vscforms._testSeam', which);
         return r;
     };
     await test('extension activates', async () => {
@@ -144,7 +144,7 @@ async function run(vscode) {
 
     const commands = await vscode.commands.getCommands(true);
     await test('all commands registered', () => {
-        for (const c of ['macforms.openInDesigner', 'macforms.openInTextEditor', 'macforms.restartEngine']) {
+        for (const c of ['vscforms.openInDesigner', 'vscforms.openInTextEditor', 'vscforms.restartEngine']) {
             assert.ok(commands.includes(c), 'missing command: ' + c);
         }
     });
@@ -200,7 +200,7 @@ async function run(vscode) {
         const { spawn } = require('child_process');
         const triple = dirs0();
         const exe = path.join(ENGINE_BIN, triple,
-            process.platform === 'win32' ? 'macforms-engine.exe' : 'macforms-engine');
+            process.platform === 'win32' ? 'vscforms-engine.exe' : 'vscforms-engine');
         assert.ok(fs.existsSync(exe), 'engine binary not found at ' + exe);
         const out = await new Promise((res, rej) => {
             const c = spawn(exe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -237,7 +237,7 @@ async function run(vscode) {
             const t = vscode.window.tabGroups.activeTabGroup.activeTab;
             return t && t.input instanceof vscode.TabInputText;
         }, 8000, 'the text editor');
-        await vscode.commands.executeCommand('macforms.openInTextEditor');
+        await vscode.commands.executeCommand('vscforms.openInTextEditor');
         await vscode.commands.executeCommand('vscode.open', uri);
         await waitFor(() => isOurEditor(vscode), 10000, 'our editor again');
     });
@@ -264,7 +264,7 @@ async function run(vscode) {
         await waitFor(() => {
             const t = vscode.window.tabGroups.activeTabGroup.activeTab;
             return t && t.input instanceof vscode.TabInputCustom
-                && t.input.viewType === 'macforms.formDesigner'
+                && t.input.viewType === 'vscforms.formDesigner'
                 && String(t.input.uri.fsPath).includes('DockedForm');
         }, 10000, 'the docked form in our editor');
     });
@@ -279,7 +279,7 @@ async function run(vscode) {
         await waitFor(() => {
             const t = vscode.window.tabGroups.activeTabGroup.activeTab;
             return t && t.input instanceof vscode.TabInputCustom
-                && t.input.viewType === 'macforms.formDesigner'
+                && t.input.viewType === 'vscforms.formDesigner'
                 && String(t.input.uri.fsPath).includes('dirty');
         }, 10000, 'the test form in our editor');
 
@@ -352,7 +352,7 @@ async function run(vscode) {
         await waitFor(() => {
             const t = vscode.window.tabGroups.activeTabGroup.activeTab;
             return t && t.input instanceof vscode.TabInputCustom
-                && t.input.viewType === 'macforms.formDesigner';
+                && t.input.viewType === 'vscforms.formDesigner';
         }, 10000, 'our editor');
 
         // Simulate `dotnet build` on Windows regenerating the file underneath us. We cannot
@@ -366,7 +366,7 @@ async function run(vscode) {
         // both the expected behaviour and proof the extension survived the watcher event.
         const { spawn } = require('child_process');
         const exe = path.join(ENGINE_BIN, triple(),
-            process.platform === 'win32' ? 'macforms-engine.exe' : 'macforms-engine');
+            process.platform === 'win32' ? 'vscforms-engine.exe' : 'vscforms-engine');
         const rpc = (req) => new Promise((res, rej) => {
             const c = spawn(exe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
             let buf = '';
@@ -385,7 +385,7 @@ async function run(vscode) {
             'external change was not picked up: ' + JSON.stringify(p.schema.analysis.refuses));
 
         const alive = await vscode.commands.getCommands(true);
-        assert.ok(alive.includes('macforms.restartEngine'), 'extension stopped responding');
+        assert.ok(alive.includes('vscforms.restartEngine'), 'extension stopped responding');
     });
 
 
@@ -395,7 +395,7 @@ async function run(vscode) {
         // Reported rather than asserted: if a future csdevkit version starts contributing a
         // custom editor, this is where it will show up.
         const rivals = vscode.extensions.all.filter((e) => {
-            if (e.id === 'macforms.macforms') return false;
+            if (e.id === 'gOps132.vscforms') return false;
             const pkg = e.packageJSON || {};
             const eds = (pkg.contributes && pkg.contributes.customEditors) || [];
             return eds.some((ed) => JSON.stringify(ed.selector || '')

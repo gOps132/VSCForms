@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
-namespace MacForms.Engine;
+namespace VSCForms.Engine;
 
 /// <summary>
 /// Parses a Form Designer File into the Form Schema.
@@ -266,11 +266,11 @@ public sealed class DesignerDocument
         if (docked.Count > 0)
         {
             r.Refuses.Add("dock-anchor");
-            r.Warnings.Add($"This form uses Dock or Anchor on {docked.Count} control(s). MacForms does not simulate layout, so it is shown read-only.");
+            r.Warnings.Add($"This form uses Dock or Anchor on {docked.Count} control(s). VSCForms does not simulate layout, so it is shown read-only.");
         }
 
         if (index.Count > 0 && index.Values.All(c => !TypeTable.IsHandled(c.Type)))
-            r.Warnings.Add("No controls in this form are of a type MacForms models.");
+            r.Warnings.Add("No controls in this form are of a type VSCForms models.");
 
         return r;
     }

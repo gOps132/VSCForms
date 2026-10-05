@@ -1,4 +1,4 @@
-# MacForms Form Schema v1 — the contract
+# VSCForms Form Schema v1 — the contract
 
 This file is the **interface** between the Roslyn engine (C#) and the webview (TypeScript/JS).
 It is authoritative. If any component disagrees with it, the component is wrong.
@@ -158,7 +158,7 @@ gap to be papered over.
 
 ## Dialects
 
-Designer files exist in at least four shapes, all of which occur in real projects. MacForms
+Designer files exist in at least four shapes, all of which occur in real projects. VSCForms
 reads all of them and **writes back in whichever it found** — mixing conventions is visible
 churn the user did not ask for.
 

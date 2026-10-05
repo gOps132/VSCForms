@@ -1,4 +1,4 @@
-# MacForms
+# VSCForms
 
 A VS Code extension that opens a WinForms `Form.Designer.cs` as a visual canvas and edits it —
 running natively on **macOS, Linux and Windows**, with no Wine and no Windows-only dependency.
@@ -13,7 +13,7 @@ preserved exactly.
 ./scripts/new-project.sh --name MyDialog    # create a WinForms project + classic .sln
 ./scripts/publish-engine.js                  # self-contained engine for this platform
 cd extension && npm install && npm run compile && cd ..
-node scripts/package-all.js     # dist/macforms-<platform>.vsix
+node scripts/package-all.js     # dist/vscforms-<platform>.vsix
 
 code --install-extension dist/*.vsix
 ```
@@ -25,7 +25,7 @@ Develop with `code --extensionDevelopmentPath=extension <workspace>`.
 
 ## What it does not do
 
-MacForms is faithful to the WinForms **design-time serializer**. It does not reproduce the
+VSCForms is faithful to the WinForms **design-time serializer**. It does not reproduce the
 WinForms **renderer**, and cannot — design-time rendering *is* the real control's `OnPaint` on
 a real Windows `HWND`, so a webview cannot execute it. See
 [ADR 0006](docs/adr/0006-serializer-not-renderer.md).
@@ -59,7 +59,7 @@ A sixth tier runs only on Windows CI — and it is the one that matters most:
 | Canvas / e2e / integration | the plumbing is **correct** | anywhere |
 | **Layout** | **the schema matches real WinForms runtime `Bounds`** | **Windows only** |
 
-Everything local proves MacForms writes code that compiles. Only the layout tier proves
+Everything local proves VSCForms writes code that compiles. Only the layout tier proves
 `Location = new Point(500, 250)` actually moved the control — a control at the wrong
 coordinates still compiles and still looks plausible in a screenshot. It needs Windows because
 instantiating `System.Windows.Forms` does.
@@ -73,24 +73,7 @@ MyDialog/
   MyDialog.csproj.user    load-bearing on Windows: it is what makes VS show the designer
   Program.cs
   Form1.cs
-  Form1.Designer.cs       the templated dialect — MacForms reads it correctly
-```
-
-No `Form1.resx`: the SDK template never emits one, so `InitializeComponent()` has no
-`ApplyResources` call and the form is editable rather than refused.
-
-## Documentation
-
-## What a generated project looks like
-
-```
-MyDialog.sln              classic text .sln, not .slnx
-MyDialog/
-  MyDialog.csproj         + <EnableWindowsTargeting> on non-Windows hosts
-  MyDialog.csproj.user    load-bearing on Windows: it is what makes VS show the designer
-  Program.cs
-  Form1.cs
-  Form1.Designer.cs       the templated dialect — MacForms reads it correctly
+  Form1.Designer.cs       the templated dialect — VSCForms reads it correctly
 ```
 
 No `Form1.resx`: the SDK template never emits one, so `InitializeComponent()` has no

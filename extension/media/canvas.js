@@ -1,5 +1,5 @@
 /*
- * MacForms design canvas.
+ * VSCForms design canvas.
  *
  * Model ownership: THIS FILE holds the optimistic model. The extension host and the Roslyn
  * engine are a slow validator, not the render source. A drag updates the DOM immediately and
@@ -110,7 +110,7 @@
             banner.classList.add('refusal');
             const why = a.refuses.includes('localizable')
                 ? 'This form calls <code>resources.ApplyResources</code>: its text and geometry live in the sibling <code>.resx</code> file, so editing them here would not affect the running form.'
-                : 'This form uses <code>Dock</code> or <code>Anchor</code>, which MacForms does not simulate. Moving these controls would produce code that looks right here and does nothing on Windows.';
+                : 'This form uses <code>Dock</code> or <code>Anchor</code>, which VSCForms does not simulate. Moving these controls would produce code that looks right here and does nothing on Windows.';
             parts.push('<b>Read-only.</b> ' + why);
         }
         if (a.warnings && a.warnings.length) {
@@ -143,7 +143,7 @@
             t.appendChild(el('span', null, name));
             if (readOnly) t.setAttribute('disabled', '');
             t.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/macforms-control', name);
+                e.dataTransfer.setData('text/vscforms-control', name);
                 e.dataTransfer.effectAllowed = 'copy';
             });
             box.appendChild(t);
@@ -382,7 +382,7 @@
         if (readOnly) {
             const n = el('div', 'field');
             n.appendChild(el('div', 'note warn',
-                'This form is read-only in MacForms. Open it as text to edit it.'));
+                'This form is read-only in VSCForms. Open it as text to edit it.'));
             box.appendChild(n);
         }
 
@@ -501,7 +501,7 @@
         });
         canvasWrap.addEventListener('drop', (e) => {
             if (readOnly) return;
-            const simple = e.dataTransfer.getData('text/macforms-control');
+            const simple = e.dataTransfer.getData('text/vscforms-control');
             if (!simple) return;
             e.preventDefault();
             const box = $('canvas').getBoundingClientRect();

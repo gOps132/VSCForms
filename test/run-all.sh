@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MacForms: full verification.
+# VSCForms: full verification.
 #
 #   1. build the engine
 #   2. Roslyn tier  — parse/refuse/surgical-patch invariants
@@ -34,11 +34,11 @@ step "end-to-end"
 node test/e2e.js || FAIL=1
 
 # Real VS Code. Needs a display and the bundled engine, so it is opt-out via
-# MACFORMS_SKIP_INTEGRATION=1 and skips cleanly on a headless machine.
+# VSCFORMS_SKIP_INTEGRATION=1 and skips cleanly on a headless machine.
 step "integration (real VS Code)"
-if [ "${MACFORMS_SKIP_INTEGRATION:-0}" = "1" ]; then
-  echo "  SKIP  MACFORMS_SKIP_INTEGRATION=1"
-elif ! ls extension/bin/*/macforms-engine* >/dev/null 2>&1; then
+if [ "${VSCFORMS_SKIP_INTEGRATION:-0}" = "1" ]; then
+  echo "  SKIP  VSCFORMS_SKIP_INTEGRATION=1"
+elif ! ls extension/bin/*/vscforms-engine* >/dev/null 2>&1; then
   echo "  SKIP  no bundled engine — run: node scripts/publish-engine.js"
 else
   # Capture the summary line rather than grep-piping: VS Code's own logging interleaves with

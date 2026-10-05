@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies MacForms' Form Schema against the real WinForms runtime.
+# Verifies VSCForms' Form Schema against the real WinForms runtime.
 #
 # WHY THIS EXISTS
 #   Every other tier proves the generated C# is valid: it parses, it compiles, the diff is
@@ -17,8 +17,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PROJECT="${1:-example}"
-WORK="${TMPDIR:-/tmp}/macforms-layout"
-ENGINE=./engine/bin/Debug/net10.0/macforms-engine
+WORK="${TMPDIR:-/tmp}/vscforms-layout"
+ENGINE=./engine/bin/Debug/net10.0/vscforms-engine
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
 
@@ -33,7 +33,7 @@ if [ ! -d "$PROJECT" ]; then echo "SKIP  no project at $PROJECT"; exit 0; fi
 rm -rf "$WORK" && mkdir -p "$WORK/src"
 
 # The Designer file is copied VERBATIM. Nothing here may rewrite it — the point is to
-# check MacForms against the file Visual Studio produced, not against a normalised copy.
+# check VSCForms against the file Visual Studio produced, not against a normalised copy.
 DESIGNER=$(find "$PROJECT" -maxdepth 2 -name '*.Designer.cs' | head -1)
 [ -n "$DESIGNER" ] || { echo "SKIP  no *.Designer.cs under $PROJECT"; exit 0; }
 cp "$DESIGNER" "$WORK/src/$(basename "$DESIGNER")"
@@ -73,7 +73,7 @@ EOF
 echo "building harness…"
 dotnet build "$WORK/src/Check.csproj" -c Release -v q --nologo
 
-echo "parsing the Designer file with the MacForms engine…"
+echo "parsing the Designer file with the VSCForms engine…"
 DESIGNER_OUT="$WORK/schema.json"
 printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$WORK/src/$(basename "$DESIGNER")" \
   | "$ENGINE" 2>/dev/null > "$DESIGNER_OUT"

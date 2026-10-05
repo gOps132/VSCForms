@@ -6,7 +6,7 @@ running natively on macOS, Linux, and Windows with no Wine and no Windows-only d
 ## Language
 
 **Designer File**:
-The generated `Form.Designer.cs`. Despite the name this is the file MacForms edits, and it is
+The generated `Form.Designer.cs`. Despite the name this is the file VSCForms edits, and it is
 the source of truth for the form's layout — not a build artifact to be discarded.
 _Avoid_: generated code, codegen output (it is edited in place, so "generated" misleads)
 

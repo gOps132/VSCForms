@@ -71,7 +71,7 @@ if (res.status !== 0) {
     process.exit(res.status || 1);
 }
 
-const exe = path.join(out, process.platform === 'win32' ? 'macforms-engine.exe' : 'macforms-engine');
+const exe = path.join(out, process.platform === 'win32' ? 'vscforms-engine.exe' : 'vscforms-engine');
 if (!fs.existsSync(exe)) {
     console.error(`expected binary missing: ${exe}`);
     process.exit(1);

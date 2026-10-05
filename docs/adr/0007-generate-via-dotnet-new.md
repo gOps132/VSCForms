@@ -1,6 +1,6 @@
 # The generator delegates to the SDK; it does not own the template
 
-`macforms new` creates projects by shelling out to `dotnet new`, not by emitting files from a
+`vscforms new` creates projects by shelling out to `dotnet new`, not by emitting files from a
 copy we maintain.
 
 ## Context

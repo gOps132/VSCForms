@@ -37,7 +37,7 @@ export class EngineClient implements vscode.Disposable {
 
         if (!fs.existsSync(this.enginePath)) {
             throw new Error(
-                `MacForms design engine not found at ${this.enginePath}.\n` +
+                `VSCForms design engine not found at ${this.enginePath}.\n` +
                 `Build it with:  dotnet publish engine -c Release -r <rid> -p:PublishSingleFile=true`
             );
         }
@@ -122,16 +122,16 @@ export class EngineClient implements vscode.Disposable {
 
     /** Locate the bundled engine, honouring platform-targeted packaging. */
     static resolveEnginePath(context: vscode.ExtensionContext): string {
-        const override = vscode.workspace.getConfiguration('macforms').get<string>('enginePath');
+        const override = vscode.workspace.getConfiguration('vscforms').get<string>('enginePath');
         if (override && fs.existsSync(override)) return override;
 
         // Platform-targeted packages put the binary under bin/<vscode-triple>/...
         const triple = EngineClient.vscodeTriple(process.platform, process.arch);
         const candidates = [
-            path.join(context.extensionPath, 'bin', triple, 'macforms-engine'),
-            path.join(context.extensionPath, 'bin', triple, 'macforms-engine.exe'),
-            path.join(context.extensionPath, 'bin', 'macforms-engine'),
-            path.join(context.extensionPath, 'bin', 'macforms-engine.exe'),
+            path.join(context.extensionPath, 'bin', triple, 'vscforms-engine'),
+            path.join(context.extensionPath, 'bin', triple, 'vscforms-engine.exe'),
+            path.join(context.extensionPath, 'bin', 'vscforms-engine'),
+            path.join(context.extensionPath, 'bin', 'vscforms-engine.exe'),
         ];
         return candidates.find((c) => fs.existsSync(c)) ?? candidates[0];
     }

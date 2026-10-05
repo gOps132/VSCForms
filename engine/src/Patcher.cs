@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
-namespace MacForms.Engine;
+namespace VSCForms.Engine;
 
 /// <summary>
 /// Applies a Form Schema back to a Designer File, surgically.

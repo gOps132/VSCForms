@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MacForms. Format follows [Keep a Changelog](https://keepachangelog.com/);
+All notable changes to VSCForms. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]

@@ -48,7 +48,7 @@ class DesignerDocument implements vscode.CustomDocument {
  * papered over.
  */
 class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocument> {
-    public static readonly viewType = 'macforms.formDesigner';
+    public static readonly viewType = 'vscforms.formDesigner';
 
     private panels = new Map<string, vscode.WebviewPanel>();
 
@@ -96,7 +96,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
         _cancel: vscode.CancellationToken,
     ): Promise<void> {
         throw new Error(
-            'MacForms cannot Save As a Designer file, because the canvas edits the form in place. ' +
+            'VSCForms cannot Save As a Designer file, because the canvas edits the form in place. ' +
             'Copy the file in your file manager or terminal, then open the copy.'
         );
     }
@@ -134,7 +134,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
             return new DesignerDocument(uri, Buffer.from(bytes).toString('utf8'));
         } catch (e) {
             throw new Error(
-                `MacForms could not read this file: ${e instanceof Error ? e.message : String(e)}. ` +
+                `VSCForms could not read this file: ${e instanceof Error ? e.message : String(e)}. ` +
                 `Use "WinForms: Open as Text" from the Command Palette to view it.`
             );
         }
@@ -165,12 +165,12 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
             // button is the user's only route back to the generated source.
             const openAsText = 'WinForms: Open as Text';
             const choice = await vscode.window.showErrorMessage(
-                `MacForms could not read this form: ${parsed.error}`,
+                `VSCForms could not read this form: ${parsed.error}`,
                 openAsText,
             );
             post('error', { message: parsed.error, kind: parsed.errorKind });
             if (choice === openAsText) {
-                await vscode.commands.executeCommand('macforms.openInTextEditor', doc.uri);
+                await vscode.commands.executeCommand('vscforms.openInTextEditor', doc.uri);
             }
         } else {
             post('load', parsed.schema);
@@ -294,7 +294,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
     }
 
     /**
-     * Test-only seam. Reached via the hidden `macforms._testSeam` command.
+     * Test-only seam. Reached via the hidden `vscforms._testSeam` command.
      *
      * These exist because the webview is unreachable from the extension host API, so the suite
      * cannot make the canvas post a commit by itself. Each case runs the SAME production code
@@ -312,7 +312,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 const wanted = (arg as vscode.Uri).fsPath;
                 const entry = Array.from(this.documents.values())
                     .find((e) => e.uri.fsPath === wanted);
-                if (!entry) throw new Error('that document is not open in a MacForms canvas');
+                if (!entry) throw new Error('that document is not open in a VSCForms canvas');
                 const panel = this.panels.get(entry.uri.toString());
                 if (!panel) throw new Error('no canvas panel for that document');
                 await this.commit(
@@ -384,7 +384,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Explicit escape hatch to the generated source, which we own by default (Q2).
     context.subscriptions.push(
-        vscode.commands.registerCommand('macforms.openInTextEditor', async (uriArg?: vscode.Uri) => {
+        vscode.commands.registerCommand('vscforms.openInTextEditor', async (uriArg?: vscode.Uri) => {
             // Resolution order: an explicit URI argument, then the active text editor, then
             // the active tab if it happens to be a text input. When our own canvas is active
             // none of these match, which is why the command also accepts a URI — that is how
@@ -397,7 +397,7 @@ export function activate(context: vscode.ExtensionContext): void {
             }
             if (!uri) {
                 await vscode.window.showWarningMessage(
-                    'MacForms: open a Designer file first, then run "Open as Text".');
+                    'VSCForms: open a Designer file first, then run "Open as Text".');
                 return;
             }
             // 'default' is the built-in text editor; opening it with our own viewType here
@@ -407,7 +407,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('macforms.openInDesigner', async () => {
+        vscode.commands.registerCommand('vscforms.openInDesigner', async () => {
             const uri = vscode.window.activeTextEditor?.document.uri;
             if (uri) await vscode.commands.executeCommand('vscode.openWith', uri, DesignerEditorProvider.viewType);
         })
@@ -419,7 +419,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // suite must assert are reached through one hidden command instead. Undocumented in the
     // command palette so it cannot be invoked by accident.
     context.subscriptions.push(
-        vscode.commands.registerCommand('macforms._testSeam',
+        vscode.commands.registerCommand('vscforms._testSeam',
             async (which: string, arg?: unknown, msg?: unknown) => {
                 const p = provider;
                 if (!p) return;
@@ -429,7 +429,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('macforms.restartEngine', () => {
+        vscode.commands.registerCommand('vscforms.restartEngine', () => {
             engine.dispose();
             engine = new EngineClient(EngineClient.resolveEnginePath(context));
             context.subscriptions.push(engine);
