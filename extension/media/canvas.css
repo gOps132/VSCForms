@@ -1,0 +1,212 @@
+:root {
+  --bg: var(--vscode-editor-background);
+  --fg: var(--vscode-editor-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --border: var(--vscode-panel-border, rgba(128,128,128,.35));
+  --accent: var(--vscode-focusBorder);
+  --sel: var(--vscode-editor-selectionBackground, rgba(0,120,215,.28));
+  --locked: rgba(128,128,128,.22);
+  --locked-fg: var(--vscode-descriptionForeground);
+  --warn-bg: var(--vscode-inputValidation-warningBackground, rgba(210,153,34,.14));
+  --warn-br: var(--vscode-inputValidation-warningBorder, #d29922);
+  --err-bg: var(--vscode-inputValidation-errorBackground, rgba(211,47,47,.14));
+  --err-br: var(--vscode-inputValidation-errorBorder, #f14c4c);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%; margin: 0; padding: 0;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--fg); background: var(--bg);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------- coverage banner */
+/* Mandatory, non-dismissible. A canvas that silently renders half a form is the
+   exact failure this project exists to avoid. */
+.banner {
+  padding: 8px 12px; font-size: 12px; line-height: 1.5;
+  border-bottom: 1px solid var(--border);
+  background: var(--warn-bg);
+  border-left: 3px solid var(--warn-br);
+}
+.banner.refusal { background: var(--err-bg); border-left-color: var(--err-br); }
+.banner.hidden { display: none; }
+.banner b { font-weight: 600; }
+.banner ul { margin: 4px 0 0; padding-left: 18px; }
+
+/* ------------------------------------------------------------------ workbench */
+/* body is a column: banner (auto) + workbench (flex:1) + status (24px). No measurement. */
+body { display: flex; flex-direction: column; }
+.workbench { flex: 1 1 auto; min-height: 0; display: flex; }
+.status { flex: 0 0 24px; }
+
+.toolbox {
+  width: 132px; flex: 0 0 132px; padding: 8px 6px;
+  border-right: 1px solid var(--border); overflow-y: auto;
+}
+.toolbox h3, .inspector h3 {
+  margin: 6px 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--muted); font-weight: 600;
+}
+.tool {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 8px; margin: 2px 0; cursor: grab;
+  border: 1px solid transparent; border-radius: 3px;
+  user-select: none; font-size: 12px;
+}
+.tool:hover { background: var(--vscode-list-hoverBackground); border-color: var(--border); }
+.tool:active { cursor: grabbing; }
+.tool .swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--border); }
+.tool[disabled] { opacity: .4; cursor: not-allowed; }
+
+.stage {
+  flex: 1 1 auto; overflow: auto; display: flex; align-items: flex-start;
+  justify-content: center; padding: 20px;
+  background:
+    repeating-conic-gradient(rgba(128,128,128,.06) 0% 25%, transparent 0% 50%) 50%/16px 16px;
+}
+
+/* ----------------------------------------------------------------- form frame */
+.form-frame {
+  border: 1px solid var(--border); background: var(--bg);
+  box-shadow: 0 2px 12px rgba(0,0,0,.28);
+  flex: 0 0 auto;
+}
+.form-title {
+  height: 22px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 6px; font-size: 11px;
+  background: var(--vscode-titleBar-activeBackground, var(--bg));
+  border-bottom: 1px solid var(--border);
+  cursor: default; user-select: none;
+}
+.form-size { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.canvas { position: relative; overflow: hidden; }
+
+/* -------------------------------------------------------------------- control */
+.ctl {
+  position: absolute; overflow: hidden; cursor: move; user-select: none;
+  font-size: 12px; white-space: nowrap;
+  background: var(--vscode-input-background, #2a2a2a);
+  border: 1px solid var(--vscode-input-border, rgba(128,128,128,.5));
+  color: var(--fg);
+}
+/* The caption is a real child element rather than textContent. That lets alignment differ
+   per control type, and — crucially — lets a container hold absolutely positioned children
+   without flex reflowing them. Handles are siblings of the caption, so they are unaffected. */
+.ctl > .ctl-caption {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  padding: 0 3px; overflow: hidden; pointer-events: none;
+}
+/* Handles and the selection ring are drawn OUTSIDE the control box, so they are clipped
+   by the default `overflow: hidden`. Selection therefore switches to visible; the caption
+   may briefly overflow a selected control, which is far less bad than invisible handles. */
+.ctl.selected { overflow: visible; outline: 1px dotted var(--accent); outline-offset: -1px; }
+.ctl.selected::after {
+  content: ''; position: absolute; inset: -2px;
+  border: 1px solid var(--accent); pointer-events: none;
+}
+.ctl:focus-visible { outline: 1px solid var(--accent); }
+
+/* Approximate WinForms look. NOT pixel parity — see CONTEXT.md. */
+.ctl.t-button  { background: linear-gradient(180deg,#3a3d41,#2e3134); border-radius: 2px; }
+.ctl.t-label   { background: transparent; border-color: transparent; }
+.ctl.t-textbox { background: var(--vscode-input-background, #1e1e1e); }
+.ctl.t-checkbox,.ctl.t-radio { background: transparent; border-color: transparent; }
+/* An empty TextBox/ComboBox/ListBox must read as empty, not as the text "TextBox". */
+.ctl.placeholder .ctl-caption { color: var(--muted); font-style: italic; font-size: 11px; }
+/* Left-aligned captions, as WinForms renders these types. */
+.ctl.t-label > .ctl-caption,
+.ctl.t-textbox > .ctl-caption,
+.ctl.t-checkbox > .ctl-caption,
+.ctl.t-radio > .ctl-caption,
+.ctl.t-combobox > .ctl-caption,
+.ctl.t-listbox > .ctl-caption { justify-content: flex-start; }
+/* A container positions children absolutely and shows its own caption in the border. */
+.ctl.t-container > .ctl-caption {
+  inset: auto; left: 6px; top: -1px; padding: 0 2px;
+  background: var(--bg); font-size: 11px;
+}
+.ctl.t-combobox,.ctl.t-listbox { padding: 0; }
+.ctl.t-picturebox { background: repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%) 50%/10px 10px; }
+.ctl.t-panel,.ctl.t-groupbox { background: transparent; border: 1px dashed var(--border); }
+.ctl.t-groupbox { padding-top: 6px; }
+
+/* Locked = parsed fine, deliberately not modelled. Never editable, never rewritten. */
+.ctl.locked {
+  background: var(--locked); border: 1px dashed var(--muted);
+  color: var(--locked-fg); cursor: not-allowed; justify-content: center;
+  font-style: italic; font-size: 11px;
+}
+.ctl.locked::before { content: '\🔒'; margin-right: 4px; font-style: normal; }
+
+.ctl.readonly { cursor: default; opacity: .75; }
+
+.handle {
+  position: absolute; width: 7px; height: 7px;
+  background: var(--bg); border: 1px solid var(--accent); z-index: 5;
+}
+.handle.nw { left: -4px;  top: -4px;    cursor: nwse-resize; }
+.handle.n  { left: 50%;   top: -4px;    margin-left: -3.5px; cursor: ns-resize; }
+.handle.ne { right: -4px; top: -4px;    cursor: nesw-resize; }
+.handle.e  { right: -4px; top: 50%;     margin-top: -3.5px; cursor: ew-resize; }
+.handle.se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.handle.s  { left: 50%;   bottom: -4px; margin-left: -3.5px; cursor: ns-resize; }
+.handle.sw { left: -4px;  bottom: -4px; cursor: nesw-resize; }
+.handle.w  { left: -4px;  top: 50%;     margin-top: -3.5px; cursor: ew-resize; }
+
+/* Snap guides */
+.guide { position: absolute; background: #f14c4c; z-index: 20; pointer-events: none; }
+.guide.v { width: 1px; top: 0; bottom: 0; }
+.guide.h { height: 1px; left: 0; right: 0; }
+
+.drop-hint {
+  position: absolute; border: 1px dashed var(--accent);
+  background: var(--sel); pointer-events: none; z-index: 1;
+}
+
+/* ------------------------------------------------------------------ inspector */
+.inspector {
+  width: 210px; flex: 0 0 210px; padding: 4px 8px 12px;
+  border-left: 1px solid var(--border); overflow-y: auto;
+}
+.inspector .empty { color: var(--muted); font-size: 12px; padding: 8px 4px; }
+.field { margin: 6px 0; }
+.field label {
+  display: block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 2px;
+}
+.field input, .field select {
+  width: 100%; padding: 3px 5px; font-size: 12px;
+  background: var(--vscode-input-background); color: var(--fg);
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 2px; font-family: inherit;
+}
+.field input[disabled], .field select[disabled] { opacity: .5; cursor: not-allowed; }
+.field input:focus, .field select:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+.field .note { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.field .note.warn { color: var(--warn-br); }
+.row { display: flex; gap: 6px; }
+.row .field { flex: 1; }
+
+.danger {
+  margin-top: 12px; width: 100%; padding: 5px; cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--fg); border: 1px solid var(--border); border-radius: 2px;
+  font-family: inherit; font-size: 12px;
+}
+.danger:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+/* -------------------------------------------------------------------- status */
+.status {
+  height: 24px; display: flex; align-items: center; gap: 14px;
+  padding: 0 10px; font-size: 11px; color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+.status .spacer { flex: 1; }
+.status .err { color: var(--err-br); }
+.status .ok { color: var(--fg); }
