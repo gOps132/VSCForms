@@ -10,16 +10,15 @@ preserved exactly.
 ## Quick start
 
 ```bash
-./scripts/new-project.sh --name MyDialog    # create a WinForms project + classic .sln
-./scripts/publish-engine.js                  # self-contained engine for this platform
+./scripts/publish-engine.js     # self-contained engine for this platform
 cd extension && npm install && npm run compile && cd ..
 node scripts/package-all.js     # dist/vscforms-<platform>.vsix
 
 code --install-extension dist/*.vsix
 ```
 
-Then open any `*.Designer.cs`. To read the generated source instead, use
-**WinForms: Open as Text**.
+Then **VSCForms: New Project…** creates a WinForms project and opens it in the canvas, or open
+any existing `*.Designer.cs`. To read the generated source instead, use **Open as Text**.
 
 Develop with `code --extensionDevelopmentPath=extension <workspace>`.
 

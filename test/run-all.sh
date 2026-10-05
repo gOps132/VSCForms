@@ -27,6 +27,11 @@ step "Designer dialects (templated, bare, this-style)"
 step "project generator"
 ./test/verify-generator.sh || FAIL=1
 
+# The generator is the engine's `new` command, and the shell script that used to own it is
+# gone. If this file reappears, two implementations of the csproj edit exist and the CRLF bug
+# in docs/adr/0007 is one fix away from coming back.
+[ -e scripts/new-project.sh ] && { echo "scripts/new-project.sh is back; the generator lives in the engine"; FAIL=1; }
+
 step "canvas harness"
 node extension/test/hostHarness.js || FAIL=1
 
@@ -43,15 +48,17 @@ elif ! ls extension/bin/*/vscforms-engine* >/dev/null 2>&1; then
 else
   # Capture the summary line rather than grep-piping: VS Code's own logging interleaves with
   # the suite's output, and grep's exit status says nothing about whether tests passed.
-  INT_LOG=$(mktemp)
+  INT_LOG="$ROOT/test/.integration.log"
   if node test/run-integration.js > "$INT_LOG" 2>&1; then
     grep -E "PASS|FAIL|rivals|integration:" "$INT_LOG"
+    rm -f "$INT_LOG"
   else
     grep -E "PASS|FAIL|rivals|integration:" "$INT_LOG"
-    echo "  (integration suite failed; full log kept)"
+    # Keep the log. VS Code interleaves its own output with the suite's, and the assertion
+    # message alone is often not enough to tell a wrong expectation from a real bug.
+    echo "  (integration suite failed; full log at $INT_LOG)"
     FAIL=1
   fi
-  rm -f "$INT_LOG"
 fi
 
 echo

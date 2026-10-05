@@ -120,7 +120,34 @@ per line on stdout. Never log to stdout — diagnostics go to stderr, or they co
 { "id": 1, "cmd": "parse",   "path": "/abs/Form1.Designer.cs" }
 { "id": 2, "cmd": "generate","path": "/abs/Form1.Designer.cs", "schema": { ...FormSchema } }
 { "id": 3, "cmd": "ping" }
+{ "id": 4, "cmd": "new",     "name": "MyDialog", "parent": "/abs/dir" }
 ```
+
+### `new` — project generation
+
+Creates a WinForms project by shelling out to `dotnet new`, plus a classic `.sln`. `template`
+defaults to `winforms`, `language` to `C#`. The engine does this rather than the extension host
+because the csproj's BOM and CRLF must survive the `EnableWindowsTargeting` injection, and the
+engine is the only component that already edits files byte-faithfully.
+
+```ts
+{ "id": 4, "cmd": "new", "name": "MyDialog", "parent": "/abs/dir",
+  "template"?: "winforms" | "winformslib" | "winformscontrollib",
+  "language"?: "C#" | "VB" }
+
+{ "id": 4, "ok": true, "changed": true,
+  "projectDir": "/abs/dir/MyDialog",
+  "solution":   "/abs/dir/MyDialog.sln",
+  "designer":   "/abs/dir/MyDialog/Form1.Designer.cs",   // "" if the template has none
+  "windowsTargetingAdded": true }                        // false on Windows hosts
+```
+
+`errorKind` on failure: `bad-name` (not an identifier, or a C# keyword), `bad-language`,
+`no-dotnet`, `no-template`, `exists`, `sdk`.
+
+`exists` is checked **before any file is written**, so a refused generation never leaves a
+half-made project. `name` is validated as a C# identifier and rejected if it is a reserved word:
+`dotnet new class` succeeds and yields a project that cannot compile.
 
 Response:
 
@@ -131,6 +158,10 @@ Response:
 
 `generate` writes the file only if the content actually changed; otherwise it is a no-op.
 This keeps undo/redo and dirty-state accounting honest.
+
+**Every child process the engine spawns must have stdout redirected.** Our stdout is the
+protocol channel, so an inherited stdout lands in the middle of a JSON response and the host
+reports a parse error with no cause. `dotnet --version` did exactly this once.
 
 ## generate() semantics — precise
 

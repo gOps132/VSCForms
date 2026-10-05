@@ -96,7 +96,10 @@ export class EngineClient implements vscode.Disposable {
         }
     }
 
-    private send(req: { cmd: string; path?: string; schema?: unknown }): Promise<EngineResponse> {
+    private send(req: {
+        cmd: string; path?: string; schema?: unknown;
+        name?: string; parent?: string; template?: string; language?: string;
+    }): Promise<EngineResponse> {
         const id = this.nextId++;
         const child = this.ensure();
         return new Promise<EngineResponse>((resolve, reject) => {
@@ -118,6 +121,25 @@ export class EngineClient implements vscode.Disposable {
     async generate(filePath: string, schema: unknown): Promise<GenerateResult> {
         const res = await this.send({ cmd: 'generate', path: filePath, schema });
         return { ok: res.ok, changed: res.changed === true, error: res.error, errorKind: res.errorKind };
+    }
+
+    /**
+     * Create a WinForms project. The engine does the work — it is the only component that edits
+     * files byte-faithfully, and the csproj's BOM and CRLF have to survive (docs/adr/0007).
+     */
+    async newProject(opts: NewProjectOptions): Promise<NewProjectResult> {
+        const res = await this.send({
+            cmd: 'new', name: opts.name, parent: opts.parent,
+            template: opts.template ?? 'winforms', language: opts.language ?? 'C#',
+        });
+        if (!res.ok) {
+            return { ok: false, error: res.error ?? 'generation failed', errorKind: res.errorKind ?? 'internal' };
+        }
+        return {
+            ok: true,
+            projectDir: res.projectDir ?? '', solution: res.solution ?? '', designer: res.designer ?? '',
+            windowsTargetingAdded: res.windowsTargetingAdded === true,
+        };
     }
 
     /** Locate the bundled engine, honouring platform-targeted packaging. */
@@ -148,10 +170,16 @@ export interface EngineResponse {
     id: number; ok: boolean;
     schema?: FormSchema;
     error?: string; errorKind?: string; changed?: boolean;
+    projectDir?: string; solution?: string; designer?: string; windowsTargetingAdded?: boolean;
 }
 
 export type ParsedResult = { ok: true; schema: FormSchema } | { ok: false; error: string; errorKind: string };
 export interface GenerateResult { ok: boolean; changed: boolean; error?: string; errorKind?: string }
+
+export interface NewProjectOptions { name: string; parent: string; template?: string; language?: string }
+export type NewProjectResult = {
+    ok: true; projectDir: string; solution: string; designer: string; windowsTargetingAdded: boolean;
+} | { ok: false; error: string; errorKind: string };
 
 // ---------------------------------------------------------------- SCHEMA.md
 

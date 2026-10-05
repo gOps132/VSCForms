@@ -88,11 +88,18 @@ Two tiers carry the most weight, and they are not the same kind of test:
 ## Working here
 
 - **The generator shells out to `dotnet new`; do not add project templates of our own.** The
-  output is identical to Visual Studio by construction. Three traps are handled in
-  `scripts/new-project.sh` and must not be "simplified" away: `-f sln` (the SDK 10 default is
-  `.slnx`, which VS 17.0-17.9 cannot open), `--no-restore` (the implicit restore fails on
-  macOS while still exiting 0), and `EnableWindowsTargeting` injection. Editing those files in
-  text mode without `newline=''` rewrites the SDK's CRLF line endings.
+  output is identical to Visual Studio by construction. It lives in the **engine**
+  (`ProjectGenerator.cs`, exposed as the `new` command), not the extension host and not a shell
+  script — the csproj edit must preserve the SDK's BOM and CRLF, and the engine is the only
+  component that already does byte-faithful editing. Three traps are handled there and must not
+  be "simplified" away: `--format sln` (the SDK 10 default is `.slnx`, which VS 17.0-17.9 cannot
+  open), `--no-restore` (the implicit restore fails on macOS while still exiting 0), and
+  `EnableWindowsTargeting` injection. Editing those files through a `StreamReader` rewrites the
+  SDK's CRLF line endings — that bug shipped once and is why `test/verify-generator.sh` asserts
+  the bytes rather than the property.
+- **Every `dotnet` child process must have stdout redirected.** Our stdout is the protocol
+  channel; an inherited stdout puts `10.0.400` in the middle of a JSON response. This shipped
+  once, via `dotnet --version`.
 - `fixtures/` is **hand-authored** on purpose — the measurement corpus is GPL-3.0 or
   unlicensed. See `fixtures/README.md`. Author fixtures so tests can assert exact diffs.
 - Measured limits, not guesses: **47.9%** per-form coverage ceiling for the 10 handled types,

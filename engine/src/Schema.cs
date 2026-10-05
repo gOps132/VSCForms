@@ -83,6 +83,12 @@ public sealed class Request
     [JsonPropertyName("cmd")] public string Cmd { get; set; } = "";
     [JsonPropertyName("path")] public string? Path { get; set; }
     [JsonPropertyName("schema")] public FormSchema? Schema { get; set; }
+
+    // `new` only. `name` is a C# identifier; `parent` is an existing or creatable directory.
+    [JsonPropertyName("name")] public string? Name { get; set; }
+    [JsonPropertyName("parent")] public string? Parent { get; set; }
+    [JsonPropertyName("template")] public string? Template { get; set; }
+    [JsonPropertyName("language")] public string? Language { get; set; }
 }
 
 public sealed class Response
@@ -93,6 +99,12 @@ public sealed class Response
     [JsonPropertyName("error")] public string? Error { get; set; }
     [JsonPropertyName("errorKind")] public string? ErrorKind { get; set; }
     [JsonPropertyName("changed")] public bool? Changed { get; set; }
+
+    // `new` only. `designer` is "" for templates with no Designer file (e.g. winformslib).
+    [JsonPropertyName("projectDir")] public string? ProjectDir { get; set; }
+    [JsonPropertyName("solution")] public string? Solution { get; set; }
+    [JsonPropertyName("designer")] public string? Designer { get; set; }
+    [JsonPropertyName("windowsTargetingAdded")] public bool? WindowsTargetingAdded { get; set; }
 }
 
 public static class Json

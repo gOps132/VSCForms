@@ -25,7 +25,8 @@
     "virtualWorkspaces": false
   },
   "activationEvents": [
-    "onCustomEditor:vscforms.formDesigner"
+    "onCustomEditor:vscforms.formDesigner",
+    "onCommand:vscforms.newProject"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -53,6 +54,11 @@
       {
         "command": "vscforms.openInTextEditor",
         "title": "Open as Text",
+        "category": "VSCForms"
+      },
+      {
+        "command": "vscforms.newProject",
+        "title": "New Project…",
         "category": "VSCForms"
       },
       {

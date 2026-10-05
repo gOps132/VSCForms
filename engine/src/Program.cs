@@ -126,6 +126,31 @@ public static class Program
                 return new Response { Id = req.Id, Ok = true, Changed = true };
             }
 
+            case "new":
+            {
+                if (string.IsNullOrWhiteSpace(req.Name))
+                    throw new DesignException("name is required", "bad-name");
+                if (string.IsNullOrWhiteSpace(req.Parent))
+                    throw new DesignException("parent is required", "bad-request");
+
+                var result = ProjectGenerator.Generate(
+                    req.Name!,
+                    req.Parent!,
+                    string.IsNullOrWhiteSpace(req.Template) ? "winforms" : req.Template!,
+                    string.IsNullOrWhiteSpace(req.Language) ? "C#" : req.Language!,
+                    stderr);
+                Log(stderr, $"created {result.ProjectDir}");
+
+                return new Response
+                {
+                    Id = req.Id, Ok = true, Changed = true,
+                    ProjectDir = result.ProjectDir,
+                    Solution = result.Solution,
+                    Designer = result.Designer,
+                    WindowsTargetingAdded = result.WindowsTargetingAdded,
+                };
+            }
+
             default:
                 throw new DesignException($"Unknown command '{req.Cmd}'", "bad-request");
         }

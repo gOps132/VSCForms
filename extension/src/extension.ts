@@ -328,6 +328,21 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 await this.saveCustomDocumentAs(
                     undefined as never, arg as vscode.Uri, undefined as never);
                 return;
+            case 'parse':
+                return engine.parse((arg as vscode.Uri).fsPath);
+            case 'newProject': {
+                // The command itself is two interactive dialogs, which the suite cannot drive.
+                // What is worth asserting is that the engine call the command makes works from
+                // inside the extension host, and that the result is openable.
+                const opts = (arg ?? {}) as { name?: string; parent?: string };
+                if (!opts.name) throw new Error('newProject seam needs a name');
+                const res = await engine.newProject({
+                    name: opts.name,
+                    parent: opts.parent ?? this.context.extensionPath,
+                });
+                if (!res.ok) throw new Error(`newProject failed (${res.errorKind}): ${res.error}`);
+                return res;
+            }
             default:
                 throw new Error('unknown test seam: ' + which);
         }
@@ -365,6 +380,22 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
 </html>`;
     }
 }
+
+/**
+ * C# reserved words. A project named `class` or `event` produces a solution that cannot
+ * compile, so the input box refuses them rather than letting the SDK write a broken project.
+ */
+const CSharpKeywords = new Set([
+    'abstract', 'as', 'base', 'bool', 'break', 'byte', 'case', 'catch', 'char', 'checked',
+    'class', 'const', 'continue', 'decimal', 'default', 'delegate', 'do', 'double', 'else',
+    'enum', 'event', 'explicit', 'extern', 'false', 'finally', 'fixed', 'float', 'for',
+    'foreach', 'goto', 'if', 'implicit', 'in', 'int', 'interface', 'internal', 'is', 'lock',
+    'long', 'namespace', 'new', 'null', 'object', 'operator', 'out', 'override', 'params',
+    'private', 'protected', 'public', 'readonly', 'ref', 'return', 'sbyte', 'sealed', 'short',
+    'sizeof', 'stackalloc', 'static', 'string', 'struct', 'switch', 'this', 'throw', 'true',
+    'try', 'typeof', 'uint', 'ulong', 'unchecked', 'unsafe', 'ushort', 'using', 'virtual',
+    'void', 'volatile', 'while',
+]);
 
 export function activate(context: vscode.ExtensionContext): void {
     engine = new EngineClient(EngineClient.resolveEnginePath(context));
@@ -410,6 +441,64 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('vscforms.openInDesigner', async () => {
             const uri = vscode.window.activeTextEditor?.document.uri;
             if (uri) await vscode.commands.executeCommand('vscode.openWith', uri, DesignerEditorProvider.viewType);
+        })
+    );
+
+    // -------------------------------------------------------------- new project
+    context.subscriptions.push(
+        vscode.commands.registerCommand('vscforms.newProject', async () => {
+            // The active workspace folder is the best default by a wide margin: a project
+            // created outside the workspace cannot be opened in it afterwards.
+            const folder = vscode.workspace.workspaceFolders?.[0];
+            const parent = await vscode.window.showOpenDialog({
+                canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Create here',
+                defaultUri: folder?.uri,
+            });
+            if (!parent || parent.length === 0) return;   // user cancelled
+
+            const name = await vscode.window.showInputBox({
+                prompt: 'Project name. Must be a valid C# identifier.',
+                value: 'Form1',
+                // A bad name yields a project that cannot compile, so refuse it here rather
+                // than after the SDK has already written files.
+                validateInput: (v) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(v) && !CSharpKeywords.has(v)
+                    ? undefined
+                    : 'Start with a letter or underscore; letters, digits and underscores only.',
+            });
+            if (!name) return;
+
+            // Generation shells out to `dotnet` four times, which takes seconds. Without
+            // progress the palette just appears to do nothing.
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: `Creating ${name}…` },
+                async () => {
+                    const res = await engine.newProject({ name, parent: parent[0].fsPath });
+
+                    if (!res.ok) {
+                        // `no-dotnet` is the single most likely failure and it is not the user's
+                        // fault, so it gets an actionable message rather than a raw SDK string.
+                        if (res.errorKind === 'no-dotnet') {
+                            const go = await vscode.window.showErrorMessage(
+                                res.error, 'Get the .NET SDK'
+                            );
+                            if (go) await vscode.commands.executeCommand(
+                                'vscode.open', vscode.Uri.parse('https://dotnet.microsoft.com/download'));
+                        } else {
+                            vscode.window.showErrorMessage(`VSCForms could not create ${name}: ${res.error}`);
+                        }
+                        return;
+                    }
+
+                    // Open what we just made. Generating a form the user then has to go hunting
+                    // for would leave the obvious next step to them instead of closing the loop.
+                    if (res.designer) {
+                        await vscode.commands.executeCommand(
+                            'vscode.openWith', vscode.Uri.file(res.designer), DesignerEditorProvider.viewType);
+                    } else {
+                        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(res.projectDir));
+                    }
+                }
+            );
         })
     );
 

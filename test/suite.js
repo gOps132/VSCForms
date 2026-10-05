@@ -133,9 +133,8 @@ async function run(vscode) {
     // Test seams live on a dedicated command rather than as module exports: the extension's
     // compiled `main` cannot be require()d from the test runner (it resolves 'vscode' itself),
     // and `ext.exports` is consumed by the activation promise.
-    const seam = async (which) => {
-        const r = await vscode.commands.executeCommand('vscforms._testSeam', which);
-        return r;
+    const seam = async (which, arg, msg) => {
+        return vscode.commands.executeCommand('vscforms._testSeam', which, arg, msg);
     };
     await test('extension activates', async () => {
         assert.ok(ext, 'extension not found — is it --extensionDevelopmentPath?');
@@ -144,9 +143,49 @@ async function run(vscode) {
 
     const commands = await vscode.commands.getCommands(true);
     await test('all commands registered', () => {
-        for (const c of ['vscforms.openInDesigner', 'vscforms.openInTextEditor', 'vscforms.restartEngine']) {
+        for (const c of ['vscforms.openInDesigner', 'vscforms.openInTextEditor',
+                         'vscforms.restartEngine', 'vscforms.newProject']) {
             assert.ok(commands.includes(c), 'missing command: ' + c);
         }
+    });
+
+    // The command shows two dialogs, so it cannot be invoked here. What CAN be asserted — and
+    // what actually broke before — is that the engine call it makes works from inside the
+    // extension host, and that the result opens in OUR editor rather than the text editor.
+    // This is the assertion that a generator whose output we cannot read would fail.
+    await test('newProject generates a project we can then open in the canvas', async () => {
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'vsc-new-'));
+        const r = await vscode.commands.executeCommand(
+            'vscforms._testSeam', 'newProject', { name: 'GeneratedDialog', parent });
+
+        assert.ok(r.ok, 'generation failed: ' + r.error);
+        assert.ok(fs.existsSync(r.solution), 'no solution at ' + r.solution);
+        assert.ok(fs.existsSync(r.designer), 'no Designer file at ' + r.designer);
+
+        // Classic .sln, not .slnx: VS 17.0-17.9 cannot open .slnx at all.
+        const sln = fs.readFileSync(r.solution, 'utf8');
+        assert.ok(/Microsoft Visual Studio Solution File/.test(sln),
+            'solution is not the classic format — the SDK default is .slnx');
+        assert.ok(sln.includes('Build.0'),
+            'solution lacks Build.0, so it would build nothing and still exit 0');
+
+        // The generated form must parse as the templated dialect, not as an empty form at 100%
+        // coverage. That exact failure mode is why this assertion exists.
+        const parsed = await seam('parse', vscode.Uri.file(r.designer));
+        assert.ok(parsed.ok, 'could not parse what we generated: ' + parsed.error);
+        assert.deepStrictEqual(parsed.schema.form.clientSize, { width: 800, height: 450 },
+            'generated form read as ' + JSON.stringify(parsed.schema.form.clientSize));
+        assert.strictEqual(parsed.schema.form.text, 'Form1');
+        assert.strictEqual(parsed.schema.analysis.refuses.length, 0,
+            'a freshly generated form must not be refused');
+
+        // And it must open in our editor — the loop the command closes for the user.
+        await vscode.commands.executeCommand(
+            'vscode.openWith', vscode.Uri.file(r.designer), 'vscforms.formDesigner');
+        const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        assert.ok(tab && tab.input instanceof vscode.TabInputCustom &&
+            tab.input.viewType === 'vscforms.formDesigner',
+            'the generated Designer file did not open in the canvas');
     });
 
     // ---------------------------------------------------------------- workspace
