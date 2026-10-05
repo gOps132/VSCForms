@@ -290,6 +290,42 @@ setTimeout(() => {
     check('engine error is surfaced',
         /Error: boom/.test(String(ids.status.textContent)), String(ids.status.textContent));
 
+    // ---- rename is its own message, NOT a schema commit
+    // A schema carrying a renamed id reads to the engine as "old deleted, new inserted", which
+    // would duplicate the control and discard its properties. So the canvas must post `rename`.
+    send({ type: 'load', data: schema });
+    const btn = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+    if (btn) {
+        btn.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 50, clientY: 50 });
+    }
+    const nameInput = [...ids.inspector.querySelectorAll('input')]
+        .find((i) => i.value === 'btnSubmit');
+    check('inspector offers the control name for renaming', !!nameInput);
+
+    if (nameInput) {
+        sandbox.__sent.length = 0;
+        nameInput.value = 'btnSend';
+        nameInput.dispatch('change', {});
+        const posted = sandbox.__sent;
+        const renameMsg = posted.find((m) => m.type === 'rename');
+        check('renaming posts a rename message', !!renameMsg, JSON.stringify(posted.map((m) => m.type)));
+        check('rename message carries the old id and the new name',
+            renameMsg && renameMsg.data.id === 'btnSubmit' && renameMsg.data.to === 'btnSend',
+            renameMsg ? JSON.stringify(renameMsg.data) : 'none');
+        check('renaming does NOT post a schema commit',
+            !posted.some((m) => m.type === 'commit'), JSON.stringify(posted.map((m) => m.type)));
+        // The file is the source of truth; the field snaps back until the re-parse arrives.
+        check('the name field reverts until the file re-posts the new schema',
+            nameInput.value === 'btnSubmit', nameInput.value);
+    }
+
+    // ---- a refused rename must say why, in the one place the user is looking
+    send({ type: 'renameRefused', data: { message: 'btnSend appears in Form1.cs where it is not a reference' } });
+    check('a refused rename surfaces its reason',
+        /Rename refused/.test(String(ids.status.textContent)), String(ids.status.textContent));
+    check('the refusal names the reason',
+        /not a reference/.test(String(ids.status.textContent)), String(ids.status.textContent));
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);

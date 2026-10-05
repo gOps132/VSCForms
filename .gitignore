@@ -13,3 +13,6 @@ dist/
 # local scratch
 *.log
 .DS_Store
+
+# integration failure log
+test/.integration.log

@@ -33,6 +33,8 @@ What that means in practice:
 
 - Forms using `Dock`/`Anchor` or `resources.ApplyResources` open **read-only**, with the reason.
 - Controls outside 10 types render as **locked boxes**; their code is never touched.
+- **Renaming is refused rather than guessed** when the code-behind holds a reference we cannot
+  resolve unambiguously — see [ADR 0008](docs/adr/0008-rename-boundary.md).
 - The canvas is a **structural diagram** of what the serializer will emit, not a preview of
   what Windows will draw.
 - **No event scaffolding** in v1.
@@ -46,15 +48,17 @@ real-world form reaches **91.4%**.
 ./test/run-all.sh
 ```
 
-Five tiers run anywhere: Roslyn invariants, a **real WinForms compile** of the generated code,
-four Designer dialects each with its own compile gate, a canvas DOM harness, and an end-to-end
-pass. Plus a real-VS Code integration suite.
+Six tiers run anywhere: Roslyn invariants, a **real WinForms compile** of the generated code,
+four Designer dialects plus declared style each with its own compile gate, project generation,
+control rename, a canvas DOM harness, and an end-to-end pass. Plus a real-VS Code integration
+suite.
 
 A sixth tier runs only on Windows CI — and it is the one that matters most:
 
 | Tier | Proves | Runs on |
 |---|---|---|
 | Roslyn / dialects / compile | the code is **valid** | anywhere |
+| Generator / rename | we can read what we write, and a rename leaves no dangling reference | anywhere |
 | Canvas / e2e / integration | the plumbing is **correct** | anywhere |
 | **Layout** | **the schema matches real WinForms runtime `Bounds`** | **Windows only** |
 

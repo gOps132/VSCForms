@@ -195,6 +195,26 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                     break;
                 }
 
+                // Rename is deliberately NOT a schema commit. A schema that renames
+                // `btnGo` to `btnCompute` reads to `generate` as "btnGo is gone, btnCompute is
+                // new" — a DELETE plus an INSERT, which would duplicate the control and discard
+                // its properties. Rename is its own engine command because it is the one
+                // operation that also edits the hand-written code-behind.
+                case 'rename': {
+                    if (parsed.ok === false) return;
+                    const { id, to } = msg.data as { id: string; to: string };
+                    const res = await engine.rename(doc.uri.fsPath, id, to);
+                    if (!res.ok) {
+                        post('renameRefused', { message: res.error ?? 'rename refused' });
+                        return;
+                    }
+                    // Re-parse rather than patching the schema in place: the id changed on disk
+                    // and the file is the source of truth.
+                    const after = await engine.parse(doc.uri.fsPath);
+                    if (after.ok) post('load', after.schema);
+                    break;
+                }
+
                 // Test seam. The webview is unreachable from the extension host API, so the
                 // integration suite cannot make the canvas post a commit by itself. This runs
                 // the SAME code path the canvas triggers — not a simulation of it — which is
@@ -330,6 +350,15 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 return;
             case 'parse':
                 return engine.parse((arg as vscode.Uri).fsPath);
+            case 'rename': {
+                const o = (arg ?? {}) as { designer?: string; from?: string; to?: string };
+                if (!o.designer || !o.from || !o.to) throw new Error('rename seam needs designer, from and to');
+                // Failures are RETURNED, not thrown: a refusal is a product behaviour the suite
+                // asserts on, and an exception would abort the run instead of being inspected.
+                const res = await engine.rename(o.designer, o.from, o.to);
+                if (!res.ok) return { ok: false, error: res.error, errorKind: res.errorKind };
+                return { ok: true, designerPath: o.designer, codeBehind: res.codeBehind };
+            }
             case 'newProject': {
                 // The command itself is two interactive dialogs, which the suite cannot drive.
                 // What is worth asserting is that the engine call the command makes works from

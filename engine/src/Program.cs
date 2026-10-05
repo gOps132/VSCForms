@@ -160,6 +160,19 @@ public static class Program
                 };
             }
 
+            case "rename":
+            {
+                if (string.IsNullOrEmpty(req.Path))
+                    throw new DesignException("path is required", "bad-request");
+                var renamed = Renamer.Rename(req.Path, req.From ?? "", req.To ?? "", stderr);
+                return new Response
+                {
+                    Id = req.Id, Ok = true, Changed = true,
+                    CodeBehind = renamed.CodeBehindPath,
+                    ReferenceCount = renamed.ReferenceCount,
+                };
+            }
+
             default:
                 throw new DesignException($"Unknown command '{req.Cmd}'", "bad-request");
         }

@@ -397,6 +397,23 @@
         box.appendChild(numField('TabIndex', c.properties.tabIndex ?? 0, appearanceBlocked,
             (v) => setProp(c, 'tabIndex', v)));
 
+        // Rename is its own message, not a schema edit. A schema carrying a new id reads to the
+        // engine as "old one deleted, new one inserted" — which would duplicate the control and
+        // throw away its properties.
+        const nameField = strField('Name', c.id, appearanceBlocked, () => {});
+        const nameInput = nameField.querySelector('input');
+        if (nameInput) {
+            nameInput.title = 'Renaming also updates the hand-written code-behind, and is '
+                + 'refused if that reference is not unambiguous.';
+            nameInput.addEventListener('change', () => {
+                const to = nameInput.value.trim();
+                nameInput.value = c.id;          // the file is the source of truth; it will re-post
+                if (!to || to === c.id) return;
+                post('rename', { id: c.id, to });
+            });
+        }
+        box.appendChild(nameField);
+
         if (!c.locked && !readOnly) {
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));
         }
@@ -558,6 +575,13 @@
                 break;
             case 'error':
                 renderStatus('Error: ' + (msg.data.message || 'unknown'), 'err');
+                break;
+
+            // A refused rename leaves the file untouched, so the status line is the only place
+            // the reason can go. It is persistent rather than a transient toast precisely because
+            // the user just typed a name and got nothing else in response.
+            case 'renameRefused':
+                renderStatus('Rename refused: ' + (msg.data.message || 'unknown'), 'err');
                 break;
         }
     });

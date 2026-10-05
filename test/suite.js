@@ -191,6 +191,19 @@ async function run(vscode) {
     // ---------------------------------------------------------------- workspace
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mf-int-'));
     const simple = path.join(dir, 'SimpleDialog.Designer.cs');
+
+    // The wired fixture: a Designer file plus a hand-written code-behind that really does
+    // reference its controls. The rename tests below need it, and it must be staged before
+    // them because they run before the rest of the suite.
+    fs.copyFileSync(
+        path.join(__dirname, '..', 'fixtures', 'wired', 'WiredForm.Designer.cs'),
+        path.join(dir, 'Wired.Designer.cs'));
+    fs.copyFileSync(
+        path.join(__dirname, '..', 'fixtures', 'wired', 'WiredForm.cs'),
+        path.join(dir, 'Wired.cs'));
+    fs.writeFileSync(path.join(dir, 'Wired.cs'),
+        fs.readFileSync(path.join(dir, 'Wired.cs'), 'utf8')
+            .replace('WiredForm', 'Wired'));
     fs.copyFileSync(path.join(ROOT, 'fixtures/simple/SimpleDialog.Designer.cs'), simple);
     const original = fs.readFileSync(simple, 'utf8');
 
@@ -202,6 +215,54 @@ async function run(vscode) {
     // ----------------------------------------------- our editor is auto-selected
     await vscode.commands.executeCommand('vscode.open', uri);
     await waitFor(() => isOurEditor(vscode), 10000, 'our custom editor to be selected automatically');
+
+    await test('rename updates both files and the document stays in sync', async () => {
+        // The seam copies the wired fixture, renames through the SAME path the canvas uses,
+        // and re-parses. The compile tier cannot cover this because it builds against a
+        // generated shim with no event wiring — a rename that touched only the Designer File
+        // would leave CS1061 there, and every other tier would still pass.
+        const r = await vscode.commands.executeCommand(
+            'vscforms._testSeam', 'rename', {
+                designer: path.join(dir, 'Wired.Designer.cs'),
+                from: 'btnCalculate', to: 'btnCompute',
+            });
+        assert.ok(r.ok, 'rename refused: ' + r.error);
+        assert.ok(r.codeBehind, 'the code-behind should have been rewritten too');
+
+        const designer = fs.readFileSync(r.designerPath, 'utf8');
+        const codeBehind = fs.readFileSync(r.codeBehind, 'utf8');
+        assert.ok(/private System\.Windows\.Forms\.Button btnCompute;/.test(designer),
+            'field declaration not renamed');
+        assert.ok(/btnCompute\.Enabled = false;/.test(codeBehind),
+            'code-behind receiver not renamed — this is the CS1061 bug');
+        assert.ok(/private void btnCalculate_Click\(/.test(codeBehind),
+            'the handler method was renamed, which would break the wiring');
+
+        // And the schema the canvas would be showing must agree with the file.
+        const parsed = await seam('parse', vscode.Uri.file(r.designerPath));
+        assert.ok(parsed.ok, parsed.error);
+        const ids = parsed.schema.controls.map((c) => c.id);
+        assert.ok(ids.includes('btnCompute'), 're-parsed schema lacks btnCompute: ' + ids.join(', '));
+        assert.ok(!ids.includes('btnCalculate'), 're-parsed schema still has the old id');
+    });
+
+    await test('a refused rename reports why and writes nothing', async () => {
+        const designer = path.join(dir, 'Wired.Designer.cs');
+        const codeBehind = path.join(dir, 'Wired.cs');
+        const before = [fs.readFileSync(designer, 'utf8'), fs.readFileSync(codeBehind, 'utf8')];
+
+        // `trackLevel` is still a control in this form, so this name is genuinely taken.
+        const r = await vscode.commands.executeCommand(
+            'vscforms._testSeam', 'rename', { designer, from: 'btnCompute', to: 'trackLevel' });
+        assert.ok(!r.ok, 'a duplicate name should have been refused');
+        assert.strictEqual(r.errorKind, 'conflict');
+        assert.ok(/trackLevel/.test(r.error), 'the refusal should name the conflict: ' + r.error);
+
+        // A refusal is only trustworthy if NOTHING was written. Half a rename would leave the
+        // two files disagreeing, which is the one outcome worse than not renaming at all.
+        assert.strictEqual(fs.readFileSync(designer, 'utf8'), before[0], 'the Designer File was written');
+        assert.strictEqual(fs.readFileSync(codeBehind, 'utf8'), before[1], 'the code-behind was written');
+    });
 
     await test('*.Designer.cs opens in OUR editor by default (priority "default")', () => {
         assert.ok(isOurEditor(vscode),

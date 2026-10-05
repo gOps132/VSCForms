@@ -74,14 +74,18 @@ These are decisions, not omissions. Each has an ADR.
 - **No pixel parity.** We cannot call `OnPaint` on real controls, because WinForms is
   Windows-only and that dependency is in the rendering primitive itself. The canvas is a
   *layout* view, not a *rendering* view.
-- **No event scaffolding.** No `btnSubmit_Click` generation in v1.
+- **No event scaffolding.** No `btnSubmit_Click` generation in v1. (Renaming a control and
+  updating the references a handler implies is a much smaller claim on `Form1.cs` than
+  generating handlers would be, and it has its own decision — ADR 0008.)
 
 ## Verification
 
 | Tier | What it proves |
 |---|---|
 | `test/verify.sh` | classic dialect: parse, refusals, byte-identical round trip, surgical move/add/delete |
-| `test/verify-dialects.sh` | templated, bare and this-style dialects, each with a real WinForms compile gate |
+| `test/verify-dialects.sh` | templated, bare and this-style dialects, plus declared style, each with a real WinForms compile gate |
+| `test/verify-generator.sh` | project generation, and that VSCForms can read what it generates |
+| `test/verify-rename.sh` | rename, including the code-behind — the one operation that leaves the Designer File |
 | `extension/test/hostHarness.js` | the canvas DOM: rendering, locked boxes, coverage banner, debounced commits |
 | `test/e2e.js` | canvas → host → engine → file through the real message contract |
 | `test/run-integration.js` | VS Code's own semantics: editor selection, dirty marker, undo continuations |

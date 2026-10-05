@@ -35,8 +35,8 @@ These are load-bearing. Each has caused or prevented a real bug.
 3. **Preserve byte-level identity outside the edit**: line ending (CRLF vs LF), UTF-8 BOM, and
    body indentation. Read files as bytes — `File.ReadAllText` consumes the BOM and would alter
    line 1 of every file on every edit.
-4. **Never write a `locked` control.** No property edits, no deletion. If the diff logic is
-   uncertain, emit nothing.
+4. **Never write a `locked` control.** No property edits, no deletion, no rename. If the diff
+   logic is uncertain, emit nothing.
 5. **Never write a refused form.** If `analysis.refuses` is non-empty, `generate` returns
    `ok: false` and the file is untouched (ADR 0003).
 6. **stdout is a protocol channel.** The engine speaks newline-delimited JSON on stdout.
@@ -58,6 +58,7 @@ These are load-bearing. Each has caused or prevented a real bug.
 ```bash
 ./test/run-all.sh                      # everything; skip integration with VSCFORMS_SKIP_INTEGRATION=1
 node test/verify.sh                    # Roslyn invariants + real WinForms compile
+./test/verify-rename.sh                # rename, incl. the code-behind and a real compile
 node test/e2e.js                       # canvas -> host -> engine -> file
 node extension/test/hostHarness.js     # DOM harness over the canvas code
 node test/run-integration.js           # real VS Code; needs a display
@@ -100,6 +101,17 @@ Two tiers carry the most weight, and they are not the same kind of test:
 - **Every `dotnet` child process must have stdout redirected.** Our stdout is the protocol
   channel; an inherited stdout puts `10.0.400` in the middle of a JSON response. This shipped
   once, via `dotnet --version`.
+- **Rename is the only operation that leaves the Designer File, and it refuses rather than
+  guessing** (ADR 0008). The control's name also appears in the hand-written `Form1.cs`
+  (`btnGo.Click += …`), and a rename that touched only the Designer File leaves `CS1061` in the
+  user's project — which the compile tier CANNOT catch, because it builds against a generated
+  shim with no event wiring. That is why `fixtures/wired/` exists. Code-behind is rewritten only
+  where the identifier is the receiver of a member access; anything else is refused by file and
+  line. `Name = "…"` IS rewritten (it is the control's runtime identity, not prose); comments
+  and the handler method name are NOT.
+- **A rename must never travel as a schema `commit`.** A schema carrying a new `id` reads to
+  `generate` as *old deleted + new inserted*, which duplicates the control and drops its
+  properties. It is a separate `rename` command for that reason.
 - `fixtures/` is **hand-authored** on purpose — the measurement corpus is GPL-3.0 or
   unlicensed. See `fixtures/README.md`. Author fixtures so tests can assert exact diffs.
 - Measured limits, not guesses: **47.9%** per-form coverage ceiling for the 10 handled types,

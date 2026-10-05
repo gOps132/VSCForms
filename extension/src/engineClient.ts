@@ -99,6 +99,7 @@ export class EngineClient implements vscode.Disposable {
     private send(req: {
         cmd: string; path?: string; schema?: unknown;
         name?: string; parent?: string; template?: string; language?: string;
+        from?: string; to?: string;
     }): Promise<EngineResponse> {
         const id = this.nextId++;
         const child = this.ensure();
@@ -142,6 +143,18 @@ export class EngineClient implements vscode.Disposable {
         };
     }
 
+    /**
+     * Rename a control. The engine may also edit the hand-written code-behind — see
+     * docs/adr/0008-rename-boundary.md — and refuses rather than guessing.
+     */
+    async rename(filePath: string, from: string, to: string): Promise<RenameResult> {
+        const res = await this.send({ cmd: 'rename', path: filePath, from, to });
+        if (!res.ok) {
+            return { ok: false, error: res.error ?? 'rename refused', errorKind: res.errorKind ?? 'internal' };
+        }
+        return { ok: true, codeBehind: res.codeBehind, referenceCount: res.referenceCount ?? 0 };
+    }
+
     /** Locate the bundled engine, honouring platform-targeted packaging. */
     static resolveEnginePath(context: vscode.ExtensionContext): string {
         const override = vscode.workspace.getConfiguration('vscforms').get<string>('enginePath');
@@ -171,6 +184,7 @@ export interface EngineResponse {
     schema?: FormSchema;
     error?: string; errorKind?: string; changed?: boolean;
     projectDir?: string; solution?: string; designer?: string; windowsTargetingAdded?: boolean;
+    codeBehind?: string; referenceCount?: number;
 }
 
 export type ParsedResult = { ok: true; schema: FormSchema } | { ok: false; error: string; errorKind: string };
@@ -180,6 +194,10 @@ export interface NewProjectOptions { name: string; parent: string; template?: st
 export type NewProjectResult = {
     ok: true; projectDir: string; solution: string; designer: string; windowsTargetingAdded: boolean;
 } | { ok: false; error: string; errorKind: string };
+
+export type RenameResult =
+    | { ok: true; codeBehind?: string; referenceCount: number }
+    | { ok: false; error: string; errorKind: string };
 
 // ---------------------------------------------------------------- SCHEMA.md
 

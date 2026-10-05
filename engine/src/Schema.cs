@@ -89,6 +89,10 @@ public sealed class Request
     [JsonPropertyName("parent")] public string? Parent { get; set; }
     [JsonPropertyName("template")] public string? Template { get; set; }
     [JsonPropertyName("language")] public string? Language { get; set; }
+
+    // `rename` only. See docs/adr/0008-rename-boundary.md.
+    [JsonPropertyName("from")] public string? From { get; set; }
+    [JsonPropertyName("to")] public string? To { get; set; }
 }
 
 public sealed class Response
@@ -105,6 +109,10 @@ public sealed class Response
     [JsonPropertyName("solution")] public string? Solution { get; set; }
     [JsonPropertyName("designer")] public string? Designer { get; set; }
     [JsonPropertyName("windowsTargetingAdded")] public bool? WindowsTargetingAdded { get; set; }
+
+    // `rename` only.
+    [JsonPropertyName("codeBehind")] public string? CodeBehind { get; set; }
+    [JsonPropertyName("referenceCount")] public int? ReferenceCount { get; set; }
 }
 
 public static class Json

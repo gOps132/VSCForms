@@ -24,6 +24,9 @@ step "roslyn + compile tiers"
 step "Designer dialects (templated, bare, this-style)"
 ./test/verify-dialects.sh || FAIL=1
 
+step "control rename (the one operation that leaves the Designer File)"
+./test/verify-rename.sh || FAIL=1
+
 step "project generator"
 ./test/verify-generator.sh || FAIL=1
 
@@ -48,7 +51,7 @@ elif ! ls extension/bin/*/vscforms-engine* >/dev/null 2>&1; then
 else
   # Capture the summary line rather than grep-piping: VS Code's own logging interleaves with
   # the suite's output, and grep's exit status says nothing about whether tests passed.
-  INT_LOG="$ROOT/test/.integration.log"
+  INT_LOG="test/.integration.log"
   if node test/run-integration.js > "$INT_LOG" 2>&1; then
     grep -E "PASS|FAIL|rivals|integration:" "$INT_LOG"
     rm -f "$INT_LOG"

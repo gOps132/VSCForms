@@ -145,6 +145,29 @@ engine is the only component that already edits files byte-faithfully.
 `errorKind` on failure: `bad-name` (not an identifier, or a C# keyword), `bad-language`,
 `no-dotnet`, `no-template`, `exists`, `sdk`.
 
+### `rename` — the one operation that leaves the Designer File
+
+Renames a control, and possibly the hand-written code-behind. **It is not a schema commit**: a
+schema carrying a new `id` reads to `generate` as *old deleted + new inserted*, which would
+duplicate the control and discard its properties.
+
+```ts
+{ "id": 5, "cmd": "rename", "path": "/abs/Form1.Designer.cs", "from": "btnGo", "to": "btnSend" }
+
+{ "id": 5, "ok": true, "changed": true,
+  "codeBehind": "/abs/Form1.cs",        // null when there is none
+  "referenceCount": 9 }                 // references in the Designer File
+```
+
+`errorKind`: `bad-rename`, `not-found`, `conflict`, `locked`, `refused`,
+`ambiguous-reference`.
+
+The boundary is [ADR 0008](docs/adr/0008-rename-boundary.md): the Designer File is rewritten
+unconditionally; the code-behind only where the identifier is the **receiver of a member
+access**. Anything else — a local, a parameter, another class's member — is refused with the
+file and line named, because a wrong guess is a build error in the user's project. Both files'
+edits are validated before either is written, so a refusal leaves both byte-identical.
+
 `exists` is checked **before any file is written**, so a refused generation never leaves a
 half-made project. `name` is validated as a C# identifier and rejected if it is a reserved word:
 `dotnet new class` succeeds and yields a project that cannot compile.
