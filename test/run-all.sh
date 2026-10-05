@@ -24,6 +24,9 @@ step "roslyn + compile tiers"
 step "Designer dialects (templated, bare, this-style)"
 ./test/verify-dialects.sh || FAIL=1
 
+step "project generator"
+./test/verify-generator.sh || FAIL=1
+
 step "canvas harness"
 node extension/test/hostHarness.js || FAIL=1
 

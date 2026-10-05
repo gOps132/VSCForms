@@ -10,7 +10,8 @@ preserved exactly.
 ## Quick start
 
 ```bash
-node scripts/publish-engine.js   # self-contained engine for this platform
+./scripts/new-project.sh --name MyDialog    # create a WinForms project + classic .sln
+./scripts/publish-engine.js                  # self-contained engine for this platform
 cd extension && npm install && npm run compile && cd ..
 node scripts/package-all.js     # dist/macforms-<platform>.vsix
 
@@ -63,7 +64,37 @@ Everything local proves MacForms writes code that compiles. Only the layout tier
 coordinates still compiles and still looks plausible in a screenshot. It needs Windows because
 instantiating `System.Windows.Forms` does.
 
+## What a generated project looks like
+
+```
+MyDialog.sln              classic text .sln, not .slnx
+MyDialog/
+  MyDialog.csproj         + <EnableWindowsTargeting> on non-Windows hosts
+  MyDialog.csproj.user    load-bearing on Windows: it is what makes VS show the designer
+  Program.cs
+  Form1.cs
+  Form1.Designer.cs       the templated dialect — MacForms reads it correctly
+```
+
+No `Form1.resx`: the SDK template never emits one, so `InitializeComponent()` has no
+`ApplyResources` call and the form is editable rather than refused.
+
 ## Documentation
+
+## What a generated project looks like
+
+```
+MyDialog.sln              classic text .sln, not .slnx
+MyDialog/
+  MyDialog.csproj         + <EnableWindowsTargeting> on non-Windows hosts
+  MyDialog.csproj.user    load-bearing on Windows: it is what makes VS show the designer
+  Program.cs
+  Form1.cs
+  Form1.Designer.cs       the templated dialect — MacForms reads it correctly
+```
+
+No `Form1.resx`: the SDK template never emits one, so `InitializeComponent()` has no
+`ApplyResources` call and the form is editable rather than refused.
 
 ## Documentation
 
