@@ -26,6 +26,22 @@ public sealed class DesignerDocument
     /// <summary>Local variable name that holds the form's resource manager, if any.</summary>
     public required string? ResourceManagerLocal { get; init; }
 
+    /// <summary>
+    /// Whether this file qualifies members with `this.`.
+    ///
+    /// Used when INSERTING a statement: there is no existing text to copy, so emitting the
+    /// canonical `this.` form into a file that consistently omits it produces visibly mixed
+    /// style. Matching the file keeps generated code looking like the surrounding code.
+    /// </summary>
+    public required bool UsesThisPrefix { get; init; }
+
+    /// <summary>
+    /// Whether the CONTROLS COLLECTION is `this.`-qualified, tracked separately from
+    /// <see cref="UsesThisPrefix"/> because the two disagree independently. Visual Studio writes
+    /// `this.txt.Location = ...` on controls yet leaves `Controls.Add(...)` bare.
+    /// </summary>
+    public required bool ControlsCollectionIsQualified { get; init; }
+
     public sealed class ControlSyntax
     {
         public required string Id { get; init; }
@@ -74,35 +90,18 @@ public sealed class DesignerDocument
         var statements = ic.Body?.Statements ?? default;
         var index = new Dictionary<string, ControlSyntax>(StringComparer.Ordinal);
 
-        // Pass 1: instantiations, field decls, property assignments, additions.
-        //
-        // Two passes over the statements are needed: a control's `Controls.Add` can appear
-        // BEFORE its `new T()` instantiation is seen, and its property assignments can
-        // appear before we have created any index entry. So pass A collects every
-        // instantiation and field declaration; pass B then resolves additions and
-        // properties against a complete index.
-        foreach (var stmt in statements.OfType<ExpressionStatementSyntax>())
-        {
-            // Only a DIRECT `this.<name> = ...` counts. Deeper receivers such as
-            // `this.btnSubmit.Location` and form-level `this.ClientSize` are handled
-            // separately, and must not be mistaken for control instantiations.
-            if (stmt.Expression is AssignmentExpressionSyntax
-                {
-                    Left: MemberAccessExpressionSyntax lhs2,
-                    Right: ObjectCreationExpressionSyntax oce2
-                }
-                && IsFormReceiver(lhs2.Expression)
-                && MemberName(lhs2.Expression) is { } nm2
-                && FindFieldDeclarator(formType, nm2) is not null)
-            {
-                declaredTypes[nm2] = QualifiedTypeName(oce2.Type);
-                // No field declaration is not a reason to drop the control: index it anyway.
-                var fd2 = FindFieldDeclarator(formType, nm2);
-                if (!index.ContainsKey(nm2))
-                    index[nm2] = NewControlSyntax(nm2, QualifiedTypeName(oce2.Type), fd2, stmt, stmt, parent: null);
-            }
-        }
+        // Controls instantiated as `this.x = new T();` — the dialect signal for inserts.
+        var thisQualifiedInstantiations = new HashSet<string>(StringComparer.Ordinal);
 
+        // Whether `Controls.Add` is `this.`-qualified, tracked separately from the above.
+        // Assigned (not OR-ed) so the LAST add call decides — files are consistent, and
+        // OR-ing would let one stray line flip the convention.
+        bool qualifiedControlsCollection = false;
+
+        // A single pass resolves instantiations, field declarations, property assignments and
+        // `Controls.Add` calls. Order is not assumed: a control's Add call can appear before
+        // its instantiation, and a property assignment can appear before the index has an
+        // entry for it. Each branch creates the index entry if it does not exist yet.
         foreach (var stmt in statements)
         {
             if (stmt is not ExpressionStatementSyntax es) continue;
@@ -112,13 +111,31 @@ public sealed class DesignerDocument
             // Note: this branch is entered for `this.x.Prop = new T()` too, because that is
             // also `MemberAccessExpression = ObjectCreationExpression`. So it must NOT
             // `continue` unconditionally, or every property assignment would be skipped.
-            if (es.Expression is AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax lhs,
-                                                             Right: ObjectCreationExpressionSyntax oce }
-                && IsFormReceiver(lhs.Expression)
-                && MemberName(lhs) is { } instName
+            // A control instantiation. This branch is entered for `x.Prop = new T()` too — that is also
+            // MemberAccess = ObjectCreation — so the receiver must be a BARE name (`this.x` or
+            // `x`), never a nested access. Requiring that is what keeps `x.Location = new Point()`
+            // from being mistaken for an instantiation.
+            bool isDirectInstantiation = false;
+            if (es.Expression is AssignmentExpressionSyntax { Left: var li, Right: ObjectCreationExpressionSyntax }
+                && (li is MemberAccessExpressionSyntax or IdentifierNameSyntax)
+                && TryGetControlName(li, out var liName)
+                && FindFieldDeclarator(formType, liName) is not null)
+            {
+                isDirectInstantiation = true;
+            }
+
+            if (isDirectInstantiation
+                && es.Expression is AssignmentExpressionSyntax { Left: var lhsInstant,
+                                                                 Right: ObjectCreationExpressionSyntax oce }
+                && TryGetControlName(lhsInstant, out var instName)
                 && FindFieldDeclarator(formType, instName) is { } instField)
             {
                 declaredTypes[instName] = QualifiedTypeName(oce.Type);
+                // Record whether THIS instantiation was `this.`-qualified. Done here, where the
+                // syntax is in hand; inferring it later from the statement list is unreliable
+                // because the dialect differs in which shape appears where.
+                if (IsThisQualified(lhsInstant))
+                    thisQualifiedInstantiations.Add(instName);
                 if (!index.ContainsKey(instName))
                     index[instName] = NewControlSyntax(instName, QualifiedTypeName(oce.Type), instField, es, es, parent: null);
                 continue;
@@ -127,6 +144,20 @@ public sealed class DesignerDocument
             // this.Controls.Add(this.x);  /  this.pnl.Controls.Add(this.x);
             if (TryParseAddCall(es.Expression, out var container, out var child) && child is not null)
             {
+                // `this.Controls.Add(...)` / `this.pnl.Controls.Add(...)` / `Controls.Add(...)`
+                //
+                // The receiver of `.Controls` is the thing that carries the qualification:
+                //   this.Controls.Add  -> receiver is ThisExpressionSyntax
+                //   this.pnl.Controls   -> receiver is `this.pnl`, also this-qualified
+                //   Controls.Add        -> receiver is an IdentifierName, not qualified
+                if (es.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax addCall }
+                    && addCall.Expression is MemberAccessExpressionSyntax controlsAccess)
+                    qualifiedControlsCollection = controlsAccess.Expression switch
+                    {
+                        ThisExpressionSyntax => true,
+                        MemberAccessExpressionSyntax => IsThisQualified(controlsAccess.Expression),
+                        _ => false,
+                    };
                 if (!index.TryGetValue(child, out var existing))
                 {
                     var field = FindFieldDeclarator(formType, child);
@@ -143,11 +174,10 @@ public sealed class DesignerDocument
                 continue;
             }
 
-            // this.x.Prop = rhs;  — plhs.Expression is `this.x`, so the CONTROL name lives in
-            // plhs.Expression.Name, and the PROPERTY name is plhs.Name.
+            // x.Prop = rhs;   The CONTROL is plhs.Expression (either `this.x` or bare `x`) and the
+            // PROPERTY is plhs.Name. Both dialects handled by TryGetControlName.
             if (es.Expression is AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax plhs } assign
-                && IsThisReceiver(plhs.Expression)
-                && MemberName(plhs.Expression) is { } ctrl
+                && TryGetControlName(plhs.Expression, out var ctrl)
                 && index.TryGetValue(ctrl, out var target))
             {
                 target.Properties[plhs.Name.Identifier.Text] = assign;
@@ -173,6 +203,8 @@ public sealed class DesignerDocument
             InitializeComponent = ic,
             Controls = index,
             ResourceManagerLocal = analysis.ResourceManagerLocal,
+            UsesThisPrefix = thisQualifiedInstantiations.Count > 0,
+            ControlsCollectionIsQualified = qualifiedControlsCollection,
         };
     }
 
@@ -223,9 +255,9 @@ public sealed class DesignerDocument
         }
         foreach (var stmt in ic.Body?.Statements ?? default)
         {
-            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax l } a }
-                && IsFormReceiver(l.Expression)
-                && (l.Name.Identifier.Text is "Dock" or "Anchor"))
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var formProp)
+                && (formProp is "Dock" or "Anchor"))
             {
                 if (!IsDefaultValue(a.Right, "DockStyle.Top") && !docked.Contains("form"))
                     docked.Add("form");
@@ -386,16 +418,76 @@ public sealed class DesignerDocument
     /// <summary>True when the expression is a bare `this` — i.e. a form-level member access.</summary>
     private static bool IsFormReceiver(ExpressionSyntax e) => e is ThisExpressionSyntax;
 
-    /// <summary>True when the expression is `this.something` — i.e. a control-level access.</summary>
+    /// <summary>
+    /// True when the expression is `this.something` — i.e. a control-level access.
+    ///
+    /// The form-level equivalent is <see cref="TryGetFormProperty"/>, which also accepts the
+    /// bare-identifier style. Confusing the two is a real bug: `this.ClientSize` belongs to the
+    /// form, `this.lbl.Text` belongs to a control.
+    /// </summary>
     private static bool IsThisReceiver(ExpressionSyntax e) =>
         e is MemberAccessExpressionSyntax m && m.Expression is ThisExpressionSyntax;
 
+    /// <summary>
+    /// Recognises a form-level property assignment, in either of the two dialects Visual Studio
+    /// and the SDK template emit:
+    ///
+    ///   classic:  this.ClientSize = new System.Drawing.Size(800, 450);
+    ///   modern:   ClientSize = new Size(800, 450);          // implicit usings
+    ///
+    /// The modern form appears in every freshly-created `dotnet new winforms` project, because
+    /// `InitializeComponent()` only starts using `this.` once the designer has rewritten it
+    /// after a control is added. Reading only the classic style makes a brand-new project parse
+    /// as an empty form while still reporting 100% coverage.
+    ///
+    /// A bare identifier is only accepted for the form, never for a control: inside a Designer
+    /// file a bare `Text = ...` is necessarily an inherited Form property.
+    /// </summary>
+    private static bool TryGetFormProperty(ExpressionSyntax left, out string name)
+    {
+        return TryGetControlName(left, out name);
+    }
+
+    /// <summary>
+    /// Resolves an expression to a member or field name, accepting both the qualified form and
+    /// the bare-identifier form.
+    ///
+    /// Designer files come in at least three dialects, all of which appear in real projects:
+    ///
+    ///   classic    this.btnSubmit.Location = new System.Drawing.Point(x, y);
+    ///   templated  this.btnSubmit.Location = new Point(x, y);          // implicit usings
+    ///   bare       btnSubmit.Location = new Point(x, y);               // no `this.` anywhere
+    ///
+    /// The bare dialect is not exotic — it is what a designer file looks like when the `this.`
+    /// qualification was never introduced, and reading only the classic form silently reports
+    /// such a file as an empty form at 100% coverage.
+    /// </summary>
+    private static bool TryGetControlName(ExpressionSyntax e, out string name)
+    {
+        switch (e)
+        {
+            case MemberAccessExpressionSyntax m when m.Expression is ThisExpressionSyntax:
+                name = m.Name.Identifier.Text;
+                return true;
+            case IdentifierNameSyntax id:
+                name = id.Identifier.Text;
+                return true;
+            default:
+                name = "";
+                return false;
+        }
+    }
+
+    /// <summary>True when `e` is the `this.x` form specifically (not the bare `x`).</summary>
+    private static bool IsThisQualified(ExpressionSyntax e) =>
+        e is MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax };
+
     private static string? ReadFormText(MethodDeclarationSyntax ic)
     {
-        // Must be `this.Text`, not `this.someLabel.Text` — hence the form-level receiver test.
+        // Accepts both `this.Text` and the template's bare `Text`.
         foreach (var stmt in ic.Body?.Statements ?? default)
-            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax l } a }
-                && IsFormReceiver(l.Expression) && l.Name.Identifier.Text == "Text"
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var n) && n == "Text"
                 && a.Right is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
                 return lit.Token.ValueText;
         return null;
@@ -404,9 +496,11 @@ public sealed class DesignerDocument
     private static SizeDto? ReadSize(MethodDeclarationSyntax ic, string prop)
     {
         foreach (var stmt in ic.Body?.Statements ?? default)
-            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax l } a }
-                && IsFormReceiver(l.Expression) && l.Name.Identifier.Text == prop)
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var n) && n == prop)
             {
+                // Works for both `new System.Drawing.Size(800, 450)` and `new Size(800, 450)` —
+                // only the argument expressions matter, not the qualified type name.
                 var args = ParseArgs(a.Right);
                 if (args is { Length: 2 } && int.TryParse(args[0], out var w) && int.TryParse(args[1], out var h))
                     return new SizeDto { Width = w, Height = h };
@@ -447,39 +541,31 @@ public sealed class DesignerDocument
     private static bool TryParseAddCall(ExpressionSyntax expr, out string? container, out string? child)
     {
         container = null; child = null;
-        // Shape: <recv>.Controls.Add(<child>)
-        //   InvocationExpression
-        //     .Expression = MemberAccess(Name: "Add", Expression: MemberAccess(Name: "Controls", ...))
+        // Shape: <recv>.Controls.Add(<child>)   — where <recv> may be `this`, a bare `Controls`,
+        // `this.panel1`, or a bare `panel1`.
         if (expr is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax add } inv) return false;
         if (add.Name.Identifier.Text != "Add") return false;
-
-        // NOTE: the receiver of `.Add` is the `Controls` access itself, so the container
-        // chain starts at add.Expression — not at inv.Expression.
         if (add.Expression is not MemberAccessExpressionSyntax controls) return false;
         if (controls.Name.Identifier.Text != "Controls") return false;
 
-        // `this.Controls.Add(x)` — the Controls access hangs directly off `this`.
         if (controls.Expression is ThisExpressionSyntax)
         {
-            container = "Controls";
+            container = "Controls";              // this.Controls.Add(x)
         }
-        // `this.panel1.Controls.Add(x)` — hangs off `this.<container>`.
-        else if (controls.Expression is MemberAccessExpressionSyntax owner && IsThisReceiver(owner.Expression))
+        else if (TryGetControlName(controls.Expression, out var ownerName))
         {
-            container = owner.Name.Identifier.Text;
+            container = ownerName;               // panel1.Controls.Add(x) / this.panel1.Controls.Add(x)
         }
         else
         {
             return false;
         }
 
-        // The argument IS the `this.<name>` access — test it directly. Testing its inner
-        // expression would ask whether `this` itself is a `this.X` access, which it is not.
+        // The argument is the child: either `this.x` or a bare `x`.
         if (inv.ArgumentList.Arguments.Count == 1
-            && inv.ArgumentList.Arguments[0].Expression is MemberAccessExpressionSyntax arg
-            && IsThisReceiver(arg))
+            && TryGetControlName(inv.ArgumentList.Arguments[0].Expression, out var argName))
         {
-            child = arg.Name.Identifier.Text;
+            child = argName;
         }
 
         // Returning true with a null child would make the caller skip the statement without

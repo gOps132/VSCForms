@@ -63,7 +63,13 @@ work localizable LocalizableForm
 send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
 import json,sys; d=json.load(sys.stdin)['schema']; a=d['analysis']
 assert 'localizable' in a['refuses'], a['refuses']
-g=[c for c in d['controls'] if c['id']=='ThirdPartyGauge'][0]
+# The gauge is a CHILD of pnlToolbar (it is added via pnlToolbar.Controls.Add), so it must
+# be found by walking the tree rather than in the flat top-level list.
+def all_controls(ns):
+    for c in ns:
+        yield c
+        yield from all_controls(c['children'])
+g=[c for c in all_controls(d['controls']) if c['id']=='ThirdPartyGauge'][0]
 assert g['locked'] is True and 'GaugeControl' in g['type']
 assert a['coveragePercent']==75.0, a" \
   && ok "ApplyResources refuses; third-party control locked" || bad "localizable refusal"
@@ -93,17 +99,21 @@ done
 ok "untouched structures survive the move"
 
 sect "[roslyn] surgical add"
+MISSING=""
 work simple SimpleDialog
 cp "$FILE" /tmp/mf-orig.cs
 python_tweak "
 s['controls'].append({'id':'btnExtra','type':'System.Windows.Forms.Button','children':[],
   'properties':{'x':10,'y':10,'width':75,'height':23,'text':'Extra','tabIndex':9},'locked':False})
 s['analysis']['modelledCount']+=1; s['analysis']['coveragePercent']=100.0" >/dev/null
-if grep -q "this.btnExtra = new System.Windows.Forms.Button();" "$FILE" \
-  && grep -q "private System.Windows.Forms.Button btnExtra;" "$FILE" \
-  && grep -q "this.Controls.Add(this.btnExtra);" "$FILE" \
-  && grep -q "// btnExtra" "$FILE"; then ok "add inserts declaration, init, block and Controls.Add"
-else bad "add did not produce all four parts"; fi
+for part in "this.btnExtra = new System.Windows.Forms.Button();" \
+            "private System.Windows.Forms.Button btnExtra;" \
+            "this.Controls.Add(this.btnExtra);" \
+            "// btnExtra"; do
+  grep -qF "$part" "$FILE" || MISSING="$MISSING\n        - $part"
+done
+[ -z "$MISSING" ] && ok "add inserts declaration, init, block and Controls.Add" \
+                  || bad "add did not produce all four parts:$MISSING"
 REMOVED=$(diff /tmp/mf-orig.cs "$FILE" | grep -c '^<'); ADDED=$(diff /tmp/mf-orig.cs "$FILE" | grep -c '^>')
 if [ "$REMOVED" -eq 0 ]; then ok "add is purely additive ($ADDED lines in, 0 out)"
 else bad "add removed $REMOVED existing lines"; fi

@@ -65,7 +65,14 @@ public static class Program
                 if (string.IsNullOrEmpty(req.Path)) throw new DesignException("path is required", "bad-request");
                 if (!File.Exists(req.Path)) throw new DesignException($"File not found: {req.Path}", "not-found");
 
-                var source = SourceText.From(File.ReadAllText(req.Path));
+                // Read as BYTES, not with File.ReadAllText: that overload strips a UTF-8 BOM, which
+                // would silently change the first line of the file on every single edit and
+                // break the "every other byte is identical" guarantee.
+                var bytes = File.ReadAllBytes(req.Path);
+                bool bom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+                var source = SourceText.From(
+                    bom ? System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3)
+                        : System.Text.Encoding.UTF8.GetString(bytes));
                 var doc = DesignerDocument.Parse(source);
                 Log(stderr, $"parsed {req.Path}: {doc.Schema.Analysis.ModelledCount} modelled, "
                           + $"{doc.Schema.Analysis.UnmodelledCount} unmodelled, "
@@ -80,7 +87,11 @@ public static class Program
                 if (req.Schema is null) throw new DesignException("schema is required", "bad-request");
                 if (!File.Exists(req.Path)) throw new DesignException($"File not found: {req.Path}", "not-found");
 
-                var source = SourceText.From(File.ReadAllText(req.Path));
+                var bytes = File.ReadAllBytes(req.Path);
+                bool bom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+                var source = SourceText.From(
+                    bom ? System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3)
+                        : System.Text.Encoding.UTF8.GetString(bytes));
                 var result = Patcher.Apply(source, req.Schema);
 
                 if (result.Refusal is not null)
@@ -101,7 +112,16 @@ public static class Program
 
                 // Write only when something actually changed, so dirty-state accounting
                 // stays honest and undo/redo does not accumulate empty steps.
-                File.WriteAllText(req.Path, result.Text!, new UTF8Encoding(false));
+                // Write bytes, re-adding the BOM if the original had one.
+                //
+                // NOTE: `new UTF8Encoding(false).GetPreamble()` is EMPTY — the preamble is only
+                // produced when the encoder is constructed to emit it. Emitting the literal
+                // bytes is clearer than toggling the flag and then having to remember which
+                // constructor does what.
+                var outText = result.Text!;
+                var body = new UTF8Encoding(false).GetBytes(outText);
+                File.WriteAllBytes(req.Path,
+                    bom ? new byte[] { 0xEF, 0xBB, 0xBF }.Concat(body).ToArray() : body);
                 Log(stderr, $"wrote {req.Path}: {result.Changes.Count} surgical change(s)");
                 return new Response { Id = req.Id, Ok = true, Changed = true };
             }

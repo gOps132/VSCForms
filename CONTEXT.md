@@ -50,6 +50,14 @@ code.
 _Avoid_: minimal diff, incremental edit (both are weaker; surgical means the untouched bytes
 are provably unchanged)
 
+**Dialect**:
+One of the four syntactic conventions a Designer File uses for the same information —
+`classic`, `templated`, `bare`, `this-style`. Distinguished by whether members are `this.`
+-qualified, whether types are fully qualified, and how `Controls.Add` is written. Parsing
+accepts all four; writing emits whichever was found.
+_Avoid_: style, formatting, flavour (a dialect determines what we *emit*, not how it looks;
+"style" invites the assumption that one is canonical)
+
 **Handled Types**:
 The 11 control types with modelled rendering and editable appearance, enumerated in
 `SCHEMA.md`. Chosen from measurement over a corpus of 154 real Designer Files.
@@ -67,3 +75,13 @@ These are decisions, not omissions. Each has an ADR.
   Windows-only and that dependency is in the rendering primitive itself. The canvas is a
   *layout* view, not a *rendering* view.
 - **No event scaffolding.** No `btnSubmit_Click` generation in v1.
+
+## Verification
+
+| Tier | What it proves |
+|---|---|
+| `test/verify.sh` | classic dialect: parse, refusals, byte-identical round trip, surgical move/add/delete |
+| `test/verify-dialects.sh` | templated, bare and this-style dialects, each with a real WinForms compile gate |
+| `extension/test/hostHarness.js` | the canvas DOM: rendering, locked boxes, coverage banner, debounced commits |
+| `test/e2e.js` | canvas → host → engine → file through the real message contract |
+| `test/run-integration.js` | VS Code's own semantics: editor selection, dirty marker, undo continuations |

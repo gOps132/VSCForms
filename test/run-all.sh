@@ -21,6 +21,9 @@ step "build extension (typescript)"
 step "roslyn + compile tiers"
 ./test/verify.sh || FAIL=1
 
+step "Designer dialects (templated, bare, this-style)"
+./test/verify-dialects.sh || FAIL=1
+
 step "canvas harness"
 node extension/test/hostHarness.js || FAIL=1
 

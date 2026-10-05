@@ -23,11 +23,29 @@ public sealed class Patcher
     private readonly SourceText _source;
     private readonly DesignerDocument _doc;
     private readonly List<TextChange> _changes = new();
+    private readonly string _eol = "\n";
 
     private Patcher(SourceText source, DesignerDocument doc)
     {
         _source = source;
         _doc = doc;
+        _eol = DetectEol(source.ToString());
+    }
+
+    /// <summary>
+    /// The file's dominant line ending. Designer files are CRLF, but a hand-edited one may be
+    /// LF, and inserting LF lines into a CRLF file produces a mixed-ending file that shows up
+    /// as a whole-file diff in every subsequent git operation.
+    /// </summary>
+    private static string DetectEol(string text)
+    {
+        int crlf = 0, lf = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\n') continue;
+            if (i > 0 && text[i - 1] == '\r') crlf++; else lf++;
+        }
+        return crlf > lf ? "\r\n" : "\n";
     }
 
     public static PatchResult Apply(SourceText source, FormSchema incoming)
@@ -89,8 +107,10 @@ public sealed class Patcher
         // MF_DEBUG=1 prints every emitted span; kept permanently because "what exactly did
         // we change?" is the first question when a surgical patch surprises anyone.
         if (Environment.GetEnvironmentVariable("MF_DEBUG") == "1")
+        {
             foreach (var c in accepted)
                 Console.Error.WriteLine($"  change [{c.Span.Start}..{c.Span.End}) '{c.NewText.Replace("\n", "\\n")}'");
+        }
 
         var finalSource = _source.WithChanges(accepted);
         var changed = !TextEquals(_source, finalSource);
@@ -131,12 +151,12 @@ public sealed class Patcher
 
         if (cs.Properties.TryGetValue("Location", out var loc)
             && CurrentPoint(loc) is { } curPoint && curPoint != (p.X, p.Y))
-            Replace(loc.Right.Span, PointLiteral(p.X, p.Y));
+            ReplaceCreationArgs(loc.Right, $"({p.X.ToString(CultureInfo.InvariantCulture)}, {p.Y.ToString(CultureInfo.InvariantCulture)})");
 
         if (cs.Properties.TryGetValue("Size", out var sz))
         {
             if (CurrentSize(sz) is {} csz && csz != (p.Width, p.Height))
-                Replace(sz.Right.Span, SizeLiteral(p.Width, p.Height));
+                ReplaceCreationArgs(sz.Right, $"({p.Width.ToString(CultureInfo.InvariantCulture)}, {p.Height.ToString(CultureInfo.InvariantCulture)})");
         }
 
         if (cs.Properties.TryGetValue("Text", out var t) && t.Right is LiteralExpressionSyntax)
@@ -161,8 +181,8 @@ public sealed class Patcher
     private void PatchFormText(string newText)
     {
         foreach (var stmt in _doc.InitializeComponent?.Body?.Statements ?? default)
-            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax l } a }
-                && l.Expression is ThisExpressionSyntax && l.Name.Identifier.Text == "Text"
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var name) && name == "Text"
                 && a.Right is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 if (lit.Token.ValueText != newText) Replace(a.Right.Span, StringLiteral(newText));
@@ -170,7 +190,44 @@ public sealed class Patcher
             }
     }
 
+    /// <summary>
+    /// Recognises a form-level property assignment in either dialect:
+    /// `this.Text = ...` or the template's bare `Text = ...`.
+    /// </summary>
+    private static bool TryGetFormProperty(ExpressionSyntax left, out string name)
+    {
+        switch (left)
+        {
+            case MemberAccessExpressionSyntax m when m.Expression is ThisExpressionSyntax:
+                name = m.Name.Identifier.Text;
+                return true;
+            case IdentifierNameSyntax id:
+                name = id.Identifier.Text;
+                return true;
+            default:
+                name = "";
+                return false;
+        }
+    }
+
     // ------------------------------------------------------- control insertion
+
+    /// <summary>
+    /// `this.` or nothing for CONTROL members, matching the file's dialect. A file that writes
+    /// `btn = new Button();` must not gain `this.btn = new Button();` just because a control was
+    /// added.
+    /// </summary>
+    private string This => _doc.UsesThisPrefix ? "this." : "";
+
+    /// <summary>
+    /// The `this.` prefix for the CONTROLS COLLECTION specifically.
+    ///
+    /// This is tracked separately from <see cref="This"/> because the dialects disagree about it
+    /// independently: Visual Studio writes `this.txt.Location = ...` on controls while leaving
+    /// `Controls.Add(...)` bare, so a single prefix for both produces mixed output in exactly
+    /// the files a real user has.
+    /// </summary>
+    private string ControlsThis => _doc.ControlsCollectionIsQualified ? "this." : "";
 
     private void InsertControl(ControlNode node)
     {
@@ -180,80 +237,97 @@ public sealed class Patcher
 
         var type = node.Type;
         var id = node.Id;
+        var stmts = ic.Body.Statements;
 
-        // 1. Field declaration: after the last control field declaration.
-        var fieldAnchor = LastOf(formType.Members.OfType<FieldDeclarationSyntax>()
-            .Where(f => f.Declaration.Variables.Any(v => _doc.Controls.ContainsKey(v.Identifier.Text)
-                                                       && _doc.Controls[v.Identifier.Text].FieldDeclarator is not null))
-            .OrderBy(f => f.SpanStart));
+        // Which dialect is this? Classic designer output has control property assignments and
+        // `Controls.Add` calls to anchor on; a freshly-templated project has NEITHER, so every
+        // anchor below has a fallback. Without those fallbacks we emit a `Controls.Add` for an
+        // undeclared field, which does not compile.
+        bool IsInstantiation(SyntaxNode s) =>
+            s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Right: ObjectCreationExpressionSyntax } };
+
+        bool IsFormProperty(SyntaxNode s) =>
+            s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var n)
+                && n is not ("components");
+
+        bool IsControlsAdd(SyntaxNode s) =>
+            s is ExpressionStatementSyntax { Expression: InvocationExpressionSyntax inv }
+                && inv.Expression.ToString().Contains("Controls.Add", StringComparison.Ordinal);
+
+        // 1. Field declaration — after the last field in the class, whatever it is.
+        var fieldAnchor = formType.Members.OfType<FieldDeclarationSyntax>().LastOrDefault();
         if (fieldAnchor is not null)
-            InsertLineAfter(fieldAnchor, $"private {type} {id};");
-
-        // 2. Instantiation: after the LAST `this.x = new T();` in file order, else before SuspendLayout().
-        //    OrderBy(span) is essential: dictionary enumeration order is not file order.
-        var initAnchor = _doc.Controls.Values
-            .Select(c => c.InitAssignment)
-            .Where(a => a.Expression is AssignmentExpressionSyntax { Right: ObjectCreationExpressionSyntax })
-            .OrderBy(a => a.SpanStart)
-            .LastOrDefault();
-        if (initAnchor is not null)
-            InsertLineAfter(initAnchor, $"this.{id} = new {type}();");
+            InsertLineAfter(fieldAnchor, IndentOf(_source.ToString(), fieldAnchor.SpanStart) + $"private {type} {id};");
         else
-        {
-            var suspend = ic.Body.Statements.OfType<ExpressionStatementSyntax>()
-                .FirstOrDefault(s => s.Expression is InvocationExpressionSyntax iv
-                    && iv.Expression.ToString().Contains("SuspendLayout", StringComparison.Ordinal));
-            if (suspend is not null)
-                InsertLineBefore(suspend, $"this.{id} = new {type}();");
-        }
+            InsertLineBefore(formType.CloseBraceToken, $"private {type} {id};");
 
-        // 3. Property block, anchored on the last property group inside the method.
-        var propAnchor = _doc.Controls.Values
+        // 2. Instantiation — after the last `this.x = new T();`, else at the top of the body.
+        var initAnchor = stmts.LastOrDefault(IsInstantiation);
+        if (initAnchor is not null)
+            InsertLineAfter(initAnchor, BodyIndent() + $"{This}{id} = new {type}();");
+        else if (stmts.Count > 0)
+            InsertLineBefore(stmts[0], $"this.{id} = new {type}();");
+
+        // 3/4. Property block and Controls.Add. These often share an anchor in a fresh project,
+        // so collect them and merge per anchor — otherwise two zero-width inserts at the same
+        // position can land in the wrong order relative to each other.
+        var lastControlProp = _doc.Controls.Values
             .SelectMany(c => c.Properties.Values)
             .Select(a => a.FirstAncestorOrSelf<ExpressionStatementSyntax>())
             .Where(a => a is not null)
             .OrderBy(a => a!.SpanStart)
             .LastOrDefault();
+
+        // Anchor the property block on an existing control block if there is one (so the
+        // `// name` comment header lands where the designer would put it); otherwise on the
+        // last form-level property, which is where a templated project wants it.
+        var propAnchor = (SyntaxNode?)lastControlProp
+            ?? stmts.LastOrDefault(IsFormProperty)
+            ?? initAnchor
+            ?? stmts.LastOrDefault();
+
+        var addAnchor = (SyntaxNode?)stmts.LastOrDefault(IsControlsAdd) ?? stmts.LastOrDefault();
+
+        var pending = new Dictionary<int, (SyntaxNode node, List<string> parts)>();
+
+        // Indent every emitted line from the BODY's indent rather than from whichever anchor
+        // we picked: an anchor may sit on a continuation line, which inflates its indent and
+        // previously produced 16-space properties inside an 8-space body.
+        var indent = BodyIndent();
+
         if (propAnchor is not null)
         {
-            var indent = LineIndentAt(propAnchor.SpanStart);
             var sb = new StringBuilder();
-            sb.Append('\n').Append(indent).Append("//\n");
-            sb.Append(indent).Append("// ").Append(id).Append('\n');
-            sb.Append(indent).Append("//\n");
-            sb.Append(indent).Append($"this.{id}.Location = {PointLiteral(node.Properties.X, node.Properties.Y)};\n");
-            sb.Append(indent).Append($"this.{id}.Name = {StringLiteral(id)};\n");
-            sb.Append(indent).Append($"this.{id}.Size = {SizeLiteral(node.Properties.Width, node.Properties.Height)};\n");
+            // Only emit the `// name` header where the file already uses that convention.
+            if (lastControlProp is not null)
+            {
+                sb.Append(indent).Append("//").Append(_eol);
+                sb.Append(indent).Append("// ").Append(id).Append(_eol);
+                sb.Append(indent).Append("//").Append(_eol);
+            }
+            sb.Append(indent).Append($"{This}{id}.Location = {PointLiteral(node.Properties.X, node.Properties.Y)};").Append(_eol);
+            sb.Append(indent).Append($"{This}{id}.Name = {StringLiteral(id)};").Append(_eol);
+            sb.Append(indent).Append($"{This}{id}.Size = {SizeLiteral(node.Properties.Width, node.Properties.Height)};").Append(_eol);
             if (node.Properties.TabIndex is int tbi)
-                sb.Append(indent).Append($"this.{id}.TabIndex = {tbi.ToString(CultureInfo.InvariantCulture)};\n");
+                sb.Append(indent).Append($"{This}{id}.TabIndex = {tbi.ToString(CultureInfo.InvariantCulture)};").Append(_eol);
             if (node.Properties.Text is string txt)
-                sb.Append(indent).Append($"this.{id}.Text = {StringLiteral(txt)};\n");
-            sb.Append(indent).Append("//\n");
-            InsertAfter(propAnchor, sb.ToString());
+                sb.Append(indent).Append($"{This}{id}.Text = {StringLiteral(txt)};").Append(_eol);
+            if (lastControlProp is not null) sb.Append(indent).Append("//").Append(_eol);
+
+            var e = pending.GetValueOrDefault(propAnchor.SpanStart);
+            pending[propAnchor.SpanStart] = (propAnchor, [.. e.parts ?? [], sb.ToString()]);
         }
 
-        // 4. Add to the container, after the LAST Controls.Add in file order.
-        // 4. Add to the container, after the LAST `this.Controls.Add(...)` in file order.
-        //    NOTE: this must be a genuine Add call. During parsing, a control that had no
-        //    separate instantiation statement can have its AddCall pointed at some other
-        //    statement, so re-verify the shape here rather than trusting the index.
-        var adds = _doc.Controls.Values
-            .Select(c => c.AddCall)
-            .Where(a => a is not null
-                        && a.Expression is InvocationExpressionSyntax inv
-                        && inv.Expression.ToString().Contains("Controls.Add", StringComparison.Ordinal))
-            .OrderBy(a => a!.SpanStart)
-            .ToList();
+        if (addAnchor is not null)
+        {
+            var e = pending.GetValueOrDefault(addAnchor.SpanStart);
+            pending[addAnchor.SpanStart] =
+                (addAnchor, [.. e.parts ?? [], $"{indent}{ControlsThis}Controls.Add({This}{id});{_eol}"]);
+        }
 
-        if (adds.Count > 0)
-            InsertLineAfter(adds[^1], $"this.Controls.Add(this.{id});");
-        else
-            InsertLineBefore(_doc.Controls.Values
-                .Select(c => c.AddCall)
-                .Where(a => a is not null)
-                .OrderBy(a => a!.SpanStart)
-                .FirstOrDefault() ?? _doc.InitializeComponent!.Body!.Statements[0],
-                $"this.Controls.Add(this.{id});");
+        foreach (var (_, entry) in pending.OrderBy(kv => kv.Key))
+            InsertLineAfter(entry.node, string.Concat(entry.parts));
     }
 
     // ------------------------------------------------------- control deletion
@@ -321,6 +395,29 @@ public sealed class Patcher
         return nl < 0 ? 0 : nl + 1;
     }
 
+    /// <summary>
+    /// Indentation of statements inside InitializeComponent, taken from the body's first
+    /// statement. Falls back to one level deeper than the method's own indentation.
+    ///
+    /// Deliberately NOT derived from the chosen anchor: an anchor may sit on a continuation
+    /// line, whose leading whitespace is larger than the block indent, which previously
+    /// produced 16-space properties inside an 8-space body.
+    /// </summary>
+    private string BodyIndent()
+    {
+        var body = _doc.InitializeComponent?.Body;
+        if (body is null) return "        ";
+        foreach (var st in body.Statements)
+        {
+            var ind = LineIndentAt(st.SpanStart);
+            if (ind.Length > 0) return ind;
+        }
+        // Empty body: indent of the closing brace plus one level.
+        if (body.CloseBraceToken.SpanStart > 0)
+            return LineIndentAt(body.CloseBraceToken.SpanStart) + "    ";
+        return "        ";
+    }
+
     // ------------------------------------------------------------- primitives
 
     private void Replace(TextSpan span, string newText)
@@ -337,7 +434,27 @@ public sealed class Patcher
 
     private void InsertLineBefore(SyntaxNode node, string line) =>
         _changes.Add(new TextChange(new TextSpan(node.SpanStart, 0),
-            IndentOf(_source.ToString(), node.SpanStart) + line + "\n"));
+            IndentOf(_source.ToString(), node.SpanStart) + line + _eol));
+
+    /// <summary>
+    /// Same, for a token — a class's closing brace is a token, not a node. Inserts before the
+    /// token's LINE (the brace already carries indentation on that line) and copies the indent
+    /// from the line above, which holds the last member.
+    /// </summary>
+    private void InsertLineBefore(SyntaxToken token, string line)
+    {
+        var text = _source.ToString();
+        int at = LineStartOf(text, token.SpanStart);
+        string indent = "    ";
+        if (at > 0)
+        {
+            int prevStart = LineStartOf(text, at - 1);
+            int i = prevStart;
+            while (i < text.Length && (text[i] == ' ' || text[i] == '\t')) i++;
+            if (i > prevStart) indent = text[prevStart..i];
+        }
+        _changes.Add(new TextChange(new TextSpan(at, 0), indent + line + "\n"));
+    }
 
     /// <summary>
     /// Inserts a whole new line immediately after the line containing <paramref name="node"/>,
@@ -351,8 +468,9 @@ public sealed class Patcher
         int end = node.Span.End;
         int nl = text.IndexOf('\n', end);
         if (nl < 0) return; // last line with no newline: nothing safe to do
-        _changes.Add(new TextChange(new TextSpan(nl + 1, 0),
-            IndentOf(text, node.SpanStart) + line + "\n"));
+        // `line` must already carry its own indentation. Prepending it here used to
+        // double-indent the first line of any caller that had already indented.
+        _changes.Add(new TextChange(new TextSpan(nl + 1, 0), line + _eol));
     }
 
     private static T? LastOf<T>(IEnumerable<T> xs) { T? last = default; foreach (var x in xs) last = x; return last; }
@@ -388,6 +506,23 @@ public sealed class Patcher
     }
 
     // --------------------------------------------------------------- literals
+
+    /// <summary>
+    /// Replaces only the ARGUMENT LIST of an object creation, leaving the type name untouched.
+    ///
+    /// This matters for fidelity across dialects: a file that writes `new Point(1, 2)` must not
+    /// be rewritten to `new System.Drawing.Point(1, 2)` just because a move happened. Both
+    /// compile, but rewriting the type name is a change the user did not ask for, and it is
+    /// exactly the kind of incidental churn that makes a surgical patch un-surgical.
+    /// Falls back to replacing the whole expression when the shape is not a creation.
+    /// </summary>
+    private void ReplaceCreationArgs(ExpressionSyntax rhs, string newArgs)
+    {
+        if (rhs is ObjectCreationExpressionSyntax oce && oce.ArgumentList is { } args)
+            Replace(args.Span, newArgs);
+        else
+            Replace(rhs.Span, newArgs);
+    }
 
     internal static string PointLiteral(int x, int y) =>
         $"new System.Drawing.Point({x.ToString(CultureInfo.InvariantCulture)}, {y.ToString(CultureInfo.InvariantCulture)})";

@@ -252,7 +252,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const locParsed = await engine.send({ cmd: 'parse', path: loc });
     check('localizable form parses', locParsed.ok);
     check('localizable form refuses', locParsed.schema.analysis.refuses.includes('localizable'));
-    const gauge = locParsed.schema.controls.find((c) => c.id === 'ThirdPartyGauge');
+    // The gauge is added via pnlToolbar.Controls.Add, so it is a CHILD of the panel and a flat
+// lookup in schema.controls will not find it.
+    const flat = (nodes) => nodes.flatMap((n) => [n, ...flat(n.children || [])]);
+    const gauge = flat(locParsed.schema.controls).find((c) => c.id === 'ThirdPartyGauge');
     check('third-party control is locked', gauge && gauge.locked === true);
     const locGen = await engine.send({ cmd: 'generate', path: loc, schema: locParsed.schema });
     check('engine refuses to write a refused form', locGen.ok === false, JSON.stringify(locGen));

@@ -155,3 +155,59 @@ Fully modelled — real widgets, editable properties:
 Everything else (~37 distinct types measured across a 154-file corpus) renders as a locked
 grey placeholder box labelled with its type name. This is intentional and documented, not a
 gap to be papered over.
+
+## Dialects
+
+Designer files exist in at least four shapes, all of which occur in real projects. MacForms
+reads all of them and **writes back in whichever it found** — mixing conventions is visible
+churn the user did not ask for.
+
+| Dialect | Instantiation | Property | `Controls.Add` | Where it occurs |
+|---|---|---|---|---|
+| classic | `this.x = new System.Windows.Forms.Button();` | `this.x.Location = new System.Drawing.Point(1, 2);` | `this.Controls.Add(this.x)` | Visual Studio designer output; every file in the 154-file corpus |
+| templated | *none — no controls yet* | `ClientSize = new Size(800, 450);` | *none* | a freshly `dotnet new winforms` project |
+| bare | `x = new Button();` | `x.Location = new Point(1, 2);` | `Controls.Add(x)` | files whose `this.` was never introduced |
+| this-style | `this.x = new ...Button();` | `this.x.Location = ...Point(1, 2);` | `Controls.Add(this.x)` | Visual Studio after it rewrites a fresh template |
+
+The `templated` dialect is why a form-level property must accept a **bare identifier** on the
+left. Its `InitializeComponent()` has only four statements and no controls at all:
+
+```csharp
+components = new System.ComponentModel.Container();
+AutoScaleMode = AutoScaleMode.Font;
+ClientSize = new Size(800, 450);
+Text = "Form1";
+```
+
+Reading only the classic dialect reports such a file as an empty form **at 100% coverage** —
+the most dangerous possible failure, because the coverage banner then reassures the user that
+everything is modelled.
+
+### Dialect detection
+
+Two independent signals, both required:
+
+| Signal | Meaning | Detected from |
+|---|---|---|
+| `UsesThisPrefix` | control members are `this.`-qualified | control **instantiations** only |
+| `ControlsCollectionIsQualified` | `Controls.Add` is `this.`-qualified | the last `Controls.Add` call |
+
+They are tracked separately because `this-style` is genuinely mixed: `this.txt.Location` sits
+beside a bare `Controls.Add`. A single prefix for both produces visibly inconsistent output in
+exactly the files real users have.
+
+Detection keyed on the literal substring `this.` is wrong in both directions — it fires on form
+members, and misses a bare file whose only `this.` is on the form.
+
+### Write-back rules
+
+1. **Never qualify a type name that was already unqualified.** Patching `Location`/`Size`
+   replaces only the *argument list*, so `new Point(1, 2)` stays `new Point(1, 2)`. It compiles
+   either way; rewriting is churn.
+2. **Preserve the line ending.** CRLF files get CRLF, LF files get LF. Mixed endings turn every
+   subsequent `git diff` into a whole-file change.
+3. **Preserve the UTF-8 BOM.** Read bytes, not `File.ReadAllText` — that overload consumes the
+   BOM, which would alter line 1 of every file on every edit.
+4. **Match the body indentation**, taken from the body's first statement rather than from
+   whichever node is being used as an anchor — an anchor may sit on a continuation line.
+5. **Emit `this.` per the two signals above**, never unconditionally.

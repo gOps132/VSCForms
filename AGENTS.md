@@ -25,22 +25,31 @@ These are load-bearing. Each has caused or prevented a real bug.
 1. **The `.Designer.cs` file is the source of truth.** Never regenerate
    `InitializeComponent()` from the schema. Emit `TextChange`s over the original `SourceText`
    only. Rewriting the method destroys the ~42% of statements the schema cannot model
-   (ADR 0001).
-2. **Never write a `locked` control.** No property edits, no deletion. If the diff logic is
+   (ADR 0001). When patching, replace only the argument list of a creation expression — never
+   the type name (ADR 0005).
+2. **Write back in the file's own dialect.** Designer files come in four shapes (classic,
+   templated, bare, this-style). Inserting `this.x = ...` into a bare file, or rewriting
+   `new Point(...)` as `new System.Drawing.Point(...)`, is churn the user did not ask for.
+   `UsesThisPrefix` and `ControlsCollectionIsQualified` are tracked separately because the
+   this-style dialect is genuinely mixed. See `SCHEMA.md`.
+3. **Preserve byte-level identity outside the edit**: line ending (CRLF vs LF), UTF-8 BOM, and
+   body indentation. Read files as bytes — `File.ReadAllText` consumes the BOM and would alter
+   line 1 of every file on every edit.
+4. **Never write a `locked` control.** No property edits, no deletion. If the diff logic is
    uncertain, emit nothing.
-3. **Never write a refused form.** If `analysis.refuses` is non-empty, `generate` returns
+5. **Never write a refused form.** If `analysis.refuses` is non-empty, `generate` returns
    `ok: false` and the file is untouched (ADR 0003).
-4. **stdout is a protocol channel.** The engine speaks newline-delimited JSON on stdout.
+6. **stdout is a protocol channel.** The engine speaks newline-delimited JSON on stdout.
    Diagnostics go to stderr, always. One stray `Console.WriteLine` corrupts the stream.
-5. **`vsce`'s `--ignore-other-target-folders` is a documented no-op in 4.x.** Prune
+7. **`vsce`'s `--ignore-other-target-folders` is a documented no-op in 4.x.** Prune
    `extension/bin/` yourself before packaging, or every platform's binary ships in every
    `.vsix` (ADR 0002).
-6. **Do not add a local undo stack to the canvas.** Undo is delegated to VS Code via
+8. **Do not add a local undo stack to the canvas.** Undo is delegated to VS Code via
    `CustomDocumentEditEvent`. A private stack plus the document events applies one Ctrl+Z
    twice and diverges from the file (ADR 0004).
-7. **`saveCustomDocumentAs` refuses on purpose.** Writing `doc.text` to a new path would copy
+9. **`saveCustomDocumentAs` refuses on purpose.** Writing `doc.text` to a new path would copy
    a snapshot while the canvas stayed keyed to the original. Don't "fix" it.
-8. **There is no automatic fallback to the text editor** when a custom editor fails to open.
+10. **There is no automatic fallback to the text editor** when a custom editor fails to open.
    VS Code shows its Error Editor with a bare OK. The only escape hatch is the message thrown
    from `openCustomDocument`, which must name the `Open as Text` command.
 
