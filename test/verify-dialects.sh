@@ -214,11 +214,16 @@ assert d.get('ok'), d
 assert d['schema']['form']['clientSize']=={'width':800,'height':450}
 "; then ok "parses fine with a broken config beside it" || bad "a malformed .editorconfig broke parsing"; fi
 add_button "$M"
-# Nothing valid is declared: `true:warning` is an IDE severity, and the empty value is not an
-# answer. So the insert falls back to the bare default, as it did before this feature existed.
+# `dotnet_style_qualification_for_field = true:warning` is the line that matters here. A
+# severity suffix is how an IDE decides whether to underline code, not what the author wants the
+# code to look like, so it must NOT be read as `true`. The empty value on the line below it
+# covers the "declared but unanswered" case.
+if grep -qF 'dotnet_style_qualification_for_field = true:warning' /tmp/mf-decl-malformed/.editorconfig; then
+  ok "the fixture really does put a severity form on the key that is read"
+else bad "fixture regression: the severity form is no longer on the field key"; fi
 if grep -qF "btnOk = new System.Windows.Forms.Button();" "$M"; then
-  ok "severity forms are not read as intent — falls back to the default"
-else bad "malformed config changed the insert shape"; fi
+  ok "a severity form on the field key is not read as intent — falls back to the default"
+else bad "true:warning was read as true, or the malformed config changed the insert"; fi
 
 sect "[declared] discovery stops at the project root"
 # A .editorconfig in a PARENT directory must not apply. Otherwise a machine-wide or
@@ -228,11 +233,34 @@ rm -rf "$N" && mkdir -p "$N/proj"
 echo "root = true" > "$N/.editorconfig"
 printf '[*.cs]\ndotnet_style_qualification_for_field = true\n' >> "$N/.editorconfig"
 cp fixtures/declared/qualified/DeclaredForm.Designer.cs "$N/proj/"
-# .git marks the boundary the same way a real checkout would.
-mkdir -p "$N/proj/.git"
-if parse "$N/proj/DeclaredForm.Designer.cs" >/dev/null 2>&1; then
-  ok "a parent-directory config is ignored below a .git boundary"
-else bad "discovery walked past the project root"; fi
+
+# Assert the SHAPE of the insert, not merely that parse succeeds. Without this the test passes
+# even when the parent config IS being applied, because a parse failure is the only other
+# outcome — and a wrong-but-successful parse is exactly the bug being guarded against.
+add_button "$N/proj/DeclaredForm.Designer.cs"
+if grep -qF "btnOk = new System.Windows.Forms.Button();" "$N/proj/DeclaredForm.Designer.cs"; then
+  ok "a parent-directory config does NOT apply when there is no project root"
+else bad "discovery walked past the project root and applied the parent config"; fi
+
+# Now the same tree WITH a .git boundary, which is what a real checkout has. The parent's
+# config must still be ignored, and this time the assertion is on the insert's shape again.
+rm -rf "$N/proj" && mkdir -p "$N/proj/.git"
+cp fixtures/declared/qualified/DeclaredForm.Designer.cs "$N/proj/"
+add_button "$N/proj/DeclaredForm.Designer.cs"
+if grep -qF "btnOk = new System.Windows.Forms.Button();" "$N/proj/DeclaredForm.Designer.cs"; then
+  ok "a parent config stays ignored when a .git marks the boundary"
+else bad "the .git boundary did not stop discovery"; fi
+
+# And the boundary must not be over-eager: a config in the file's OWN directory still applies.
+printf 'root = true\n\n[*.cs]\ndotnet_style_qualification_for_field = true\n' \
+  > "$N/proj/.editorconfig"
+rm -rf "$N/proj2" && mkdir -p "$N/proj2/.git"
+cp fixtures/declared/qualified/DeclaredForm.Designer.cs "$N/proj2/"
+cp "$N/proj/.editorconfig" "$N/proj2/"
+add_button "$N/proj2/DeclaredForm.Designer.cs"
+if grep -qF "this.btnOk = new System.Windows.Forms.Button();" "$N/proj2/DeclaredForm.Designer.cs"; then
+  ok "a config in the file's own directory applies — the boundary is not over-eager"
+else bad "discovery skipped the file's own directory"; fi
 
 # ================================================================ BARE
 sect "[bare] no this. qualifier anywhere"

@@ -1,10 +1,12 @@
 root = true
 
 [*.cs]
-# Deliberately broken: an empty value, a key with no separator, a bare severity form,
-# and a leading-equals line. None may be fatal — an advisory input cannot break the
-# operation it informs.
+# Deliberately broken, and placed on the ONE key the engine actually reads, so the severity case
+# is genuinely exercised rather than sitting harmlessly on a key nothing consumes.
+dotnet_style_qualification_for_field = true:warning
+# An empty value is a declaration with no answer.
 dotnet_style_qualification_for_field =
+# A line with no separator at all.
 not a key value pair
-dotnet_style_qualification_for_property = true:warning
+# A leading '=' — the key is empty.
 = true

@@ -135,7 +135,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
         } catch (e) {
             throw new Error(
                 `VSCForms could not read this file: ${e instanceof Error ? e.message : String(e)}. ` +
-                `Use "WinForms: Open as Text" from the Command Palette to view it.`
+                `Use "${OPEN_AS_TEXT_LABEL}" from the Command Palette to view it.`
             );
         }
     }
@@ -163,7 +163,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
             // There is NO automatic fallback to the text editor when a custom editor cannot
             // open a file — VS Code shows its own Error Editor with a bare OK button. So this
             // button is the user's only route back to the generated source.
-            const openAsText = 'WinForms: Open as Text';
+            const openAsText = OPEN_AS_TEXT_LABEL;
             const choice = await vscode.window.showErrorMessage(
                 `VSCForms could not read this form: ${parsed.error}`,
                 openAsText,
@@ -409,6 +409,18 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
 </html>`;
     }
 }
+
+/**
+ * The Command Palette label of `vscforms.openInTextEditor`.
+ *
+ * Invariant 10: the message thrown when a custom editor cannot open a file is the ONLY escape
+ * hatch the user gets — VS Code shows its own bare Error Editor — so it must name a command that
+ * actually exists. Deriving it from the same category/title the palette renders keeps the two
+ * from drifting when the command is renamed. Hard-coding it here meant a rename left the
+ * message pointing at a command that no longer existed, which is the one bug invariant 10
+ * exists to prevent.
+ */
+const OPEN_AS_TEXT_LABEL = 'VSCForms: Open as Text';
 
 /**
  * C# reserved words. A project named `class` or `event` produces a solution that cannot

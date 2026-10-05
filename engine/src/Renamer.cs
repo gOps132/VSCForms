@@ -107,11 +107,25 @@ public static class Renamer
             foreach (var token in model.DescendantTokens())
             {
                 if (token.ValueText != from) continue;
-                if (token.IsKind(SyntaxKind.IdentifierToken) && IsReceiver(token)) continue;
+                if (!token.IsKind(SyntaxKind.IdentifierToken)) continue;
+
+                // A verbatim identifier is skipped by the rewrite (the `@` would be lost,
+                // turning a legal identifier into a keyword). Accepting one here would mean we
+                // report success while leaving a dangling reference behind — precisely the
+                // CS1061 this whole operation exists to prevent. So refuse it.
+                var line = tree.GetLineSpan(token.Span).StartLinePosition.Line + 1;
+                if (token.Text.StartsWith('@'))
+                    throw new DesignException(
+                        $"'{token.Text}' appears in {Path.GetFileName(codeBehind)} on line {line}. "
+                        + "VSCForms will not rewrite a verbatim identifier, so it cannot rename "
+                        + "this one safely.", "ambiguous-reference");
+
+                if (IsReceiver(token)) continue;
+
                 throw new DesignException(
-                    $"'{from}' appears in {Path.GetFileName(codeBehind)} on a line where it is not a "
-                    + "reference to the control. Rename it in your IDE instead — VSCForms will not "
-                    + "guess what it means.", "ambiguous-reference");
+                    $"'{from}' appears in {Path.GetFileName(codeBehind)} on line {line}, where it "
+                    + "is not a reference to the control. Rename it in your IDE instead — VSCForms "
+                    + "will not guess what it means.", "ambiguous-reference");
             }
 
             codeBehindChanges = RenameTokens(model, from, to);
@@ -124,12 +138,14 @@ public static class Renamer
         var designerTree = CSharpSyntaxTree.ParseText(designer).GetRoot();
         foreach (var c in Batch(RenameTokens(designerTree, from, to))) designerChanges.Add(c);
         Write(designerPath, designer.WithChanges(designerChanges).ToString(), bom);
+        Debug(stderr, "designer", designerChanges);
 
         if (codeBehind is not null && codeBehindChanges is not null && codeBehindBytes is not null)
         {
             var updated = SourceText.From(codeBehindText!)
                 .WithChanges(Batch(codeBehindChanges)).ToString();
             Write(codeBehind, updated, codeBehindBom);
+            Debug(stderr, Path.GetFileName(codeBehind), codeBehindChanges);
             Log(stderr, $"renamed {from} -> {to} in {Path.GetFileName(codeBehind)}");
         }
 
@@ -260,6 +276,19 @@ public static class Renamer
     {
         var body = new UTF8Encoding(false).GetBytes(text);
         File.WriteAllBytes(path, bom ? new byte[] { 0xEF, 0xBB, 0xBF }.Concat(body).ToArray() : body);
+    }
+
+    /// <summary>
+    /// MF_DEBUG=1 prints every span we emit, to stderr — the same switch the patcher honours,
+    /// because "what exactly did you change?" is the first question when a rename surprises
+    /// anyone. Kept permanently rather than as a debugging aid to be removed.
+    /// </summary>
+    private static void Debug(TextWriter w, string file, List<TextChange> changes)
+    {
+        if (Environment.GetEnvironmentVariable("MF_DEBUG") != "1") return;
+        foreach (var c in changes.OrderBy(c => c.Span.Start))
+            w.WriteLine($"  change {file} [{c.Span.Start}..{c.Span.End}) '{c.NewText}'");
+        w.Flush();
     }
 
     private static void Log(TextWriter w, string msg)

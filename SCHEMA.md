@@ -168,6 +168,19 @@ access**. Anything else — a local, a parameter, another class's member — is 
 file and line named, because a wrong guess is a build error in the user's project. Both files'
 edits are validated before either is written, so a refusal leaves both byte-identical.
 
+Two shapes are worth stating because they are the ones that would otherwise be silently wrong:
+
+- **`Name = "btnGo"` IS rewritten**, while every other string and comment is not. It is not
+  prose — it is the control's *runtime identity*, and the schema's `id` comes from the field
+  name, so leaving it stale would make the canvas and WinForms disagree about what the control
+  is called. `FindControl("btnGo")` in the user's own code would keep working while the canvas
+  showed the new name. Visual Studio keeps the two in sync for the same reason.
+- **A verbatim identifier (`@btnGo`) is REFUSED, not skipped.** The `@` cannot be preserved by a
+  plain identifier rewrite, and skipping it would report success while leaving a dangling
+  reference — the exact failure this operation exists to prevent.
+
+`MF_DEBUG=1` prints every emitted span to stderr, as the patcher does.
+
 `exists` is checked **before any file is written**, so a refused generation never leaves a
 half-made project. `name` is validated as a C# identifier and rejected if it is a reserved word:
 `dotnet new class` succeeds and yields a project that cannot compile.
@@ -265,9 +278,8 @@ none, so there the signal is inferred from *absence* and is indistinguishable fr
 bare file. A user adding their first control to a fresh `dotnet new winforms` project gets
 `this.`-qualified or bare output based on nothing at all.
 
-Visual Studio decides this from `dotnet_style_qualification_for_field` and
-`..._for_property`, and so do we — by walking up from the Designer file to the nearest
-`.editorconfig`, and reading `<ImplicitUsings>` from the sibling csproj.
+Visual Studio decides this from `dotnet_style_qualification_for_field`, and so do we — by
+walking up from the Designer file to the nearest `.editorconfig`.
 
 **Resolution order, and the order is the whole design:**
 
@@ -277,7 +289,24 @@ Visual Studio decides this from `dotnet_style_qualification_for_field` and
 2. **Declared style**, consulted *only* when the file contains no control instantiation at all.
 3. **The existing default** (bare).
 
-Two consequences worth stating explicitly:
+The single setting we read governs both write-back signals, because in a Designer File every
+qualified member is a control **field** reference — `this.btnGo.Location` and `this.Controls.Add`
+are both field references, and there is no bare property anywhere for
+`dotnet_style_qualification_for_property` to apply to. Reading it and ignoring it would be dead
+code that looks like a feature.
+
+Two further settings are deliberately **not** read, and this is a decision rather than an
+omission:
+
+- **`dotnet_style_qualification_for_property`** — as above, nothing for it to govern.
+- **`<ImplicitUsings>`** — it decides whether an unqualified type name compiles, which looks like
+  it should govern whether we write `new Button()` or `new System.Windows.Forms.Button()`. But we
+  always emit the fully-qualified form, which compiles **either way**. A switch would be churn
+  with no correctness gain, and would risk ADR 0005's rule against rewriting a type name the file
+  already wrote. (An earlier draft did read it — with a `true`/`false` parser, which silently
+  never matched the csproj's actual `enable`/`disable` spelling, so it was always `null`.)
+
+Two more consequences worth stating explicitly:
 
 - Only exact `true` / `false` are honoured. `true:warning` and `false:suggestion` are how an IDE
   decides whether to underline code, not what the author wants the code to look like.

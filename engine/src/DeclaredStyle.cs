@@ -26,19 +26,35 @@ public sealed class DeclaredStyle
 {
     /// <summary>Tri-state: true, false, or not declared.</summary>
     public bool? QualifyFields { get; init; }
-    public bool? QualifyProperties { get; init; }
 
     /// <summary>
-    /// Whether <c>System.Windows.Forms</c> and <c>System.Drawing</c> are in scope implicitly.
-    /// Decides whether an unqualified type name compiles. Null when not declared.
+    /// NOT read, deliberately.
+    ///
+    /// Visual Studio also honours <c>dotnet_style_qualification_for_property</c>, and an earlier
+    /// draft of SCHEMA.md claimed we did too. It would govern the qualification of properties
+    /// declared on the form itself — but in a Designer File every qualified member IS a control
+    /// field reference (<c>this.btnGo.Location</c>, <c>this.Controls.Add</c>), and there is no
+    /// bare property anywhere for the setting to apply to. Reading it and ignoring it would be
+    /// dead code that looks like a feature.
     /// </summary>
-    public bool? ImplicitUsings { get; init; }
+    /// <remarks>See SCHEMA.md, "Declared style".</remarks>
+
+    /// <summary>
+    /// NOT read, deliberately: <c>&lt;ImplicitUsings&gt;</c>.
+    ///
+    /// It decides whether an unqualified type name compiles. It looks like it should therefore
+    /// govern how we write <c>new Button()</c> vs <c>new System.Windows.Forms.Button()</c> — but
+    /// we always emit the fully-qualified form, which compiles EITHER WAY. Adding a switch would
+    /// be churn with no correctness gain, and would risk ADR 0005's rule against rewriting a type
+    /// name the file already wrote. An earlier draft read it with a true/false parser, which
+    /// silently never matched the csproj's actual <c>enable</c>/<c>disable</c> spelling.
+    /// </remarks>
+    /// <remarks>See SCHEMA.md, "Declared style".</remarks>
 
     /// <summary>Path this was read from, for diagnostics. Null when nothing was declared.</summary>
     public string? Source { get; init; }
 
-    public bool IsEmpty =>
-        QualifyFields is null && QualifyProperties is null && ImplicitUsings is null;
+    public bool IsEmpty => QualifyFields is null;
 
     /// <summary>Nothing declared anywhere. Callers fall back to file-derived signals.</summary>
     public static readonly DeclaredStyle None = new();
@@ -55,55 +71,35 @@ public sealed class DeclaredStyle
         try { dir = Path.GetDirectoryName(Path.GetFullPath(designerPath)); }
         catch { return None; }
 
-        string? configPath = null;
         while (!string.IsNullOrEmpty(dir))
         {
             var candidate = Path.Combine(dir, ".editorconfig");
-            if (File.Exists(candidate)) { configPath = candidate; break; }
+            if (File.Exists(candidate)) return FromConfig(candidate);
 
             // Do not walk above the project root.
             if (Directory.Exists(Path.Combine(dir, ".git"))
                 || Directory.GetFiles(dir, "*.sln").Length > 0
                 || Directory.GetFiles(dir, "*.slnx").Length > 0)
-                return FromCsprojOnly(designerPath);
+                return None;
 
             dir = Path.GetDirectoryName(dir);
         }
 
-        return FromCsprojOnly(designerPath, configPath);
+        return None;
     }
 
-    private static DeclaredStyle FromCsprojOnly(string designerPath, string? configPath = null)
+    private static DeclaredStyle FromConfig(string configPath)
     {
-        bool? fields = null, props = null;
-        string? source = null;
+        bool? fields = null;
 
-        if (configPath is not null)
+        foreach (var (key, value) in ReadEditorConfig(configPath))
         {
-            foreach (var (key, value) in ReadEditorConfig(configPath))
-            {
-                switch (key)
-                {
-                    case "dotnet_style_qualification_for_field":
-                        if (fields is null) { fields = ParseBool(value); source ??= configPath; }
-                        break;
-                    case "dotnet_style_qualification_for_property":
-                        if (props is null) { props = ParseBool(value); source ??= configPath; }
-                        break;
-                }
-            }
+            if (key != "dotnet_style_qualification_for_field") continue;
+            fields = ParseBool(value);
+            if (fields is not null) break;   // first declaration wins, as in real .editorconfig
         }
 
-        bool? implicitUsings = ReadImplicitUsings(designerPath);
-        source ??= implicitUsings is null ? null : SiblingCsproj(designerPath) ?? "";
-
-        return new DeclaredStyle
-        {
-            QualifyFields = fields,
-            QualifyProperties = props,
-            ImplicitUsings = implicitUsings,
-            Source = string.IsNullOrEmpty(source) ? null : source,
-        };
+        return new DeclaredStyle { QualifyFields = fields, Source = configPath };
     }
 
     /// <summary>
@@ -146,34 +142,5 @@ public sealed class DeclaredStyle
         if (value.Equals("true", StringComparison.OrdinalIgnoreCase)) return true;
         if (value.Equals("false", StringComparison.OrdinalIgnoreCase)) return false;
         return null;
-    }
-
-    private static string? SiblingCsproj(string designerPath)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(Path.GetFullPath(designerPath));
-            if (dir is null) return null;
-            var proj = Directory.GetFiles(dir, "*.csproj").FirstOrDefault()
-                    ?? Directory.GetFiles(dir, "*.vbproj").FirstOrDefault();
-            return proj;
-        }
-        catch { return null; }
-    }
-
-    private static bool? ReadImplicitUsings(string designerPath)
-    {
-        var proj = SiblingCsproj(designerPath);
-        if (proj is null) return null;
-        try
-        {
-            var text = File.ReadAllText(proj);
-            // Default is DISABLED when the element is absent, so absence is a real answer only
-            // in combination with a sibling SDK default; we report it as "not declared" instead,
-            // because a csproj that omits the element is genuinely ambiguous.
-            var m = Regex.Match(text, @"<ImplicitUsings>\s*(\w+)\s*</ImplicitUsings>", RegexOptions.IgnoreCase);
-            return m.Success ? ParseBool(m.Groups[1].Value) : null;
-        }
-        catch { return null; }
     }
 }

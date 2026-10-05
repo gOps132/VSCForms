@@ -134,9 +134,10 @@ rename_cmd "$D" btnCalculate btnCompute >/dev/null
 # Every changed line must differ ONLY in the identifier, and the line count must not move.
 python3 - "$WORK/d-before.cs" "$D/WiredForm.Designer.cs" "$WORK/c-before.cs" "$D/WiredForm.cs" <<'PY' \
   && ok "every changed line differs only by the identifier" || bad "rename moved more than the name"
-import difflib, sys
+import sys
 a1, b1, a2, b2 = sys.argv[1:5]
 bad = 0
+changed_total = 0
 for before, after in ((a1, b1), (a2, b2)):
     A = open(before).read().split('\n')
     B = open(after).read().split('\n')
@@ -144,6 +145,7 @@ for before, after in ((a1, b1), (a2, b2)):
         print(f'  line count changed: {len(A)} -> {len(B)}'); bad += 1
     for i, (x, y) in enumerate(zip(A, B)):
         if x == y: continue
+        changed_total += 1
         # Two things embed the old name and are deliberately left alone: the handler method
         # name, and the `// btnCalculate` comment header VS writes above each control. Normalise
         # both away before asking "did anything move other than the identifier?".
@@ -151,8 +153,38 @@ for before, after in ((a1, b1), (a2, b2)):
             return s.replace('btnCalculate_Click', 'HANDLER').replace('// btnCalculate', '// CTRLCOMMENT')
         if norm(x).replace('btnCalculate', 'btnCompute') != norm(y):
             print(f'  line {i+1} changed beyond the identifier:\n    - {x}\n    + {y}'); bad += 1
+# A diff check that finds nothing changed is vacuously true, so require that it saw work.
+if changed_total < 5:
+    print(f'  only {changed_total} line(s) changed — the check is not proving anything'); bad += 1
 sys.exit(1 if bad else 0)
 PY
+
+sect "MF_DEBUG=1 lists the spans the rename emitted"
+D=$(stage spans)
+SPANS=$(MF_DEBUG=1 printf '{"id":1,"cmd":"rename","path":"%s/WiredForm.Designer.cs","from":"btnCalculate","to":"btnCompute"}\n' \
+  "$D" | MF_DEBUG=1 "$ENGINE" 2>&1 >/dev/null | grep -c "^  change ")
+if [ "$SPANS" -ge 5 ]; then
+  ok "MF_DEBUG=1 printed $SPANS span(s) — 'what exactly did you change?' has an answer"
+else bad "MF_DEBUG=1 printed $SPANS span(s); expected at least 5"; fi
+
+sect "a verbatim identifier is refused, not silently skipped"
+# `@btnCalculate` in the code-behind is a receiver we CANNOT rewrite — dropping the `@` would
+# turn a legal identifier into a keyword. Accepting it would report success while leaving a
+# dangling reference behind, which is the exact bug this whole operation exists to prevent.
+D=$(stage verbatim)
+python3 - "$D/WiredForm.cs" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p, encoding='utf-8-sig').read()
+s = s.replace('btnCalculate.Enabled = false;', 'this.@btnCalculate.Enabled = false;')
+open(p, 'w', encoding='utf-8', newline='').write(s)
+PY
+K=$(rename_cmd "$D" btnCalculate btnCompute | kind)
+[ "$K" = "ambiguous-reference" ] && ok "refuses a verbatim identifier ($K)" \
+                               || bad "reported success while leaving a dangling reference (got '$K')"
+if grep -qF "this.@btnCalculate" "$D/WiredForm.cs"; then
+  ok "the code-behind is untouched"
+else bad "a refused rename modified the code-behind"; fi
 
 sect "the rename preserves encoding in BOTH files"
 D=$(stage encoding)

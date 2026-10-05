@@ -82,8 +82,6 @@ public static class Program
                     var s = doc.DeclaredStyle;
                     Log(stderr, $"declared style from {s.Source}: "
                               + $"qualifyFields={s.QualifyFields?.ToString() ?? "unset"} "
-                              + $"qualifyProperties={s.QualifyProperties?.ToString() ?? "unset"} "
-                              + $"implicitUsings={s.ImplicitUsings?.ToString() ?? "unset"} "
                               + "(advisory — the file wins where it has evidence)");
                 }
 
