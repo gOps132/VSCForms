@@ -17,8 +17,23 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PROJECT="${1:-example}"
+
+# The engine must be built before this runs. Both configurations are accepted, and the error is
+# loud on purpose: a missing engine used to print SKIP and exit 0, which in CI is
+# indistinguishable from having verified everything.
+ENGINE=""
+for cfg in Release Debug; do
+  for exe in vscforms-engine vscforms-engine.exe; do
+    p="./engine/bin/$cfg/net10.0/$exe"
+    [ -f "$p" ] && ENGINE="$p"
+  done
+done
+if [ -z "$ENGINE" ]; then
+  echo "ERROR engine not built. Run: dotnet build engine -c Release" >&2
+  exit 1
+fi
+
 WORK="${TMPDIR:-/tmp}/vscforms-layout"
-ENGINE=./engine/bin/Debug/net10.0/vscforms-engine
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
 
@@ -28,7 +43,10 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT) ;;
   *) echo "SKIP  layout verification needs Windows (this is $(uname -s))"; exit 0 ;;
 esac
-if [ ! -d "$PROJECT" ]; then echo "SKIP  no project at $PROJECT"; exit 0; fi
+if [ ! -d "$PROJECT" ]; then
+  echo "ERROR no project at $PROJECT" >&2
+  exit 1
+fi
 
 rm -rf "$WORK" && mkdir -p "$WORK/src"
 

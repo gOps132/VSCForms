@@ -101,6 +101,11 @@ Two tiers carry the most weight, and they are not the same kind of test:
 - **Every `dotnet` child process must have stdout redirected.** Our stdout is the protocol
   channel; an inherited stdout puts `10.0.400` in the middle of a JSON response. This shipped
   once, via `dotnet --version`.
+- **A tier that cannot run must FAIL LOUDLY, never `SKIP` with exit 0.** In CI a skip is
+  indistinguishable from a pass. `run-windows-layout.sh` exits 1 when the engine is missing and
+  the layout job has a canary step that fails if its own output contains `SKIP`.
+- **The generator and rename tiers run in CI** (`engine` job). They were local-only for one
+  commit — which meant the two tiers guarding the riskiest operations were the two CI never ran.
 - **Rename is the only operation that leaves the Designer File, and it refuses rather than
   guessing** (ADR 0008). The control's name also appears in the hand-written `Form1.cs`
   (`btnGo.Click += …`), and a rename that touched only the Designer File leaves `CS1061` in the

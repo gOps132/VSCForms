@@ -4,9 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  # The fast, hermetic loop: parse, refusals, surgical-patch invariants.
+  # The fast, hermetic loop: every tier that runs anywhere. Generator and rename are here too —
+  # they used to be local-only, which meant the two tiers guarding the riskiest operations
+  # (creating a project, and editing a file outside the Designer File) were the two CI never ran.
   engine:
     runs-on: ubuntu-latest
     steps:
@@ -16,11 +19,15 @@ jobs:
           dotnet-version: '10.0.x'
       - name: roslyn invariants
         run: ./test/verify.sh
-      - name: non-classic dialects
+      - name: non-classic dialects and declared style
         run: ./test/verify-dialects.sh
+      - name: project generator
+        run: ./test/verify-generator.sh
+      - name: control rename
+        run: ./test/verify-rename.sh
 
-  # The real gate: does the generated C# still build as a WinForms project?
-  # Needs EnableWindowsTargeting, which only needs the reference pack from NuGet.
+  # The generated C# must build as a real WinForms project. verify.sh does this per-case; this
+  # job exists so a regression in the compile gate itself is visible as its own failure.
   compile:
     runs-on: ubuntu-latest
     steps:
@@ -37,22 +44,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet build engine -v q --nologo
       - run: npm --prefix extension ci
       - run: npm --prefix extension run compile
-      - run: node extension/test/hostHarness.js
-      - run: node test/e2e.js
+      - name: canvas DOM harness
+        run: node extension/test/hostHarness.js
+      - name: end-to-end (canvas -> host -> engine -> file)
+        run: node test/e2e.js
+      - name: generator and rename tiers
+        run: |
+          ./test/verify-generator.sh
+          ./test/verify-rename.sh
 
   # The only tier that can prove VSCForms is SEMANTICALLY correct, not merely valid.
   #
   # Instantiates the real form and compares each control's runtime bounds against the Form
-  # Schema. Every other tier checks that the code compiles and that the diff is minimal;
-  # none of them can tell you that a Location assignment moved the control. Requires
-  # Windows because System.Windows.Forms does.
+  # Schema. Every other tier checks that the code compiles and that the diff is minimal; none of
+  # them can tell you that a Location assignment moved the control. Requires Windows because
+  # System.Windows.Forms does.
+  #
+  # `example/` is NOT committed (it is an upstream clone with its own history and a license we
+  # cannot vendor — see fixtures/README.md), so it is absent here and this job runs the checked-in
+  # fixtures. Running it against example/ is a local/manual action.
   layout:
     runs-on: windows-latest
     steps:
@@ -60,21 +76,23 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      # Release, because run-windows-layout.sh reads the Release path — the two must agree or the
+      # job silently finds no engine and reports SKIP, which looks identical to success.
       - name: build the engine
         run: dotnet build engine -c Release -v q --nologo
       - name: compare the schema against real WinForms runtime bounds
-        run: ./scripts/run-windows-layout.sh example
-      # The same harness on every checked-in fixture, so a dialect regression cannot pass
-      # unnoticed just because the example happens to parse.
+        run: ./scripts/run-windows-layout.sh fixtures/simple
+      # Every checked-in fixture, so a dialect regression cannot pass unnoticed just because
+      # `simple` happens to parse.
       - name: verify every fixture against the runtime
+        run: ./test/verify-layout-fixtures.ps1
+      # A job that skips everything must not report success. `simple` above is the canary; if it
+      # skipped, something is wrong with the harness and the fixture sweep below proves nothing.
+      - name: fail if the canary skipped instead of verifying
         run: |
-          $fail = 0
-          Get-ChildItem -Recurse fixtures -Filter *.Designer.cs | ForEach-Object {
-            $d = Split-Path (Split-Path $_.FullName -Parent) -Parent | Split-Path -Leaf
-            Write-Host "=== $($_.Name)"
-            ./scripts/run-windows-layout.sh "fixtures/$d" || $fail = 1
-          }
-          exit $fail
+          $out = ./scripts/run-windows-layout.sh fixtures/simple 2>&1 | Out-String
+          if ($out -match 'SKIP') { throw "layout verification skipped: $out" }
+          Write-Host $out
 
   # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built
   # HERE on Linux, not on windows-latest, because packaging from Windows loses the POSIX
@@ -84,11 +102,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, rid: linux-x64 }
-          - { os: ubuntu-latest, rid: linux-arm64 }
-          - { os: ubuntu-latest, rid: win-x64 }
-          - { os: macos-14,      rid: osx-arm64 }
-          - { os: macos-13,      rid: osx-x64 }
+          - { os: ubuntu-latest,  rid: linux-x64 }
+          - { os: ubuntu-latest,  rid: linux-arm64 }
+          - { os: ubuntu-latest,  rid: win-x64 }
+          - { os: macos-latest,   rid: osx-arm64 }
+          - { os: macos-latest,   rid: osx-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -97,14 +115,19 @@ jobs:
           dotnet-version: '10.0.x'
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - run: dotnet publish engine -c Release -r ${{ matrix.rid }} --self-contained true
+          node-version: '20'
+
+      - name: publish the engine for this RID
+        run: dotnet publish engine -c Release -r ${{ matrix.rid }} --self-contained true
              -p:PublishSingleFile=true -p:DebugType=none
              -p:IncludeNativeLibrariesForSelfExtract=true
-      - run: npm --prefix extension ci
-      - run: npm --prefix extension run compile
+
+      - name: package
+        run: cd extension && npx vsce package --target ${{ env.TARGET }} --out ../dist/vscforms-${{ matrix.rid }}.vsix
+        env:
+          TARGET: ${{ matrix.rid == 'win-x64' && 'win32-x64' || matrix.rid == 'osx-arm64' && 'darwin-arm64' || matrix.rid == 'osx-x64' && 'darwin-x64' || (matrix.rid == 'linux-arm64' && 'linux-arm64' || 'linux-x64') }}
+
       - name: stage the binary under the VS Code platform triple
-        shell: bash
         run: |
           case "${{ matrix.rid }}" in
             linux-x64)   T=linux-x64 ;;
@@ -117,15 +140,24 @@ jobs:
           cp engine/bin/Release/net10.0/${{ matrix.rid }}/vscforms-engine* extension/bin/$T/
           chmod +x extension/bin/$T/vscforms-engine 2>/dev/null || true
           ls -la extension/bin/$T/
+
       - name: verify only this target is present
-        # vsce's --ignore-other-target-folders is a documented no-op in 4.x, so a stray
-        # binary would silently bloat the package.
-        shell: bash
-        run: test "$(ls extension/bin | wc -l)" -eq 1 || (echo "stale targets present" && exit 1)
-      - run: cd extension && npx vsce package --target ${{ env.TARGET }} --out ../dist/vscforms-${{ matrix.rid }}.vsix
-        env:
-          TARGET: ${{ matrix.rid == 'win-x64' && 'win32-x64' || matrix.rid == 'osx-arm64' && 'darwin-arm64' || matrix.rid == 'osx-x64' && 'darwin-x64' || matrix.rid }}
+        run: |
+          # ADR 0002: vsce's --ignore-other-target-folders is a documented no-op in 4.x, so
+          # every platform's binary would ship in every .vsix. Catch it here, not after release.
+          others=$(ls extension/bin | grep -v "$T") || true
+          if [ -n "$others" ]; then
+            echo "extension/bin contains other targets: $others"
+            echo "Run publish-engine first — it prunes them."
+            exit 1
+          fi
+          ls -la extension/bin/$T/
+
+      - name: package with the staged binary
+        run: cd extension && npx vsce package --target ${{ env.TARGET }} --out ../dist/vscforms-${{ matrix.rid }}.vsix
+
       - uses: actions/upload-artifact@v4
         with:
           name: vscforms-${{ matrix.rid }}
-          path: dist/*.vsix
+          path: dist/vscforms-${{ matrix.rid }}.vsix
+          if-no-files-found: error
