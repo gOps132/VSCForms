@@ -85,7 +85,7 @@ The **compile tier** is the one that matters most: it builds the generated C# as
 
 ### Issue tracker
 
-GitHub Issues via the `gh` CLI. No remote is configured yet — add one first.
+GitHub Issues via the `gh` CLI at `gOps132/VSCForms`. `gh auth login` is required on a fresh machine.
 See `docs/agents/issue-tracker.md`.
 
 ### Triage labels

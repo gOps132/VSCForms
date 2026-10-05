@@ -13,18 +13,18 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
-## Repo-specific: no remote yet
+## This repo
 
-**No git remote is configured.** The repository was initialised locally only. Every `gh`
-command above will fail with "not a git repository" (or resolve to the wrong repo) until a
-remote is added:
+- **Remote:** `git@github.com:gOps132/VSCForms.git` (branch `main`). `gh` infers this
+  automatically from inside the clone.
+- **`gh` is not authenticated on this machine yet.** Every command above will fail with a
+  credentials error until you run:
 
-```
-git remote add origin <url>
-gh auth status
-```
+  ```
+  gh auth login
+  ```
 
-Verify with `git remote -v` before relying on any of these commands.
+  Re-check with `gh auth status`.
 
 ## Pull requests as a triage surface
 

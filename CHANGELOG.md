@@ -35,5 +35,5 @@ First working prototype.
 - Save As refuses deliberately.
 - No pixel parity with WinForms rendering; the canvas is a layout view.
 
-[Unreleased]: https://github.com/OWNER/REPO/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/REPO/releases/tag/v0.1.0
+[Unreleased]: https://github.com/gOps132/VSCForms/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/gOps132/VSCForms/releases/tag/v0.1.0
