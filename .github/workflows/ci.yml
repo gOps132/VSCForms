@@ -16,6 +16,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: roslyn invariants
         run: ./test/verify.sh
+      - name: non-classic dialects
+        run: ./test/verify-dialects.sh
 
   # The real gate: does the generated C# still build as a WinForms project?
   # Needs EnableWindowsTargeting, which only needs the reference pack from NuGet.
@@ -44,6 +46,35 @@ jobs:
       - run: npm --prefix extension run compile
       - run: node extension/test/hostHarness.js
       - run: node test/e2e.js
+
+  # The only tier that can prove MacForms is SEMANTICALLY correct, not merely valid.
+  #
+  # Instantiates the real form and compares each control's runtime bounds against the Form
+  # Schema. Every other tier checks that the code compiles and that the diff is minimal;
+  # none of them can tell you that a Location assignment moved the control. Requires
+  # Windows because System.Windows.Forms does.
+  layout:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: build the engine
+        run: dotnet build engine -c Release -v q --nologo
+      - name: compare the schema against real WinForms runtime bounds
+        run: ./scripts/run-windows-layout.sh example
+      # The same harness on every checked-in fixture, so a dialect regression cannot pass
+      # unnoticed just because the example happens to parse.
+      - name: verify every fixture against the runtime
+        run: |
+          $fail = 0
+          Get-ChildItem -Recurse fixtures -Filter *.Designer.cs | ForEach-Object {
+            $d = Split-Path (Split-Path $_.FullName -Parent) -Parent | Split-Path -Leaf
+            Write-Host "=== $($_.Name)"
+            ./scripts/run-windows-layout.sh "fixtures/$d" || $fail = 1
+          }
+          exit $fail
 
   # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built
   # HERE on Linux, not on windows-latest, because packaging from Windows loses the POSIX

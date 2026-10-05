@@ -24,17 +24,21 @@ Develop with `code --extensionDevelopmentPath=extension <workspace>`.
 
 ## What it does not do
 
-A visual editor for **flat, non-localizable dialogs** — not a Visual Studio replacement. The
-limits are measured, and the canvas states them on every open:
+MacForms is faithful to the WinForms **design-time serializer**. It does not reproduce the
+WinForms **renderer**, and cannot — design-time rendering *is* the real control's `OnPaint` on
+a real Windows `HWND`, so a webview cannot execute it. See
+[ADR 0006](docs/adr/0006-serializer-not-renderer.md).
+
+What that means in practice:
 
 - Forms using `Dock`/`Anchor` or `resources.ApplyResources` open **read-only**, with the reason.
 - Controls outside 10 types render as **locked boxes**; their code is never touched.
-- **No pixel parity.** WinForms is Windows-only and that dependency is in the rendering
-  primitive, so this is a *layout* view rather than a *rendering* view.
+- The canvas is a **structural diagram** of what the serializer will emit, not a preview of
+  what Windows will draw.
 - **No event scaffolding** in v1.
 
-Measured over 154 real Designer files: **47.9%** per-form coverage ceiling; **16.2%** of forms
-fully representable.
+Measured over 154 real Designer files: **47.9%** per-form coverage ceiling. A well-structured
+real-world form reaches **91.4%**.
 
 ## Verify
 
@@ -42,9 +46,24 @@ fully representable.
 ./test/run-all.sh
 ```
 
-Four tiers — Roslyn invariants, a **real WinForms compile** of the generated code, a canvas DOM
-harness, and an end-to-end pass; plus a real-VS Code integration suite. The compile tier is the
-one that proves the product claim.
+Five tiers run anywhere: Roslyn invariants, a **real WinForms compile** of the generated code,
+four Designer dialects each with its own compile gate, a canvas DOM harness, and an end-to-end
+pass. Plus a real-VS Code integration suite.
+
+A sixth tier runs only on Windows CI — and it is the one that matters most:
+
+| Tier | Proves | Runs on |
+|---|---|---|
+| Roslyn / dialects / compile | the code is **valid** | anywhere |
+| Canvas / e2e / integration | the plumbing is **correct** | anywhere |
+| **Layout** | **the schema matches real WinForms runtime `Bounds`** | **Windows only** |
+
+Everything local proves MacForms writes code that compiles. Only the layout tier proves
+`Location = new Point(500, 250)` actually moved the control — a control at the wrong
+coordinates still compiles and still looks plausible in a screenshot. It needs Windows because
+instantiating `System.Windows.Forms` does.
+
+## Documentation
 
 ## Documentation
 

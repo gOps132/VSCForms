@@ -61,6 +61,7 @@ node test/verify.sh                    # Roslyn invariants + real WinForms compi
 node test/e2e.js                       # canvas -> host -> engine -> file
 node extension/test/hostHarness.js     # DOM harness over the canvas code
 node test/run-integration.js           # real VS Code; needs a display
+./scripts/run-windows-layout.sh example   # schema vs real WinForms runtime; Windows only
 ```
 
 Integration tests reach internals through the hidden `macforms._testSeam` command, because the
@@ -73,8 +74,14 @@ reach it. The suite therefore asserts that *our* undo continuation restores the 
 byte-for-byte. Don't replace that assertion with a command-based one — it will silently pass
 without testing anything.
 
-The **compile tier** is the one that matters most: it builds the generated C# as a real
-`net*-windows` WinForms project. Diff inspection does not prove the product claim.
+Two tiers carry the most weight, and they are not the same kind of test:
+
+- The **compile tier** builds the generated C# as a real `net*-windows` WinForms project.
+  Diff inspection does not prove the product claim.
+- The **layout tier** (`scripts/run-windows-layout.sh`, Windows CI only) compares our schema
+  against the runtime `Bounds` of the real controls. Everything else proves the patch is
+  *valid*; only this proves it is *semantically* right. A control at the wrong coordinates
+  still compiles.
 
 `MF_DEBUG=1` prints every span the patcher emits, to stderr.
 
