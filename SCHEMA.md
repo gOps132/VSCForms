@@ -230,6 +230,40 @@ exactly the files real users have.
 Detection keyed on the literal substring `this.` is wrong in both directions — it fires on form
 members, and misses a bare file whose only `this.` is on the form.
 
+Infrastructure fields do not count as evidence. `components = new System.ComponentModel.
+Container();` has the same syntax shape as an instantiation and is filtered out of the schema as
+a non-visual field — but if it counted toward the dialect signal, every `templated` file would
+look like it had evidence and the declared-style fallback below would never be consulted.
+
+### Declared style (`.editorconfig`) — advisory, and only where the file is silent
+
+`UsesThisPrefix` is inferred from control **instantiations**. The `templated` dialect contains
+none, so there the signal is inferred from *absence* and is indistinguishable from a genuinely
+bare file. A user adding their first control to a fresh `dotnet new winforms` project gets
+`this.`-qualified or bare output based on nothing at all.
+
+Visual Studio decides this from `dotnet_style_qualification_for_field` and
+`..._for_property`, and so do we — by walking up from the Designer file to the nearest
+`.editorconfig`, and reading `<ImplicitUsings>` from the sibling csproj.
+
+**Resolution order, and the order is the whole design:**
+
+1. **Observed in the file.** Always wins. ADR 0005 commits us to writing in the file's own
+   dialect, so a file that demonstrates a convention is never overridden by a config that
+   disagrees with it.
+2. **Declared style**, consulted *only* when the file contains no control instantiation at all.
+3. **The existing default** (bare).
+
+Two consequences worth stating explicitly:
+
+- Only exact `true` / `false` are honoured. `true:warning` and `false:suggestion` are how an IDE
+  decides whether to underline code, not what the author wants the code to look like.
+- Discovery stops at a directory containing `.git`, `*.sln` or `*.slnx`. A machine-wide or
+  organisation-wide `.editorconfig` above the project root must not rewrite the dialect of every
+  project on the machine.
+- A malformed `.editorconfig` is ignored, never fatal. An advisory input cannot break the
+  operation it informs.
+
 ### Write-back rules
 
 1. **Never qualify a type name that was already unqualified.** Patching `Location`/`Size`

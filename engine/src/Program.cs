@@ -73,10 +73,19 @@ public static class Program
                 var source = SourceText.From(
                     bom ? System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3)
                         : System.Text.Encoding.UTF8.GetString(bytes));
-                var doc = DesignerDocument.Parse(source);
+                var doc = DesignerDocument.Parse(source, req.Path);
                 Log(stderr, $"parsed {req.Path}: {doc.Schema.Analysis.ModelledCount} modelled, "
                           + $"{doc.Schema.Analysis.UnmodelledCount} unmodelled, "
                           + $"{doc.Schema.Analysis.CoveragePercent}% coverage");
+                if (!doc.DeclaredStyle.IsEmpty)
+                {
+                    var s = doc.DeclaredStyle;
+                    Log(stderr, $"declared style from {s.Source}: "
+                              + $"qualifyFields={s.QualifyFields?.ToString() ?? "unset"} "
+                              + $"qualifyProperties={s.QualifyProperties?.ToString() ?? "unset"} "
+                              + $"implicitUsings={s.ImplicitUsings?.ToString() ?? "unset"} "
+                              + "(advisory — the file wins where it has evidence)");
+                }
 
                 return new Response { Id = req.Id, Ok = true, Schema = doc.Schema };
             }
@@ -92,7 +101,7 @@ public static class Program
                 var source = SourceText.From(
                     bom ? System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3)
                         : System.Text.Encoding.UTF8.GetString(bytes));
-                var result = Patcher.Apply(source, req.Schema);
+                var result = Patcher.Apply(source, req.Schema, req.Path);
 
                 if (result.Refusal is not null)
                 {

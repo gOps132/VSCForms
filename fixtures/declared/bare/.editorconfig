@@ -1,0 +1,5 @@
+root = true
+
+[*.cs]
+# The author wants bare identifiers. Same gap as `qualified`, opposite answer.
+dotnet_style_qualification_for_field = false

@@ -48,9 +48,9 @@ public sealed class Patcher
         return crlf > lf ? "\r\n" : "\n";
     }
 
-    public static PatchResult Apply(SourceText source, FormSchema incoming)
+    public static PatchResult Apply(SourceText source, FormSchema incoming, string? path = null)
     {
-        var doc = DesignerDocument.Parse(source);
+        var doc = DesignerDocument.Parse(source, path);
         var patcher = new Patcher(source, doc);
         return patcher.Run(incoming);
     }

@@ -1,0 +1,7 @@
+root = true
+
+[*.cs]
+# Deliberately contradicts the file. The file uses bare identifiers on its one
+# control; this says `true`. The FILE must win — ADR 0005 — so this fixture exists to
+# pin that the config is advisory and not authoritative.
+dotnet_style_qualification_for_field = true

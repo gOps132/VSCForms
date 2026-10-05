@@ -42,6 +42,13 @@ public sealed class DesignerDocument
     /// </summary>
     public required bool ControlsCollectionIsQualified { get; init; }
 
+    /// <summary>
+    /// Code style declared by a nearby .editorconfig or sibling csproj. Advisory only: it fills
+    /// gaps the file cannot answer (the templated dialect has no instantiations) and is never
+    /// allowed to override what the file demonstrates. See <see cref="DeclaredStyle"/>.
+    /// </summary>
+    public required DeclaredStyle DeclaredStyle { get; init; }
+
     public sealed class ControlSyntax
     {
         public required string Id { get; init; }
@@ -61,7 +68,13 @@ public sealed class DesignerDocument
 
     // ---------------------------------------------------------------- parse
 
-    public static DesignerDocument Parse(SourceText source)
+    /// <param name="path">
+    /// Absolute path of the file, when known. Used only to discover declared code style
+    /// (<c>.editorconfig</c>, sibling csproj) for the templated dialect, which contains no
+    /// instantiations and therefore gives the dialect signals nothing to infer from. Pass null
+    /// when parsing from a string, and detection falls back to observation alone.
+    /// </param>
+    public static DesignerDocument Parse(SourceText source, string? path = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
         var root = tree.GetRoot();
@@ -92,6 +105,12 @@ public sealed class DesignerDocument
 
         // Controls instantiated as `this.x = new T();` — the dialect signal for inserts.
         var thisQualifiedInstantiations = new HashSet<string>(StringComparer.Ordinal);
+
+        // Whether ANY instantiation was seen at all, qualified or not. This is the difference
+        // between "the file is bare" (observed) and "the file has no controls to observe"
+        // (unknown) — the templated dialect is the second, and only the second is a gap that
+        // declared style is allowed to fill.
+        int instantiationCount = 0;
 
         // Whether `Controls.Add` is `this.`-qualified, tracked separately from the above.
         // Assigned (not OR-ed) so the LAST add call decides — files are consistent, and
@@ -131,6 +150,12 @@ public sealed class DesignerDocument
                 && FindFieldDeclarator(formType, instName) is { } instField)
             {
                 declaredTypes[instName] = QualifiedTypeName(oce.Type);
+                // Count only real controls. `components = new System.ComponentModel.Container()`
+                // has the same shape as an instantiation and is filtered out later as an
+                // infrastructure field — but if it counted here, every templated file would
+                // look like it had evidence and declared style would never be consulted.
+                if (!TypeTable.IsNonVisual(instName, QualifiedTypeName(oce.Type)))
+                    instantiationCount++;
                 // Record whether THIS instantiation was `this.`-qualified. Done here, where the
                 // syntax is in hand; inferring it later from the statement list is unreliable
                 // because the dialect differs in which shape appears where.
@@ -195,6 +220,17 @@ public sealed class DesignerDocument
         var analysis = Analyse(ic, index);
         var schema = BuildSchema(formType, ic, index, analysis);
 
+        // Declared style fills a gap; it never overrides observation. Only consulted when the
+        // file contains no instantiation and therefore no evidence either way — the templated
+        // dialect. A file with controls has been observed, and ADR 0005 says the file wins.
+        var declared = path is null ? DeclaredStyle.None : DeclaredStyle.Discover(path);
+        bool noEvidence = instantiationCount == 0;
+
+        var usesThisPrefix = thisQualifiedInstantiations.Count > 0
+            || (noEvidence && declared.QualifyFields == true);
+        var controlsQualified = qualifiedControlsCollection
+            || (noEvidence && declared.QualifyFields == true);
+
         return new DesignerDocument
         {
             Schema = schema,
@@ -203,8 +239,9 @@ public sealed class DesignerDocument
             InitializeComponent = ic,
             Controls = index,
             ResourceManagerLocal = analysis.ResourceManagerLocal,
-            UsesThisPrefix = thisQualifiedInstantiations.Count > 0,
-            ControlsCollectionIsQualified = qualifiedControlsCollection,
+            UsesThisPrefix = usesThisPrefix,
+            ControlsCollectionIsQualified = controlsQualified,
+            DeclaredStyle = declared,
         };
     }
 

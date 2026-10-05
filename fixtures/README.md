@@ -40,3 +40,23 @@ included in all three, because real Visual Studio output includes them. An earli
 these fixtures omitted the field declarations entirely, and the engine correctly dropped
 every control as a result — which is exactly the kind of thing authored fixtures have to get
 right for the tests to mean anything.
+
+## The declared-style fixtures
+
+`declared/{qualified,bare,contradicts,malformed}/` exist only to pin the `.editorconfig`
+behaviour documented in `../SCHEMA.md` — advisory input that fills the one gap dialect
+detection has (the `templated` dialect contains no instantiations, so the signal is inferred
+from absence).
+
+They are used **in place**, never copied to `/tmp`: `.editorconfig` is discovered by walking up
+from the Designer file, so a copy outside the fixture directory would find nothing. That is not
+incidental — it is exactly what happens when a user opens a real file.
+
+- **`qualified/`** — declares `= true`. The insert must come out `this.`-qualified.
+- **`bare/`** — declares `= false`. The insert must come out bare.
+- **`contradicts/`** — has ONE control, written bare, while the config says `= true`. **The
+  file must win.** This is the assertion that makes the feature safe rather than a source of
+  mixed-convention churn; if it ever fails, the config has become authoritative and ADR 0005 is
+  being violated.
+- **`malformed/`** — empty value, a line with no separator, a `true:warning` severity form, and
+  a leading `=`. None may be fatal, and none may be read as intent.

@@ -1,0 +1,7 @@
+root = true
+
+[*.cs]
+# The author wants `this.` on fields. A fresh templated Designer file has no
+# instantiations to observe, so this is the only evidence available.
+dotnet_style_qualification_for_field = true
+dotnet_style_qualification_for_property = true

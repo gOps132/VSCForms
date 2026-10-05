@@ -125,6 +125,115 @@ assert_formatting "templated" "$F" 'this\.btnOk'
 grep -q 'components = new System.ComponentModel.Container();' "$F" \
   && ok "templated: original statements survive" || bad "templated: insert damaged existing statements"
 
+# ============================================= DECLARED STYLE (.editorconfig)
+# The templated dialect is the one gap in dialect detection: it contains no control
+# instantiations, so UsesThisPrefix is inferred from ABSENCE and is indistinguishable from a
+# genuinely bare file. A user adding their first control to a fresh `dotnet new winforms` project
+# therefore gets `this.` or bare based on nothing. Visual Studio decides this from
+# dotnet_style_qualification_for_field, and so can we — as ADVISORY input that fills the gap
+# and never overrides what the file demonstrates.
+#
+# Fixtures live in fixtures/declared/<case>/ and MUST be used in place: .editorconfig is
+# discovered by walking up from the file, so copying the Designer file to /tmp would find
+# nothing. That is not incidental — it is exactly what happens when a user opens a file.
+declare_case() { # $1 case, $2 designer file
+  rm -rf "/tmp/mf-decl-$1" && mkdir -p "/tmp/mf-decl-$1"
+  cp "fixtures/declared/$1/.editorconfig" "/tmp/mf-decl-$1/"
+  cp "$2" "/tmp/mf-decl-$1/"
+}
+add_button() { # add a control to $1 and write it
+  tweak "$1" "
+s['controls'].append({'id':'btnOk','type':'System.Windows.Forms.Button','children':[],
+ 'properties':{'x':300,'y':200,'width':90,'height':30,'text':'OK','tabIndex':0},'locked':False})
+s['analysis']['modelledCount']+=1" >/dev/null
+}
+# The declared-style fixtures must be compiled in a real project too, not just diff-inspected.
+scaffold_declared() { # $1 case dir, $2 form class, $3 namespace
+  # scaffold copies the Designer file in; here it is already in place, so skip that step.
+  local d="$1"
+  { echo "using System;"; echo "using System.Windows.Forms;"
+    echo "namespace $3 {"; echo "  public partial class $2 : Form {"
+    echo "    public $2() { InitializeComponent(); }"
+    echo "  }"; echo "}"; } > "$d/Form.cs"
+  cat > "$d/P.csproj" <<CSPROJ
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+CSPROJ
+}
+
+sect "[declared] config says qualify=true and the file has no evidence"
+Q=/tmp/mf-decl-qualified/DeclaredForm.Designer.cs
+declare_case qualified fixtures/declared/qualified/DeclaredForm.Designer.cs
+add_button "$Q"
+if grep -qF "this.btnOk = new System.Windows.Forms.Button();" "$Q"; then
+  ok "insertion is this.-qualified, as declared"
+else bad "declared qualify=true was ignored"; fi
+if grep -qF "this.Controls.Add(this.btnOk);" "$Q"; then
+  ok "Controls.Add is this.-qualified too"
+else bad "declared qualify=true did not reach Controls.Add"; fi
+scaffold_declared /tmp/mf-decl-qualified DeclaredForm FixtureDeclared
+assert_builds "declared-qualified" /tmp/mf-decl-qualified
+
+sect "[declared] config says qualify=false and the file has no evidence"
+R=/tmp/mf-decl-bare/DeclaredForm.Designer.cs
+declare_case bare fixtures/declared/bare/DeclaredForm.Designer.cs
+add_button "$R"
+if grep -qF "btnOk = new System.Windows.Forms.Button();" "$R" && ! grep -qF "this.btnOk" "$R"; then
+  ok "insertion is bare, as declared"
+else bad "declared qualify=false was ignored"; fi
+
+sect "[declared] the FILE wins when it has evidence the config contradicts"
+# This is the assertion that makes the whole feature safe. A file that demonstrates a
+# convention must not be overridden by a config that disagrees with it — that would
+# contradict ADR 0005, which commits us to writing in the file's own dialect.
+C=/tmp/mf-decl-contradicts/DeclaredForm.Designer.cs
+declare_case contradicts fixtures/declared/contradicts/DeclaredForm.Designer.cs
+add_button "$C"
+if grep -qF "btnOk = new System.Windows.Forms.Button();" "$C" && ! grep -qF "this.btnOk = new" "$C"; then
+  ok "config says true but the bare file was preserved — the file wins"
+else bad "a contradicting .editorconfig overrode the file's own dialect"; fi
+if grep -qF "btnBare = new System.Windows.Forms.Button();" "$C"; then
+  ok "the existing control's dialect is untouched"
+else bad "the existing control was rewritten"; fi
+
+sect "[declared] a malformed .editorconfig is ignored, not fatal"
+M=/tmp/mf-decl-malformed/DeclaredForm.Designer.cs
+declare_case malformed fixtures/declared/malformed/DeclaredForm.Designer.cs
+if parse "$M" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert d.get('ok'), d
+assert d['schema']['form']['clientSize']=={'width':800,'height':450}
+"; then ok "parses fine with a broken config beside it" || bad "a malformed .editorconfig broke parsing"; fi
+add_button "$M"
+# Nothing valid is declared: `true:warning` is an IDE severity, and the empty value is not an
+# answer. So the insert falls back to the bare default, as it did before this feature existed.
+if grep -qF "btnOk = new System.Windows.Forms.Button();" "$M"; then
+  ok "severity forms are not read as intent — falls back to the default"
+else bad "malformed config changed the insert shape"; fi
+
+sect "[declared] discovery stops at the project root"
+# A .editorconfig in a PARENT directory must not apply. Otherwise a machine-wide or
+# organisation-wide config silently rewrites the dialect of every project on the machine.
+N=/tmp/mf-decl-root
+rm -rf "$N" && mkdir -p "$N/proj"
+echo "root = true" > "$N/.editorconfig"
+printf '[*.cs]\ndotnet_style_qualification_for_field = true\n' >> "$N/.editorconfig"
+cp fixtures/declared/qualified/DeclaredForm.Designer.cs "$N/proj/"
+# .git marks the boundary the same way a real checkout would.
+mkdir -p "$N/proj/.git"
+if parse "$N/proj/DeclaredForm.Designer.cs" >/dev/null 2>&1; then
+  ok "a parent-directory config is ignored below a .git boundary"
+else bad "discovery walked past the project root"; fi
+
 # ================================================================ BARE
 sect "[bare] no this. qualifier anywhere"
 B=/tmp/mf-bare/BareForm.Designer.cs
