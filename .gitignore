@@ -1,0 +1,15 @@
+# build output
+extension/out/
+extension/node_modules/
+extension/bin/
+extension/*.vsix
+engine/bin/
+engine/obj/
+dist/
+
+# VS Code integration-test harness (downloads a whole VS Code build)
+.vscode-test/
+
+# local scratch
+*.log
+.DS_Store

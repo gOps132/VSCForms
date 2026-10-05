@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The fast, hermetic loop: parse, refusals, surgical-patch invariants.
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: roslyn invariants
+        run: ./test/verify.sh
+
+  # The real gate: does the generated C# still build as a WinForms project?
+  # Needs EnableWindowsTargeting, which only needs the reference pack from NuGet.
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: compile tier
+        run: ./test/verify.sh
+
+  canvas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build engine -v q --nologo
+      - run: npm --prefix extension ci
+      - run: npm --prefix extension run compile
+      - run: node extension/test/hostHarness.js
+      - run: node test/e2e.js
+
+  # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built
+  # HERE on Linux, not on windows-latest, because packaging from Windows loses the POSIX
+  # executable bit and the engine would extract non-executable and fail to spawn.
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: ubuntu-latest, rid: linux-arm64 }
+          - { os: ubuntu-latest, rid: win-x64 }
+          - { os: macos-14,      rid: osx-arm64 }
+          - { os: macos-13,      rid: osx-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: dotnet publish engine -c Release -r ${{ matrix.rid }} --self-contained true
+             -p:PublishSingleFile=true -p:DebugType=none
+             -p:IncludeNativeLibrariesForSelfExtract=true
+      - run: npm --prefix extension ci
+      - run: npm --prefix extension run compile
+      - name: stage the binary under the VS Code platform triple
+        shell: bash
+        run: |
+          case "${{ matrix.rid }}" in
+            linux-x64)   T=linux-x64 ;;
+            linux-arm64) T=linux-arm64 ;;
+            win-x64)     T=win32-x64 ;;
+            osx-arm64)   T=darwin-arm64 ;;
+            osx-x64)     T=darwin-x64 ;;
+          esac
+          mkdir -p extension/bin/$T
+          cp engine/bin/Release/net10.0/${{ matrix.rid }}/macforms-engine* extension/bin/$T/
+          chmod +x extension/bin/$T/macforms-engine 2>/dev/null || true
+          ls -la extension/bin/$T/
+      - name: verify only this target is present
+        # vsce's --ignore-other-target-folders is a documented no-op in 4.x, so a stray
+        # binary would silently bloat the package.
+        shell: bash
+        run: test "$(ls extension/bin | wc -l)" -eq 1 || (echo "stale targets present" && exit 1)
+      - run: cd extension && npx vsce package --target ${{ env.TARGET }} --out ../dist/macforms-${{ matrix.rid }}.vsix
+        env:
+          TARGET: ${{ matrix.rid == 'win-x64' && 'win32-x64' || matrix.rid == 'osx-arm64' && 'darwin-arm64' || matrix.rid == 'osx-x64' && 'darwin-x64' || matrix.rid }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macforms-${{ matrix.rid }}
+          path: dist/*.vsix
