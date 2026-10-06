@@ -117,6 +117,12 @@ Two tiers carry the most weight, and they are not the same kind of test:
 - **A rename must never travel as a schema `commit`.** A schema carrying a new `id` reads to
   `generate` as *old deleted + new inserted*, which duplicates the control and drops its
   properties. It is a separate `rename` command for that reason.
+- **Appearance properties are patched per argument, never by rebuilding a construction.**
+  `BackColor` and `Font` have several spellings in real files. Rebuilding a `Font` argument list
+  drops the explicit `FontStyle.Regular` the designer writes, which turns a *no-op* generate
+  into a real edit and breaks byte-identity on untouched forms. Only the arguments that
+  actually differ may be replaced, and a type name is never rewritten (ADR 0005).
+  Note that `ArgumentList.Span` INCLUDES the parentheses — `Arguments.Span` is the bare list.
 - `fixtures/` is **hand-authored** on purpose — the measurement corpus is GPL-3.0 or
   unlicensed. See `fixtures/README.md`. Author fixtures so tests can assert exact diffs.
 - Measured limits, not guesses: **47.9%** per-form coverage ceiling for the 10 handled types,

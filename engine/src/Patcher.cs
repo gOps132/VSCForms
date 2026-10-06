@@ -148,6 +148,7 @@ public sealed class Patcher
     private void PatchProperties(ControlNode node, DesignerDocument.ControlSyntax cs)
     {
         var p = node.Properties;
+        var id = node.Id;
 
         if (cs.Properties.TryGetValue("Location", out var loc)
             && CurrentPoint(loc) is { } curPoint && curPoint != (p.X, p.Y))
@@ -172,10 +173,212 @@ public sealed class Patcher
         if (cs.Properties.TryGetValue("Visible", out var v) && v.Right is LiteralExpressionSyntax
             && CurrentBool(v) != p.Visible)
             Replace(v.Right.Span, (p.Visible ?? true) ? "true" : "false");
+        else if (p.Visible is false && !cs.Properties.ContainsKey("Visible"))
+            InsertProperty(cs, id, "Visible", "false");
 
         if (cs.Properties.TryGetValue("Enabled", out var en) && en.Right is LiteralExpressionSyntax
             && CurrentBool(en) != p.Enabled)
             Replace(en.Right.Span, (p.Enabled ?? true) ? "true" : "false");
+        else if (p.Enabled is false && !cs.Properties.ContainsKey("Enabled"))
+            InsertProperty(cs, id, "Enabled", "false");
+
+        // BackColor. Only the VALUES are replaced, never the type name: a file that writes
+        // `Color.FromArgb(...)` must keep writing `Color.FromArgb(...)`. Rewriting it to a
+        // different Color spelling is exactly the churn ADR 0005 forbids, and it is silent.
+        if (cs.Properties.TryGetValue("BackColor", out var bc) && p.BackColor is string colour)
+        {
+            if (ColorArgs(bc.Right, colour) is { } args && args != SourceTextFor(bc.Right))
+            {
+                // A Color static call is not an object creation, and the span to replace is
+                // `Arguments.Span` — NOT `ArgumentList.Span`, whose text INCLUDES the
+                // parentheses. Using the latter emits `FromArgb0, 255, 0`: the closing paren
+                // is inside the replaced range. Both this and reusing ReplaceCreationArgs
+                // (which emitted `BackColor = Color.Lime, 240, 240`) were caught by the
+                // exact-diff assertion rather than by reading the code.
+                if (InvocationArgs(bc.Right)?.Arguments is { } argNodes) Replace(argNodes.Span, args);
+                else ReplaceCreationArgs(bc.Right, args);
+            }
+        }
+
+        // Font is a CONSTRUCTION, not a plain value: `Font = new Font(family, size, style)`.
+        if (cs.Properties.TryGetValue("Font", out var fn) && p.Font is { } font)
+            foreach (var change in FontChanges(fn.Right, font)) Replace(change.Span, change.NewText);
+    }
+
+    /// <summary>Exact source text of an expression, for a no-op comparison.</summary>
+    private string SourceTextFor(SyntaxNode node) => _source.ToString(node.Span);
+
+    /// <summary>
+    /// New argument list for a Color expression, preserving its SPELLING.
+    ///
+    /// `System.Drawing.Color.FromArgb(240, 240, 240)` and `Color.Red` are both legal and both
+    /// appear in real files. We keep whichever the file used and change only the values, so a
+    /// colour edit never rewrites the type name. When the shape is not one we recognise we
+    /// return null and write NOTHING — guessing at a Color expression would be worse than
+    /// declining.
+    /// </summary>
+    private static string? ColorArgs(ExpressionSyntax rhs, string css)
+    {
+        if (string.IsNullOrEmpty(css)) return null;   // '' means a system colour; not editable yet
+
+        // #RRGGBB -> r, g, b. ParseColor emits RRGGBB from both FromArgb and the named
+        // constants, so this is the inverse.
+        if (css.Length != 7 || css[0] != '#') return null;
+        if (!int.TryParse(css.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var r)
+            || !int.TryParse(css.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var g)
+            || !int.TryParse(css.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var b))
+            return null;
+
+        var rgb = $"{r.ToString(CultureInfo.InvariantCulture)}, {g.ToString(CultureInfo.InvariantCulture)}, {b.ToString(CultureInfo.InvariantCulture)}";
+
+        // `System.Drawing.Color.FromArgb(...)` parses as a MemberAccess whose EXPRESSION is the
+        // invocation — `System.Drawing.Color` . `FromArgb(...)`. Unwrap before deciding, or every
+        // fully qualified FromArgb is mistaken for a named colour and becomes `Color.Lime`.
+        if (InvocationArgs(rhs) is { } argList && MethodName(rhs) == "FromArgb")
+        {
+            // Only the 3-argument form is rewritten: a 1-argument FromArgb(int) means something
+            // different, and changing the arity would change the meaning.
+            //
+            // The returned text is the BARE argument list, because a static call's ArgumentList
+            // carries no parentheses. An object creation's DOES — hence the two shapes.
+            return argList.Arguments.Count == 3 ? rgb : null;
+        }
+
+        // A named constant: map back only when the target IS a named colour. Otherwise we cannot
+        // express it as a name, so decline and write nothing.
+        if (rhs is MemberAccessExpressionSyntax) return NamedColor(css);
+
+        return null;
+    }
+
+    /// <summary>
+    /// The ArgumentList of a static call, whether or not it is wrapped in the type's member
+    /// access. Returns null when the expression is not a call.
+    ///
+    /// This exists because unwrapping appeared in two places and disagreed, which produced
+    /// `BackColor = Color.Lime, 240, 240`. One helper, used by both the shape test and the
+    /// replacement, cannot drift.
+    /// </summary>
+    private static BaseArgumentListSyntax? InvocationArgs(ExpressionSyntax rhs) =>
+        rhs is InvocationExpressionSyntax i ? i.ArgumentList
+        : rhs is MemberAccessExpressionSyntax { Expression: InvocationExpressionSyntax inner } ? inner.ArgumentList
+        : null;
+
+    /// <summary>
+    /// The invoked method's TRAILING name. For `System.Drawing.Color.FromArgb(...)` the
+    /// invocation's Expression text is the whole dotted path, so comparing it to "FromArgb"
+    /// never matched and the colour was silently never written.
+    /// </summary>
+    private static string MethodName(ExpressionSyntax rhs)
+    {
+        ExpressionSyntax? target = rhs switch
+        {
+            InvocationExpressionSyntax i => i.Expression,
+            MemberAccessExpressionSyntax m => m.Name,
+            _ => null,
+        };
+        if (target is null) return "";
+        var text = target.ToString();
+        var dot = text.LastIndexOf('.');
+        return dot < 0 ? text : text.Substring(dot + 1);
+    }
+
+    private static string? NamedColor(string css) => css.ToUpperInvariant() switch
+    {
+        "#FF0000" => "Color.Red", "#00FF00" => "Color.Lime", "#0000FF" => "Color.Blue",
+        "#FFFFFF" => "Color.White", "#000000" => "Color.Black", "#808080" => "Color.Gray",
+        "#C0C0C0" => "Color.Silver", "#FFFF00" => "Color.Yellow", "#FFA500" => "Color.Orange",
+        "#008000" => "Color.Green", "#000080" => "Color.Navy", "#008080" => "Color.Teal",
+        _ => null,
+    };
+
+    /// <summary>
+    /// The TextChanges for a `new Font(family, size, style)`, one per argument that actually
+    /// DIFFERS from what the file already has.
+    ///
+    /// Deliberately not "rebuild the whole argument list". Doing that rewrote a file whose font
+    /// was already correct — `FontStyle.Regular` is written explicitly by the designer, so
+    /// rebuilding dropped it and turned a no-op generate into a real edit. That broke byte-level
+    /// identity on every untouched form, which is the invariant the whole patcher exists to keep.
+    ///
+    /// The type name is never touched (ADR 0005): only the argument values change, and only the
+    /// ones that differ.
+    /// </summary>
+    private static IEnumerable<TextChange> FontChanges(ExpressionSyntax rhs, FontDto font)
+    {
+        if (rhs is not ObjectCreationExpressionSyntax oce || oce.ArgumentList is null) yield break;
+        var args = oce.ArgumentList.Arguments;
+
+        // 1- and 4-argument Font overloads are not what Designer output emits, and rewriting
+        // across them would change which overload compiles. Decline rather than guess.
+        if (args.Count is < 2 or > 3) yield break;
+
+        // --- family
+        if (args[0].Expression is LiteralExpressionSyntax fam && fam.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            var want = string.IsNullOrEmpty(font.Family) ? fam.Token.ValueText : font.Family;
+            if (want != fam.Token.ValueText)
+                yield return new TextChange(new TextSpan(fam.Token.Span.Start, fam.Token.Span.Length),
+                    $"\"{want}\"");
+        }
+
+        // --- size. WinForms writes the `F` suffix; a double literal changes overload resolution.
+        if (args[1].Expression is LiteralExpressionSyntax num && num.Token.Value is float cur)
+        {
+            if (Math.Abs(cur - font.Size) > 0.001f)
+                yield return new TextChange(new TextSpan(num.Token.Span.Start, num.Token.Span.Length),
+                    font.Size.ToString("0.##", CultureInfo.InvariantCulture) + "F");
+        }
+
+        // --- style
+        var wantBold = font.Bold;
+        var wantItalic = font.Italic;
+        bool haveBold = false, haveItalic = false;
+
+        if (args.Count == 3)
+        {
+            var styleText = args[2].Expression.ToString();
+            haveBold = styleText.Contains("Bold", StringComparison.Ordinal);
+            haveItalic = styleText.Contains("Italic", StringComparison.Ordinal);
+            if (haveBold == wantBold && haveItalic == wantItalic) yield break;   // already correct
+            yield return new TextChange(args[2].Expression.Span, FontStyleLiteral(wantBold, wantItalic));
+        }
+        else if (wantBold || wantItalic)
+        {
+            // No style argument to replace, so this is an INSERT rather than a replacement.
+            yield return new TextChange(args[1].Expression.Span, args[1].Expression is LiteralExpressionSyntax
+                ? $"{args[1].Expression}, {FontStyleLiteral(wantBold, wantItalic)}"
+                : args[1].Expression.ToString());
+        }
+    }
+
+    private static string FontStyleLiteral(bool bold, bool italic) => (bold, italic) switch
+    {
+        (true, true) => "System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic",
+        (true, false) => "System.Drawing.FontStyle.Bold",
+        (false, true) => "System.Drawing.FontStyle.Italic",
+        _ => "System.Drawing.FontStyle.Regular",
+    };
+
+    /// <summary>
+    /// Insert a property statement the file does not yet have.
+    ///
+    /// Needed because `Visible = false` and `Enabled = false` are MEANINGFUL when absent (the
+    /// defaults are true), so there is no existing text to replace. The anchor is the control's
+    /// last existing property assignment, which keeps the statement inside the control's own
+    /// block rather than after its `Controls.Add`.
+    /// </summary>
+    private void InsertProperty(DesignerDocument.ControlSyntax cs, string id, string name, string value)
+    {
+        var indent = BodyIndent();
+        var anchor = cs.Properties.Values
+            .OrderByDescending(a => a.SpanStart)
+            .FirstOrDefault();
+        var line = $"{indent}{This}{id}.{name} = {value};{_eol}";
+
+        if (anchor is not null) InsertLineAfter(anchor, line);
+        else if (cs.InitAssignment is not null) InsertLineAfter(cs.InitAssignment, line);
+        else if (cs.AddCall is not null) InsertLineAfter(cs.AddCall, line);
     }
 
     private void PatchFormText(string newText)

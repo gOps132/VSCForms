@@ -146,6 +146,55 @@ for c in s['controls']:
 diff -q /tmp/mf-orig.cs "$FILE" >/dev/null \
   && ok "moving a locked control writes nothing at all" || bad "locked control was modified"
 
+# ---------------------------------------------------------------------------
+# Properties that are ALREADY in the schema. docs/spec-features.md §3: these were parsed and
+# declared, and the patcher wrote only two of them. Wiring the rest is the cheapest real
+# capability in the project — no schema change, no ADR.
+# ---------------------------------------------------------------------------
+sect "[roslyn] Enabled and Visible"
+work simple SimpleDialog
+python_tweak "
+for c in s['controls']:
+    if c['id']=='btnSubmit':
+        c['properties']['enabled']=False
+        c['properties']['visible']=False" >/dev/null
+grep -q "this.btnSubmit.Enabled = false;" "$FILE" \
+  && ok "Enabled writes a bare boolean literal" || bad "Enabled not written"
+grep -q "this.btnSubmit.Visible = false;" "$FILE" \
+  && ok "Visible writes a bare boolean literal" || bad "Visible not written"
+
+sect "[roslyn] BackColor round-trips through the file's own spelling"
+# The trap: System.Drawing.Color has many spellings — Color.Red, Color.FromArgb(255, 0, 0),
+# System.Drawing.Color.FromArgb(255,0,0). ADR 0005 says do not rewrite a type name the file
+# already wrote, so the patcher must replace only the ARGUMENT LIST. Getting this wrong is
+# silent churn on every edit.
+cp "$FILE" /tmp/mf-bc.cs
+grep -q "BackColor" "$FILE" && ok "the fixture already carries a BackColor to preserve" \
+  || bad "fixture has no BackColor, so the preservation check proves nothing"
+python_tweak "
+for c in s['controls']:
+    if c['id']=='btnSubmit': c['properties']['backColor']='#00FF00'" >/dev/null
+# ADR 0005: the TYPE NAME must survive. Only the argument values change. Rewriting
+# `System.Drawing.Color.FromArgb(...)` to a bare `Color.FromArgb(...)` or to `Color.Lime` would
+# compile and be pure churn — the single most likely silent regression in this feature.
+grep -q "this.btnSubmit.BackColor = System.Drawing.Color.FromArgb(0, 255, 0);" "$FILE" \
+  && ok "BackColor values changed; the fully qualified type name was preserved" \
+  || { bad "BackColor rewritten the type name or mis-spelled the call"; grep -n "btnSubmit.BackColor" "$FILE"; }
+CHANGED=$(diff /tmp/mf-bc.cs "$FILE" | grep -c '^<')
+[ "$CHANGED" -eq 1 ] && ok "BackColor changed exactly one line" || bad "BackColor changed $CHANGED lines"
+
+sect "[roslyn] Font is re-constructed without churning the dialect"
+cp "$FILE" /tmp/mf-font.cs
+python_tweak "
+for c in s['controls']:
+    if c['id']=='btnSubmit':
+        c['properties']['font']={'size':14.0,'bold':True,'italic':False,'family':'Segoe UI'}" >/dev/null
+grep -qE "this\.btnSubmit\.Font = new System\.Drawing\.Font\(\"Segoe UI\", 14F, System\.Drawing\.FontStyle\.Bold\);" "$FILE" \
+  && ok "Font written as a construction, fully qualified, in the classic dialect" \
+  || { bad "Font not written correctly"; grep -n "btnSubmit.Font" "$FILE" | head -3; }
+CHANGED=$(diff /tmp/mf-font.cs "$FILE" | grep -c '^<')
+[ "$CHANGED" -eq 1 ] && ok "Font changed exactly one line" || bad "Font changed $CHANGED lines"
+
 echo
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -1,6 +1,7 @@
 # Feature gaps against the Visual Studio WinForms designer
 
-**Status:** draft for review — no code changed.
+**Status:** ACCEPTED — decisions resolved in §8. **Phase 0 of §6 (the already-in-schema
+properties) is being implemented now**; the rest stays sequenced and unimplemented.
 **Read alongside** [`spec-canvas-qol.md`](spec-canvas-qol.md), which covers the *interaction*
 gaps. This covers the *capability* gaps. They are separate: a perfectly smooth canvas that
 cannot represent a `TabControl` is still limited, and a complete type table with no zoom is
@@ -187,16 +188,28 @@ For Phase B specifically, add a canvas DOM case asserting a control nested two l
 (a control inside a `TabPage` inside a `TabControl`) resolves its position relative to the page,
 not the form. That is the bug a flat renderer would have.
 
-## 8. Open decisions
+## 8. Decisions
 
-1. **Refusals stay** (recommended, ADR 0003). §1 explains why this is the highest-leverage
-   decision in the document: it is what makes the type table look more valuable than it is.
-2. **Properties before types** (§3 before §2) (recommended). Cheapest capability, no schema
-   change, no ADR — and it improves every form rather than unblocking a few.
-3. **Phase C placeholders are display-only and say so** (recommended). A box that admits what it
-   cannot show is honest; one that implies an editable grid is not.
+1. **Refusals stay** (ADR 0003). §1 explains why this is the highest-leverage decision in the
+   document: it is what makes the type table look more valuable than it is.
+2. **Properties before types.** Cheapest capability available — no schema change, no ADR — and
+   it improves every form rather than unblocking a few.
+3. **Phase C placeholders are display-only and say so.** A box that admits what it cannot show
+   is honest; one that implies an editable grid is not.
 4. **Z-order deferred** pending a protocol change + ADR. Shipping it as delete+insert destroys
-   unmodelled properties — data loss, not a missing feature.
+   unmodelled properties.
 5. **`example/` stays untouched** while `spec-phase-2.md` §5 is unresolved. `TrackBar` (Phase A)
-   would take it from 91.4% to 100%, which is a good demonstration, and a reason to revisit
+   would take it from 91.4% to 100%, which is a good demonstration and a reason to revisit
    whether it should be committed at all.
+6. **Properties wired in this pass, in order of cost:** `Enabled`, `Visible`, `BackColor`,
+   `Items` for `ComboBox`/`ListBox`, then `Font`. The first four are small and mechanical.
+   `Font` is last because emitting a `new Font(...)` is a *construction*, not an assignment, and
+   it is the one that can silently churn a file's dialect — see §3.
+
+## 8b. Implementation scope for this pass
+
+Implemented now: §8 decision 6 — `Enabled`, `Visible`, `BackColor`, `ComboBox`/`ListBox` `Items`,
+`Font`. Plus the QOL work in `spec-canvas-qol.md`, without which these are unusable at zoom.
+
+Not implemented, recorded so the boundary is explicit: Phase A leaf widgets, Phase B
+`TabControl`, Phase C placeholders, z-order, event scaffolding.

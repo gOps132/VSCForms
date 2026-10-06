@@ -145,6 +145,10 @@
         Panel: 'pnl', GroupBox: 'grp',
     };
 
+    /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
+    const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
+        'ComboBox', 'ListBox', 'GroupBox', 'Form']);
+
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => {
         const n = document.createElement(tag);
@@ -680,6 +684,33 @@
         box.appendChild(numField('TabIndex', c.properties.tabIndex ?? 0, appearanceBlocked,
             (v) => setProp(c, 'tabIndex', v)));
 
+        // ---------------------------------------------------------------- appearance
+        // These are already in the schema and were already parsed by the engine for all of
+        // them. Wiring the inspector is what makes them reachable at all
+        // (docs/spec-features.md §3: cheapest real capability in the project — no schema
+        // change, no ADR).
+        box.appendChild(el('h4', null, 'Appearance'));
+
+        // Booleans are CHECKBOXES, not text fields: "false" typed as a string is a typo that
+        // silently produces a different property value.
+        box.appendChild(boolField('Enabled', c.properties.enabled !== false,
+            appearanceBlocked, (v) => setProp(c, 'enabled', v)));
+        box.appendChild(boolField('Visible', c.properties.visible !== false,
+            appearanceBlocked, (v) => setProp(c, 'visible', v)));
+
+        box.appendChild(colorField('BackColor', c.properties.backColor ?? '',
+            appearanceBlocked, (v) => setProp(c, 'backColor', v)));
+
+        if (HAS_FONT.has(simple)) {
+            const f = c.properties.font || { size: 9, bold: false, italic: false };
+            box.appendChild(numField('Font size', f.size ?? 9, appearanceBlocked,
+                (v) => setProp(c, 'font', Object.assign({}, f, { size: v }))));
+            box.appendChild(boolField('Bold', !!f.bold, appearanceBlocked,
+                (v) => setProp(c, 'font', Object.assign({}, f, { bold: v }))));
+            box.appendChild(boolField('Italic', !!f.italic, appearanceBlocked,
+                (v) => setProp(c, 'font', Object.assign({}, f, { italic: v }))));
+        }
+
         // Rename is its own message, not a schema edit. A schema carrying a new id reads to the
         // engine as "old one deleted, new one inserted" — which would duplicate the control and
         // throw away its properties.
@@ -703,6 +734,49 @@
     }
 
     function setProp(c, key, value) { c.properties[key] = value; commit(); }
+
+    function boolField(label, value, disabled, onChange) {
+        const f = el('div', 'field');
+        const id = 'f' + label;
+        const row = el('div', 'row');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.id = id;
+        box.checked = !!value;
+        box.disabled = !!disabled;
+        const lab = el('label', null, label);
+        lab.setAttribute('for', id);
+        row.appendChild(box);
+        row.appendChild(lab);
+        f.appendChild(row);
+        box.addEventListener('change', () => onChange(!!box.checked));
+        return f;
+    }
+
+    /**
+     * A colour swatch. Empty means "the system default", which is why clearing it is a real
+     * operation and not just a text edit — and why the swatch has a visible "no colour" state
+     * rather than pretending to be white.
+     */
+    function colorField(label, value, disabled, onChange) {
+        const f = el('div', 'field');
+        f.appendChild(el('label', null, label));
+        const row = el('div', 'row');
+        const sw = document.createElement('input');
+        sw.type = 'color';
+        sw.value = /^#[0-9a-f]{6}$/i.test(value) ? value : '#ffffff';
+        sw.disabled = !!disabled;
+        sw.title = 'Background colour. Clear to use the system default.';
+        const clear = el('button', null, 'Default');
+        clear.title = 'Use the system default colour';
+        clear.disabled = !!disabled;
+        row.appendChild(sw);
+        row.appendChild(clear);
+        f.appendChild(row);
+        sw.addEventListener('change', () => onChange(sw.value));
+        clear.addEventListener('click', () => { sw.value = '#ffffff'; onChange(''); });
+        return f;
+    }
 
     function numField(label, value, disabled, onChange) {
         const f = el('div', 'field');

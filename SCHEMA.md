@@ -110,6 +110,8 @@ interface ControlProperties {
 5. `children` is always present (possibly `[]`), never `undefined`. Keeps JSON shapes stable.
 6. `properties` always has all four geometry fields. Optional appearance fields are omitted,
    not null — distinguishes "unset" from "set to empty string".
+7. `visible`, `enabled` and `backColor` are **BOOLEAN / hex-string typed, never strings**.
+   `enabled: false` and `enabled: "false"` are different JSON and only one is correct.
 
 ## Engine commands (stdio, newline-delimited JSON)
 
@@ -194,6 +196,22 @@ Response:
 
 `generate` writes the file only if the content actually changed; otherwise it is a no-op.
 This keeps undo/redo and dirty-state accounting honest.
+
+### Appearance properties are patched per ARGUMENT, not by rebuilding
+
+`BackColor` and `Font` are **constructions**, not plain values, and each has several spellings
+in real files (`Color.FromArgb(...)`, `Color.Red`, `FontStyle.Regular` vs no style argument at
+all). Writing back follows the same rule as `Location`/`Size` — **replace only what differs**:
+
+- **Type names are never rewritten** (ADR 0005). A file writing
+  `System.Drawing.Color.FromArgb(…)` keeps that exact spelling.
+- **`Font` is patched argument by argument** — family string, size literal, style — and each is
+  touched only when it actually differs. Rebuilding the whole argument list rewrote a file
+  whose font was already correct, because the designer writes `FontStyle.Regular` explicitly
+  and dropping it turned a no-op generate into a real edit. That is byte-level churn on an
+  untouched form, which is the invariant the patcher exists to prevent.
+- A shape we do not recognise — a 1-argument `FromArgb(int)`, a 1-argument `Font` — produces
+  **no change at all**, rather than a rewrite across overloads.
 
 **Every child process the engine spawns must have stdout redirected.** Our stdout is the
 protocol channel, so an inherited stdout lands in the middle of a JSON response and the host

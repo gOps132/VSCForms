@@ -1,6 +1,6 @@
 # Canvas QOL — panning, zooming, and the ergonomics that make it usable
 
-**Status:** draft for review — no code changed.
+**Status:** ACCEPTED — decisions resolved in §8. This is the spec being implemented.
 **Depends on:** nothing. This is entirely inside `extension/media/canvas.js` plus CSS, with
 **zero engine, schema or protocol change**, which is why it can land before the coverage work in
 [`spec-features.md`](spec-features.md).
@@ -174,6 +174,14 @@ That is a genuine protocol gap, so z-order is split out:
   specified as view-only.
 - **Collapsible panels, tabbed documents, docking.** Those belong to VS Code, not to us.
 
+## 6b. Implementation scope for this pass
+
+Implemented now: items 1–4 in full (zoom, pan, selection/precision, orientation) — i.e.
+everything above except z-order, which is deferred by decision 4.
+
+Not implemented in this pass, recorded so the boundary is explicit: z-order (§4), clipboard
+copy/paste (decision 5), touch gestures (§6).
+
 ## 7. Test plan
 
 The canvas harness (`extension/test/hostHarness.js`) runs the real canvas code against a tiny
@@ -193,15 +201,21 @@ DOM. That is enough for most of this, and the parts it cannot reach need saying 
 `Cmd/Ctrl+0`, and whether zoom-about-cursor feels right. A synthetic `ctrlKey + wheel` proves the
 arithmetic, not the feel.
 
-## 8. Open decisions
+## 8. Decisions
 
-1. **Plain wheel scrolls; only `Cmd/Ctrl`+wheel zooms** (recommended). The alternative — wheel
-   always zooms — is what some canvas apps do and it breaks trackpad muscle memory.
-2. **No auto-fit on load** (recommended). Auto-fit moves the zoom level under the user on every
-   re-parse. A `Fit` button instead.
-3. **Grid snap stays the default but becomes toggleable** (recommended). Turning snapping off by
-   default would change how every existing movement behaves, for no gain.
-4. **Z-order is deferred** pending a patcher move + an ADR (see §4). Shipping it as
-   delete+insert would destroy unmodelled properties — a data-loss bug, not a missing feature.
-5. **`Cmd/Ctrl+D` duplicates** rather than clipboard copy/paste (recommended for now). Clipboard
-   in a webview needs permissions; duplicate gets most of the value for none of the risk.
+1. **Plain wheel scrolls; only `Cmd/Ctrl`+wheel zooms.** A trackpad pinch arrives as
+   `ctrlKey + wheel`, so this needs no separate gesture. Overriding plain wheel breaks the
+   muscle memory of every trackpad for no gain.
+2. **No auto-fit on load; a `Fit` button instead.** Auto-fit moves the zoom level underneath the
+   user on every re-parse, which is disorienting and makes zoom level untrustworthy.
+3. **Grid snap stays ON by default and becomes toggleable.** Defaulting it off would silently
+   change how every existing movement behaves. Toggling is additive.
+4. **Z-order is DEFERRED** pending a patcher move + an ADR (§4). Shipping it as delete+insert
+   would destroy unmodelled properties — data loss, not a missing feature. Explicitly not in
+   this implementation.
+5. **`Cmd/Ctrl+D` duplicates; no clipboard copy/paste.** Clipboard in a webview needs
+   permissions and an async round-trip; duplicate gets most of the value for none of the risk.
+   Copy/paste is a follow-up if duplicate proves insufficient.
+6. **Snap targets both the grid and control edges.** Grid-only snapping is what exists today;
+   edge snapping is what makes alignment-by-drag possible, and it is pure geometry over data we
+   already hold.

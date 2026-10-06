@@ -53,11 +53,13 @@ namespace FixtureSimple
             //
             // btnSubmit
             //
+            this.btnSubmit.BackColor = System.Drawing.Color.FromArgb(240, 240, 240);
             this.btnSubmit.DialogResult = System.Windows.Forms.DialogResult.OK;
             this.btnSubmit.Location = new System.Drawing.Point(96, 154);
             this.btnSubmit.Name = "btnSubmit";
             this.btnSubmit.Size = new System.Drawing.Size(84, 27);
             this.btnSubmit.TabIndex = 3;
+            this.btnSubmit.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
             this.btnSubmit.Text = "Submit";
             this.btnSubmit.UseVisualStyleBackColor = true;
             //

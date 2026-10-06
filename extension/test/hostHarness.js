@@ -604,6 +604,49 @@ setTimeout(async () => {
             leftOf('btnSubmit') - x1 === 3, `moved ${leftOf('btnSubmit') - x1}`);
     }
 
+    // ---- appearance properties that were already in the schema (docs/spec-features.md §3)
+    send({ type: 'load', data: schema });
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+
+    const insInputs = () => ids.inspector.querySelectorAll('input');
+    const byId = (id) => insInputs().find((i) => i.id === id);
+    check('Enabled is offered as a checkbox',
+        byId('fEnabled') && byId('fEnabled').type === 'checkbox',
+        JSON.stringify(insInputs().map((i) => `${i.id}:${i.type}`)));
+    check('Visible is offered as a checkbox',
+        byId('fVisible') && byId('fVisible').type === 'checkbox');
+    check('BackColor is offered as a colour input',
+        !!insInputs().find((i) => i.type === 'color'));
+
+    // A boolean must travel as a BOOLEAN. The schema is validated by the engine, and a string
+    // "false" would either be rejected or silently mean the opposite.
+    sandbox.__sent.length = 0;
+    const enabled = byId('fEnabled');
+    enabled.checked = false;
+    enabled.dispatch('change', {});
+    await settled();
+    const enabledCommit = sandbox.__sent.find((m) => m.type === 'commit');
+    const btnProps = enabledCommit && enabledCommit.data.controls.find((c) => c.id === 'btnSubmit');
+    check('unchecking Enabled posts enabled: false as a BOOLEAN, not the string "false"',
+        btnProps && btnProps.properties.enabled === false
+            && typeof btnProps.properties.enabled === 'boolean',
+        JSON.stringify(btnProps && btnProps.properties.enabled));
+
+    sandbox.__sent.length = 0;
+    const colour = insInputs().find((i) => i.type === 'color');
+    colour.value = '#ff0000';
+    colour.dispatch('change', {});
+    await settled();
+    const colourCommit = sandbox.__sent.find((m) => m.type === 'commit');
+    const btn2 = colourCommit && colourCommit.data.controls.find((c) => c.id === 'btnSubmit');
+    check('a colour change posts the hex string the parser reads back',
+        btn2 && btn2.properties.backColor === '#ff0000',
+        JSON.stringify(btn2 && btn2.properties.backColor));
+
+    check('a Button gets Font controls (size plus bold/italic checkboxes)',
+        insInputs().filter((i) => i.id !== 'fEnabled' && i.id !== 'fVisible').length >= 3,
+        JSON.stringify(insInputs().map((i) => i.id)));
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
