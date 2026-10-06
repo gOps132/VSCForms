@@ -302,7 +302,8 @@ const tools = ids.toolbox.querySelectorAll('.tool');
 const toolNames = tools.map((t) => String(t.textContent || t._text || ''));
 check('the toolbox has no duplicate entries', tools.length === new Set(toolNames).size,
     'got ' + tools.length + ': ' + toolNames.join(','));
-for (const t of ['TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker']) {
+for (const t of ['TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker',
+                 'TabControl', 'TabPage', 'DataGridView', 'ListView', 'TreeView']) {
     check('the toolbox offers ' + t, toolNames.includes(t), toolNames.join(','));
 }
 
@@ -831,6 +832,102 @@ setTimeout(async () => {
     const btnItemsEditor = ids.inspector.querySelector('.items-editor');
     const btnItemsInputs = btnItemsEditor ? btnItemsEditor.querySelectorAll('input') : [];
     check('Items editor does NOT appear for Button', !btnItemsEditor || btnItemsInputs.length === 0, 'got ' + btnItemsInputs.length + ' inputs in items-editor');
+
+    // ---- Phase C: Placeholders (DataGridView, ListView, TreeView)
+    const PLACEHOLDERS = [
+        ['DataGridView', 'dgv', 240, 150],
+        ['ListView', 'lvw', 120, 97],
+        ['TreeView', 'tvw', 120, 97],
+    ];
+    for (const [simple, prefix, w, h] of PLACEHOLDERS) {
+        send({ type: 'load', data: schema });
+        await settled();
+        const box = canvasEl.getBoundingClientRect();
+        sandbox.__sent.length = 0;
+        stage.dispatch('drop', {
+            clientX: box.left + 40, clientY: box.top + 40,
+            dataTransfer: { getData: (k) => (k === 'text/vscforms-control' ? simple : '') },
+            preventDefault() { },
+        });
+        await settled();
+        const dropCommit = sandbox.__sent.find((m) => m.type === 'commit');
+        const added = dropCommit && dropCommit.data.controls.find((x) => x.type.endsWith('.' + simple));
+        check(`${simple} drops with the ${prefix} prefix`,
+            added && added.id.startsWith(prefix), added ? added.id : 'not added');
+        check(`${simple} lands at the design-time default ${w}x${h}`,
+            added && added.properties.width === w && added.properties.height === h,
+            added ? `${added.properties.width}x${added.properties.height}` : 'n/a');
+
+        if (added) {
+            const cap = ctlNode(added.id).querySelector('.ctl-caption');
+            check(`${simple} renders placeholder label with name and type`,
+                cap && cap.textContent.includes(added.id) && cap.textContent.includes(simple),
+                cap ? cap.textContent : 'no caption');
+
+            ctlNode(added.id).dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+            const textInput = insInputs().find((i) => i.type === 'text' && i.value === (added.properties.text || ''));
+            check(`${simple} disables the Text field it cannot honour`,
+                !!textInput && textInput.disabled === true,
+                textInput ? 'disabled=' + textInput.disabled : 'no text input found');
+        }
+    }
+
+    // ---- Phase B: TabControl + TabPage two-level nesting and tab-strip
+    const containerTestSchema = {
+        ...schema,
+        controls: [
+            {
+                id: 'tabMain', type: 'System.Windows.Forms.TabControl', locked: false,
+                properties: { x: 10, y: 15, width: 300, height: 200, tabIndex: 0 },
+                children: [
+                    {
+                        id: 'page1', type: 'System.Windows.Forms.TabPage', locked: false,
+                        properties: { x: 4, y: 22, width: 290, height: 170, text: 'General', tabIndex: 0 },
+                        children: [
+                            {
+                                id: 'btnInside', type: 'System.Windows.Forms.Button', locked: false,
+                                properties: { x: 25, y: 35, width: 80, height: 25, text: 'Inner', tabIndex: 0 },
+                                children: []
+                            }
+                        ]
+                    },
+                    {
+                        id: 'page2', type: 'System.Windows.Forms.TabPage', locked: false,
+                        properties: { x: 4, y: 22, width: 290, height: 170, text: 'Advanced', tabIndex: 1 },
+                        children: []
+                    }
+                ]
+            }
+        ],
+        analysis: { modelledCount: 4, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+    };
+    send({ type: 'load', data: containerTestSchema });
+    await settled();
+
+    const tabNode = ctlNode('tabMain');
+    const strip = tabNode.querySelector('.tab-strip');
+    check('TabControl renders a tab-strip', !!strip);
+    const tabs = strip ? strip.querySelectorAll('.tab-item') : [];
+    check('Tab-strip renders tabs for both pages', tabs.length === 2 && tabs[0].textContent === 'General' && tabs[1].textContent === 'Advanced',
+        'tabs count: ' + tabs.length);
+
+    const page1Node = ctlNode('page1');
+    const page2Node = ctlNode('page2');
+    const btnNodeNested = ctlNode('btnInside');
+
+    check('TabPage page1 is child of TabControl in DOM', page1Node && page1Node.parentNode === tabNode);
+    check('Button btnInside is child of TabPage page1 in DOM (2 levels deep)', btnNodeNested && btnNodeNested.parentNode === page1Node);
+    check('Nested Button resolves position relative to page, not form',
+        btnNodeNested && btnNodeNested.style.left === '25px' && btnNodeNested.style.top === '35px',
+        btnNodeNested ? `${btnNodeNested.style.left}, ${btnNodeNested.style.top}` : 'no btn');
+    check('Initial active tab page is not hidden', page1Node && !page1Node.classList.contains('tabpage-hidden'));
+    check('Inactive tab page is hidden', page2Node && page2Node.classList.contains('tabpage-hidden'));
+
+    // Switch tab by clicking tab 2
+    tabs[1].dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    const page2Active = ctlNode('page2');
+    check('Clicking tab switches active page and unhides it', page2Active && !page2Active.classList.contains('tabpage-hidden'));
 
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);

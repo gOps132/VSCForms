@@ -62,6 +62,7 @@ public sealed class Patcher
         if (incoming.Analysis?.Refuses is { Count: > 0 } refuses)
             return PatchResult.Refused(string.Join("; ", refuses));
 
+        var parentMap = BuildParentMap(incoming.Controls);
         var incomingById = Flatten(incoming.Controls).ToDictionary(c => c.Id, StringComparer.Ordinal);
         var currentIds = doc.Controls.Keys.ToHashSet(StringComparer.Ordinal);
 
@@ -70,7 +71,7 @@ public sealed class Patcher
         {
             if (!doc.Controls.TryGetValue(node.Id, out var current))
             {
-                InsertControl(node);
+                InsertControl(node, parentMap.GetValueOrDefault(node.Id));
                 continue;
             }
             if (node.Locked) continue;   // SAFETY: never touch a locked control
@@ -133,6 +134,22 @@ public sealed class Patcher
             yield return n;
             foreach (var c in Flatten(n.Children)) yield return c;
         }
+    }
+
+    private static Dictionary<string, string> BuildParentMap(IEnumerable<ControlNode> roots)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Walk(IEnumerable<ControlNode> nodes, string? parentId)
+        {
+            foreach (var n in nodes)
+            {
+                if (parentId is not null)
+                    map[n.Id] = parentId;
+                Walk(n.Children, n.Id);
+            }
+        }
+        Walk(roots, null);
+        return map;
     }
 
     private static bool TextEquals(SourceText a, SourceText b)
@@ -682,7 +699,7 @@ public sealed class Patcher
     /// </summary>
     private string ControlsThis => _doc.ControlsCollectionIsQualified ? "this." : "";
 
-    private void InsertControl(ControlNode node)
+    private void InsertControl(ControlNode node, string? parentId = null)
     {
         var ic = _doc.InitializeComponent;
         var formType = _doc.FormType;
@@ -740,7 +757,11 @@ public sealed class Patcher
             ?? initAnchor
             ?? stmts.LastOrDefault();
 
-        var addAnchor = (SyntaxNode?)stmts.LastOrDefault(IsControlsAdd) ?? stmts.LastOrDefault();
+        var addAnchor = (parentId is not null
+            ? stmts.LastOrDefault(s => s is ExpressionStatementSyntax es && es.ToString().Contains($"{parentId}.Controls.Add", StringComparison.Ordinal))
+            : null)
+            ?? (SyntaxNode?)stmts.LastOrDefault(IsControlsAdd)
+            ?? stmts.LastOrDefault();
 
         var pending = new Dictionary<int, (SyntaxNode node, List<string> parts)>();
 
@@ -774,9 +795,13 @@ public sealed class Patcher
 
         if (addAnchor is not null)
         {
+            var addLine = parentId is not null
+                ? $"{indent}{This}{parentId}.Controls.Add({This}{id});{_eol}"
+                : $"{indent}{ControlsThis}Controls.Add({This}{id});{_eol}";
+
             var e = pending.GetValueOrDefault(addAnchor.SpanStart);
             pending[addAnchor.SpanStart] =
-                (addAnchor, [.. e.parts ?? [], $"{indent}{ControlsThis}Controls.Add({This}{id});{_eol}"]);
+                (addAnchor, [.. e.parts ?? [], addLine]);
         }
 
         foreach (var (_, entry) in pending.OrderBy(kv => kv.Key))

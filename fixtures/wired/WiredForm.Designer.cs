@@ -9,7 +9,7 @@ partial class WiredForm
     /// </summary>
     private System.Windows.Forms.Button btnCalculate;
     private System.Windows.Forms.Label lblResult;
-    private System.Windows.Forms.TabControl tabDetails;
+    private System.Windows.Forms.MonthCalendar calDetails;
 
     /// <summary>
     ///  Clean up any resources being used.
@@ -34,7 +34,7 @@ partial class WiredForm
         this.components = new System.ComponentModel.Container();
         this.btnCalculate = new System.Windows.Forms.Button();
         this.lblResult = new System.Windows.Forms.Label();
-        this.tabDetails = new System.Windows.Forms.TabControl();
+        this.calDetails = new System.Windows.Forms.MonthCalendar();
         this.SuspendLayout();
         //
         // btnCalculate
@@ -56,13 +56,13 @@ partial class WiredForm
         this.lblResult.TabIndex = 1;
         this.lblResult.Text = "0.00";
         //
-        // tabDetails
+        // calDetails
         //
-        this.tabDetails.Location = new System.Drawing.Point(120, 130);
-        this.tabDetails.Name = "tabDetails";
-        this.tabDetails.Size = new System.Drawing.Size(200, 120);
-        this.tabDetails.TabIndex = 2;
-        this.tabDetails.SelectedIndexChanged += new System.EventHandler(this.tabDetails_SelectedIndexChanged);
+        this.calDetails.Location = new System.Drawing.Point(120, 130);
+        this.calDetails.Name = "calDetails";
+        this.calDetails.Size = new System.Drawing.Size(200, 120);
+        this.calDetails.TabIndex = 2;
+        this.calDetails.DateSelected += new System.Windows.Forms.DateRangeEventHandler(this.calDetails_DateSelected);
         this.ResumeLayout(false);
         this.PerformLayout();
         //

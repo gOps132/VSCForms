@@ -493,6 +493,84 @@ grep -qF 'this.progressLoad.Maximum = 200;' "$FILE" \
 grep -qF 'this.numQuantity.Value = 25;' "$FILE" \
   && ok "NumericUpDown Value inserted" || bad "NumericUpDown Value not inserted"
 
+sect "[roslyn] containers: TabControl, TabPage nesting and placeholders"
+work containers ContainerForm
+OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")
+echo "$OUT" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)['schema']
+a=s['analysis']
+assert a['coveragePercent']==100.0, a
+assert a['modelledCount']==9, a
+byid={c['id']: c for c in s['controls']}
+assert 'tabMain' in byid and 'dgvData' in byid and 'lvwList' in byid and 'tvwTree' in byid
+tab=byid['tabMain']
+assert len(tab['children'])==2, len(tab['children'])
+p1=tab['children'][0]
+assert p1['id']=='tabPage1' and len(p1['children'])==1 and p1['children'][0]['id']=='btnInsidePage'
+p2=tab['children'][1]
+assert p2['id']=='tabPage2' and len(p2['children'])==1 and p2['children'][0]['id']=='pnlSub'
+pnl=p2['children'][0]
+assert len(pnl['children'])==1 and pnl['children'][0]['id']=='lblInPanel'
+" && ok "nested containers parse 3 levels deep at 100% coverage" || bad "containers parse failed"
+
+sect "[roslyn] containers: surgical move of nested control"
+work containers ContainerForm
+cp "$FILE" /tmp/mf-cnt-orig.cs
+python_tweak "
+for c in s['controls']:
+    if c['id']=='tabMain':
+        for p1 in c['children']:
+            if p1['id']=='tabPage1':
+                for b in p1['children']:
+                    if b['id']=='btnInsidePage':
+                        b['properties'].update(x=55, y=66)" >/dev/null
+grep -q "this.btnInsidePage.Location = new System.Drawing.Point(55, 66);" "$FILE" \
+  && ok "nested control moved inside TabPage" || bad "nested move failed"
+CHANGED=$(diff /tmp/mf-cnt-orig.cs "$FILE" | grep -c '^[<>]')
+[ "$CHANGED" -eq 2 ] && ok "nested move changed exactly 2 lines" || bad "nested move touched $CHANGED lines"
+
+sect "[roslyn] containers: insert control into parent container"
+work containers ContainerForm
+python_tweak "
+for c in s['controls']:
+    if c['id']=='tabMain':
+        for p1 in c['children']:
+            if p1['id']=='tabPage1':
+                p1['children'].append({'id':'btnExtra','type':'System.Windows.Forms.Button','children':[],
+                    'properties':{'x':10,'y':10,'width':75,'height':23,'text':'Extra','tabIndex':5},'locked':False})
+s['analysis']['modelledCount']+=1" >/dev/null
+grep -qF "this.tabPage1.Controls.Add(this.btnExtra);" "$FILE" \
+  && ok "insert into container emitted parent.Controls.Add" || bad "parent.Controls.Add not emitted"
+
+sect "[roslyn] containers: fixture compiles as a real WinForms project"
+CNT_SRC=$(mktemp -d)/cnt/src
+mkdir -p "$CNT_SRC"
+cp fixtures/containers/ContainerForm.Designer.cs "$CNT_SRC/"
+{ echo "using System;"; echo "using System.Windows.Forms;"; echo "namespace FixtureContainers {"
+  echo "  public partial class ContainerForm : Form {"
+  echo "    public ContainerForm() { InitializeComponent(); }"
+  echo "  }"; echo "}"; } > "$CNT_SRC/Form.cs"
+cat > "$CNT_SRC/C.csproj" <<'CSPROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+CSPROJ
+CNT_BUILD=$(cd "$CNT_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$CNT_BUILD" | grep -q "Build succeeded"; then
+  ok "the container and placeholder fixture compiles as real WinForms controls"
+else
+  bad "container fixture FAILED to compile"
+  echo "$CNT_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
 # --------------------------------------------------------------- compile tier

@@ -235,11 +235,11 @@ else bad "the refusal does not name the file"; fi
 
 sect "other refusals"
 D=$(stage refuse_locked)
-# `tabDetails` is a TabControl, which is genuinely unmodelled (Phase B is not implemented).
-# This assertion is also a canary: if a future change adds TabControl to the Handled Types, the
+# `calDetails` is a MonthCalendar, which is genuinely unmodelled.
+# This assertion is also a canary: if a future change adds MonthCalendar to the Handled Types, the
 # fixture stops being locked and this case goes `not-found` instead of `locked` — which is a
 # reminder that the fixture's subject needs rechoosing, not a bug in the renamer.
-K=$(rename_cmd "$D" tabDetails tabMore | kind)
+K=$(rename_cmd "$D" calDetails calMore | kind)
 [ "$K" = "locked" ] && ok "refuses to rename a Locked Control ($K)" || bad "renamed a locked control (got '$K')"
 
 K=$(rename_cmd "$D" lblResult btnCalculate | kind)

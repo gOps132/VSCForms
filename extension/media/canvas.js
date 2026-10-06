@@ -146,12 +146,21 @@
         ['ProgressBar', 't-progressbar', '#3a3d41'],
         ['NumericUpDown', 't-numericupdown', '#2a2a2a'],
         ['DateTimePicker', 't-datetimepicker', '#2a2a2a'],
+        // Phase B — TabControl & TabPage
+        ['TabControl', 't-tabcontrol', '#3a3d41'],
+        ['TabPage', 't-tabpage', '#2d2d2d'],
+        // Phase C — Placeholders
+        ['DataGridView', 't-datagridview', '#252526'],
+        ['ListView', 't-listview', '#252526'],
+        ['TreeView', 't-treeview', '#252526'],
     ];
     const PREFIX = {
         Button: 'btn', Label: 'lbl', TextBox: 'txt', CheckBox: 'chk',
         RadioButton: 'rad', ComboBox: 'cbo', ListBox: 'lst', PictureBox: 'pic',
         Panel: 'pnl', GroupBox: 'grp',
         TrackBar: 'trk', ProgressBar: 'prg', NumericUpDown: 'num', DateTimePicker: 'dtp',
+        TabControl: 'tab', TabPage: 'tab',
+        DataGridView: 'dgv', ListView: 'lvw', TreeView: 'tvw',
     };
 
     /**
@@ -159,11 +168,12 @@
      * that does not exist on the control — an editable field that goes nowhere is worse than no
      * field, because it looks like it works.
      */
-    const NO_TEXT = new Set(['Panel', 'TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker']);
+    const NO_TEXT = new Set(['Panel', 'TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker',
+        'TabControl', 'DataGridView', 'ListView', 'TreeView']);
 
     /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
     const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
-        'ComboBox', 'ListBox', 'GroupBox', 'Form']);
+        'ComboBox', 'ListBox', 'GroupBox', 'Form', 'TabPage']);
 
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => {
@@ -214,7 +224,7 @@
         node.appendChild(cap);
         return cap;
     }
-    function containerTypes() { return new Set(['Panel', 'GroupBox']); }
+    function containerTypes() { return new Set(['Panel', 'GroupBox', 'TabControl', 'TabPage']); }
 
     /** Allocate an unused designer-style name: btnSubmit -> btnSubmit1, btnSubmit2... */
     function allocateName(simple) {
@@ -326,6 +336,9 @@
             if (!caption && emptyShowTypeName(simple)) {
                 node.classList.add('placeholder');
                 node.querySelector('.ctl-caption').textContent = simple;
+            } else if (['DataGridView', 'ListView', 'TreeView'].includes(simple)) {
+                node.classList.add('t-placeholder-ctl');
+                node.querySelector('.ctl-caption').textContent = `${c.id} (${simple})`;
             }
         }
         if (readOnly) node.classList.add('readonly');
@@ -385,6 +398,37 @@
                 const label = el('div', 'ctl-caption');
                 label.textContent = c.properties.text || 'GroupBox';
                 node.insertBefore(label, node.firstChild);
+            } else if (simple === 'TabControl') {
+                const strip = el('div', 'tab-strip');
+                const pages = (c.children || []).filter((ch) => simpleName(ch.type) === 'TabPage');
+                let activeId = pages.length > 0 ? pages[0].id : null;
+                for (const p of pages) {
+                    if (selection.has(p.id) || allControls(p.children).some((g) => selection.has(g.id))) {
+                        activeId = p.id;
+                        break;
+                    }
+                }
+                for (const p of pages) {
+                    const tabBtn = el('div', 'tab-item' + (p.id === activeId ? ' active' : ''));
+                    tabBtn.textContent = p.properties.text || p.id;
+                    tabBtn.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        select(p.id);
+                    });
+                    strip.appendChild(tabBtn);
+                }
+                node.insertBefore(strip, node.firstChild);
+
+                for (const child of c.children || []) renderControl(node, child, node);
+
+                if (pages.length > 1) {
+                    for (const ch of node.children) {
+                        if (ch.classList && ch.classList.contains('t-tabpage') && ch.dataset.id !== activeId) {
+                            ch.classList.add('tabpage-hidden');
+                        }
+                    }
+                }
+                return;
             }
             for (const child of c.children || []) renderControl(node, child, node);
         }
@@ -969,6 +1013,11 @@
             ProgressBar: { w: 140, h: 20, text: '' },
             NumericUpDown: { w: 100, h: 22, text: '' },
             DateTimePicker: { w: 120, h: 23, text: '' },
+            TabControl: { w: 200, h: 100, text: '' },
+            TabPage: { w: 192, h: 74, text: 'TabPage' },
+            DataGridView: { w: 240, h: 150, text: '' },
+            ListView: { w: 120, h: 97, text: '' },
+            TreeView: { w: 120, h: 97, text: '' },
         }[simple] || { w: 100, h: 30, text: simple };
 
         const node = {

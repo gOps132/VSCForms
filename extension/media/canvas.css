@@ -204,6 +204,52 @@ body { display: flex; flex-direction: column; }
 .ctl.t-picturebox { background: repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%) 50%/10px 10px; }
 .ctl.t-panel,.ctl.t-groupbox { background: transparent; border: 1px dashed var(--border); }
 .ctl.t-groupbox { padding-top: 6px; }
+.ctl.t-tabcontrol { background: var(--vscode-editor-background, #1e1e1e); border: 1px solid var(--border); }
+.ctl.t-tabcontrol > .tab-strip {
+  position: absolute; top: 0; left: 0; right: 0; height: 22px;
+  display: flex; gap: 2px; padding: 2px 4px 0 4px;
+  background: var(--vscode-sideBar-background, #252526);
+  border-bottom: 1px solid var(--border);
+  z-index: 2; pointer-events: auto;
+}
+.ctl.t-tabcontrol > .tab-strip .tab-item {
+  padding: 2px 8px; font-size: 11px; cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--muted); border-radius: 3px 3px 0 0;
+  border: 1px solid var(--border); border-bottom: none;
+}
+.ctl.t-tabcontrol > .tab-strip .tab-item.active {
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--fg); font-weight: 500;
+}
+.ctl.t-tabpage { background: var(--vscode-editor-background, #1e1e1e); border: 1px dashed var(--border); }
+.ctl.t-tabpage > .ctl-caption { display: none; }
+.ctl.t-tabpage.tabpage-hidden { display: none; }
+
+/* ------------------------------------------------------------- placeholders (Phase C)
+   Labelled read-only boxes showing name and type. Display only. */
+.ctl.t-datagridview, .ctl.t-listview, .ctl.t-treeview {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--border);
+}
+.ctl.t-placeholder-ctl > .ctl-caption {
+  font-size: 11px; color: var(--muted);
+  justify-content: center;
+}
+.ctl.t-datagridview::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 18px;
+  background: var(--vscode-sideBar-background, #252526);
+  border-bottom: 1px solid var(--border);
+}
+.ctl.t-listview::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 16px;
+  background: var(--vscode-sideBar-background, #252526);
+  border-bottom: 1px solid var(--border);
+}
+.ctl.t-treeview::before {
+  content: '▶'; position: absolute; top: 4px; left: 6px;
+  font-size: 9px; color: var(--muted);
+}
 
 /* ------------------------------------------------------------- leaf widgets
    Structural diagrams, not pixel reproductions (ADR 0006). The goal is a shape the user

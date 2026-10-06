@@ -732,7 +732,7 @@ public sealed class DesignerDocument
         if (expr is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax add } inv) return false;
         if (add.Name.Identifier.Text != "Add") return false;
         if (add.Expression is not MemberAccessExpressionSyntax controls) return false;
-        if (controls.Name.Identifier.Text != "Controls") return false;
+        if (controls.Name.Identifier.Text is not ("Controls" or "TabPages")) return false;
 
         if (controls.Expression is ThisExpressionSyntax)
         {

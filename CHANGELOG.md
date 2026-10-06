@@ -8,6 +8,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **Structural container nesting (`TabControl` & `TabPage`)**: models two-level container hierarchies
+  (`TabControl` -> `TabPage` -> child controls), renders interactive tab-strips with page activation,
+  and handles container insertion in the Roslyn patcher (`tabControl.Controls.Add(page)` and `page.Controls.Add(...)`).
+- **Read-only placeholders (`DataGridView`, `ListView`, `TreeView`)**: modelled as labelled placeholder boxes
+  displaying name and type, improving form visibility and coverage for data-driven forms without inventing unmodelled state.
+  Handled types now 19.
+- **TextBox and Leaf Widget range properties**: added `Multiline`, `ReadOnly`, `MaxLength`, and `PasswordChar` for
+  `TextBox`; added `Minimum`, `Maximum`, and `Value` for `TrackBar`, `ProgressBar`, and `NumericUpDown`.
 - **ComboBox and ListBox `Items` collection**: parses `Items.AddRange` and `Items.Add`,
   surgically patches replace, insert, and delete, and adds an interactive list editor
   in the canvas inspector.

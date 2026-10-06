@@ -33,6 +33,13 @@ public static class TypeTable
         ["System.Windows.Forms.ProgressBar"] = "progressbar",
         ["System.Windows.Forms.NumericUpDown"] = "numericupdown",
         ["System.Windows.Forms.DateTimePicker"] = "datetimepicker",
+        // Phase B — TabControl & TabPage
+        ["System.Windows.Forms.TabControl"] = "tabcontrol",
+        ["System.Windows.Forms.TabPage"] = "tabpage",
+        // Phase C — Placeholders
+        ["System.Windows.Forms.DataGridView"] = "datagridview",
+        ["System.Windows.Forms.ListView"] = "listview",
+        ["System.Windows.Forms.TreeView"] = "treeview",
     };
 
     /// <summary>Types whose children we model as a nested tree.</summary>
@@ -40,6 +47,8 @@ public static class TypeTable
     {
         "System.Windows.Forms.Panel",
         "System.Windows.Forms.GroupBox",
+        "System.Windows.Forms.TabControl",
+        "System.Windows.Forms.TabPage",
     };
 
     /// <summary>
@@ -84,6 +93,11 @@ public static class TypeTable
             "ProgressBar" => "prg",
             "NumericUpDown" => "num",
             "DateTimePicker" => "dtp",
+            "TabControl" => "tab",
+            "TabPage" => "tab",
+            "DataGridView" => "dgv",
+            "ListView" => "lvw",
+            "TreeView" => "tvw",
             "Form" => "frm",
             _ => "ctl",
         };

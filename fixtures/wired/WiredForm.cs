@@ -31,7 +31,7 @@ public partial class WiredForm : Form
         // renamer is permitted to rewrite outside it, so the fixture needs one or the code-behind
         // path is never exercised.
         btnCalculate.Enabled = false;
-        tabDetails.SelectedIndex = 0;
+        calDetails.MaxSelectionCount = 7;
     }
 
     private void btnCalculate_Click(object sender, EventArgs e)
@@ -39,7 +39,7 @@ public partial class WiredForm : Form
         lblResult.Text = level.ToString("F2");
     }
 
-    private void tabDetails_SelectedIndexChanged(object sender, EventArgs e)
+    private void calDetails_DateSelected(object sender, DateRangeEventArgs e)
     {
         level += 1.0;
     }
