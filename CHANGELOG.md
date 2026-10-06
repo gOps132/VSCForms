@@ -27,6 +27,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Notes
 
+- **Fixed: setting `BackColor` or `Font` on a control that had neither was silently discarded.**
+  The patcher only ever *replaced* those two, so on a fresh project — where no control has a
+  `BackColor` — the canvas accepted the colour, showed it, and the engine wrote nothing. Found by
+  driving a real `dotnet new winforms` project end to end; no test tier saw it, because every
+  fixture used for this had the property already present. Both now have an insert path.
+
 - **The 47.9% per-form coverage ceiling predates the leaf widgets and has NOT been re-measured.**
   It was measured at 10 handled types; it is now 14. The measurement corpus is deliberately not
   committed (GPL-3.0 or unlicensed — see `fixtures/README.md`), so re-measuring needs a fresh

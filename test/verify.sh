@@ -183,6 +183,36 @@ grep -q "this.btnSubmit.BackColor = System.Drawing.Color.FromArgb(0, 255, 0);" "
 CHANGED=$(diff /tmp/mf-bc.cs "$FILE" | grep -c '^<')
 [ "$CHANGED" -eq 1 ] && ok "BackColor changed exactly one line" || bad "BackColor changed $CHANGED lines"
 
+sect "[roslyn] BackColor and Font are INSERTED when the control has neither"
+# Found by driving a real `dotnet new winforms` project end to end, not by any tier. The patcher
+# only ever REPLACED these two, so setting a colour on a control that had none was accepted by
+# the canvas and silently discarded by the engine — the "the control looks editable and nothing
+# happens" failure AGENTS.md's two-list rule warns about, one level down.
+work simple SimpleDialog
+grep -q "this.chkAgree.BackColor" "$FILE" && bad "fixture assumption broken: chkAgree has a BackColor" \
+  || ok "the fixture has a control with no BackColor, so the insert path is what runs"
+cp "$FILE" /tmp/mf-nobc.cs
+python_tweak "
+for c in s['controls']:
+    if c['id']=='chkAgree':
+        c['properties']['backColor']='#C6E6C9'
+        c['properties']['font']={'size':11.0,'bold':True,'italic':False}" >/dev/null
+grep -q "this.chkAgree.BackColor = System.Drawing.Color.FromArgb(198, 230, 201);" "$FILE" \
+  && ok "BackColor INSERTED for a control that had none" || { bad "BackColor not inserted"; grep -n "chkAgree.BackColor" "$FILE" || true; }
+# The comma before the FontStyle argument is easy to drop and only the compile gate sees it.
+grep -q 'this.chkAgree.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F, System.Drawing.FontStyle.Bold);' "$FILE" \
+  && ok "Font INSERTED with a comma before the FontStyle argument" || { bad "Font insert malformed"; grep -n "chkAgree.Font" "$FILE" || true; }
+# Count ADDED lines, not removed ones: these are pure inserts, so `^<` would be 0 by design
+# and the assertion would pass vacuously.
+REMOVED=$(diff /tmp/mf-nobc.cs "$FILE" | grep -c '^<')
+ADDED=$(diff /tmp/mf-nobc.cs "$FILE" | grep -c '^>')
+# InsertLineAfter emits the property plus a trailing newline, and two inserts at the SAME
+# anchor each contribute a blank separator line — hence four added lines for two properties.
+[ "$ADDED" -eq 4 ] && ok "adding both inserted two properties (plus their blank separators)" \
+  || bad "expected 4 added lines, got $ADDED"
+[ "$REMOVED" -eq 0 ] && ok "and removed nothing — the insert is purely additive" \
+  || bad "the insert also removed $REMOVED line(s)"
+
 sect "[roslyn] Font is re-constructed without churning the dialect"
 cp "$FILE" /tmp/mf-font.cs
 python_tweak "

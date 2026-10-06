@@ -199,10 +199,44 @@ public sealed class Patcher
                 else ReplaceCreationArgs(bc.Right, args);
             }
         }
+        else if (p.BackColor is string fresh && !cs.Properties.ContainsKey("BackColor"))
+        {
+            if (RgbTriplet(fresh) is { } freshArgs)
+                InsertProperty(cs, id, "BackColor", $"System.Drawing.Color.FromArgb({freshArgs})");
+        }
 
         // Font is a CONSTRUCTION, not a plain value: `Font = new Font(family, size, style)`.
         if (cs.Properties.TryGetValue("Font", out var fn) && p.Font is { } font)
             foreach (var change in FontChanges(fn.Right, font)) Replace(change.Span, change.NewText);
+        else if (p.Font is { } wanted && !cs.Properties.ContainsKey("Font"))
+            InsertProperty(cs, id, "Font", FontLiteral(wanted));
+
+        // BackColor and Font need an INSERT path as well as a replace path. Without it, setting
+        // a colour on a control that has none is accepted by the canvas and silently discarded
+        // by the engine — precisely the "the control appears editable and nothing happens"
+        // failure the two-list rule in AGENTS.md warns about, one level down.
+        //
+        // For an INSERT there is no existing spelling to preserve, so the fully qualified form
+        // is emitted: it compiles in every dialect, including the templated one with implicit
+        // usings, which is the only dialect where a short name would also work.
+    }
+
+    /// <summary>
+    /// A `new Font(...)` argument list for a control that has none yet. The family defaults to
+    /// "Microsoft Sans Serif" because that is the WinForms default font, and omitting it would
+    /// select a different overload.
+    /// </summary>
+    private static string FontLiteral(FontDto font)
+    {
+        var family = string.IsNullOrEmpty(font.Family) ? "Microsoft Sans Serif" : font.Family;
+        var size = font.Size.ToString("0.##", CultureInfo.InvariantCulture) + "F";
+        // The COMMA is part of the style argument, and FontStyleLiteral returns the flag text
+        // alone. Concatenating without it emitted `11FSystem.Drawing.FontStyle.Bold)` — a
+        // syntax error. Caught by the compile gate, which is the only tier that sees it.
+        var style = (font.Bold || font.Italic)
+            ? ", " + FontStyleLiteral(font.Bold, font.Italic)
+            : string.Empty;
+        return $"new System.Drawing.Font(\"{family}\", {size}{style})";
     }
 
     /// <summary>Exact source text of an expression, for a no-op comparison.</summary>
@@ -219,17 +253,8 @@ public sealed class Patcher
     /// </summary>
     private static string? ColorArgs(ExpressionSyntax rhs, string css)
     {
-        if (string.IsNullOrEmpty(css)) return null;   // '' means a system colour; not editable yet
-
-        // #RRGGBB -> r, g, b. ParseColor emits RRGGBB from both FromArgb and the named
-        // constants, so this is the inverse.
-        if (css.Length != 7 || css[0] != '#') return null;
-        if (!int.TryParse(css.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var r)
-            || !int.TryParse(css.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var g)
-            || !int.TryParse(css.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var b))
-            return null;
-
-        var rgb = $"{r.ToString(CultureInfo.InvariantCulture)}, {g.ToString(CultureInfo.InvariantCulture)}, {b.ToString(CultureInfo.InvariantCulture)}";
+        var rgb = RgbTriplet(css);
+        if (rgb is null) return null;   // '' means a system colour; not editable yet
 
         // `System.Drawing.Color.FromArgb(...)` parses as a MemberAccess whose EXPRESSION is the
         // invocation — `System.Drawing.Color` . `FromArgb(...)`. Unwrap before deciding, or every
@@ -281,6 +306,23 @@ public sealed class Patcher
         var text = target.ToString();
         var dot = text.LastIndexOf('.');
         return dot < 0 ? text : text.Substring(dot + 1);
+    }
+
+    /// <summary>
+    /// `#RRGGBB` -> `"r, g, b"`, or null when the string is not a plain RGB hex colour.
+    /// Shared by the REPLACE path and the INSERT path, because the two must agree on what a
+    /// colour means or a colour set on a control that has none would come out different from
+    /// the same colour set on one that does.
+    /// </summary>
+    private static string? RgbTriplet(string css)
+    {
+        if (string.IsNullOrEmpty(css)) return null;
+        if (css.Length != 7 || css[0] != '#') return null;
+        if (!int.TryParse(css.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var r)
+            || !int.TryParse(css.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var g)
+            || !int.TryParse(css.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var b))
+            return null;
+        return $"{r.ToString(CultureInfo.InvariantCulture)}, {g.ToString(CultureInfo.InvariantCulture)}, {b.ToString(CultureInfo.InvariantCulture)}";
     }
 
     private static string? NamedColor(string css) => css.ToUpperInvariant() switch
