@@ -58,6 +58,13 @@ public sealed class ControlProperties
     [JsonPropertyName("enabled")] public bool? Enabled { get; set; }
     [JsonPropertyName("font")] public FontDto? Font { get; set; }
     [JsonPropertyName("items")] public string[]? Items { get; set; }
+    [JsonPropertyName("multiline")] public bool? Multiline { get; set; }
+    [JsonPropertyName("readOnly")] public bool? ReadOnly { get; set; }
+    [JsonPropertyName("maxLength")] public int? MaxLength { get; set; }
+    [JsonPropertyName("passwordChar")] public string? PasswordChar { get; set; }
+    [JsonPropertyName("minimum")] public decimal? Minimum { get; set; }
+    [JsonPropertyName("maximum")] public decimal? Maximum { get; set; }
+    [JsonPropertyName("value")] public decimal? Value { get; set; }
 }
 
 public sealed class FontDto

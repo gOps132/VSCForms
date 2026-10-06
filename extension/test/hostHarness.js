@@ -761,6 +761,30 @@ setTimeout(async () => {
         }
     }
 
+    // ---- TextBox & Leaf Widget properties in inspector
+    send({ type: 'load', data: schema });
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    check('TextBox inspector offers Multiline', insInputs().some((i) => i.id === 'fMultiline'));
+    check('TextBox inspector offers ReadOnly', insInputs().some((i) => i.id === 'fReadOnly'));
+    check('TextBox inspector offers MaxLength', insInputs().some((i) => i.id === 'fMaxLength'));
+    check('TextBox inspector offers PasswordChar', insInputs().some((i) => i.id === 'fPasswordChar'));
+
+    // Check Range controls for leaf widgets
+    const leafSchema = {
+        ...schema,
+        controls: [
+            { id: 'trkTest', type: 'System.Windows.Forms.TrackBar', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 120, height: 56, tabIndex: 0, minimum: 0, maximum: 100, value: 50 } },
+        ],
+    };
+    send({ type: 'load', data: leafSchema });
+    ctlNode('trkTest').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    check('TrackBar inspector offers Minimum', insInputs().some((i) => i.id === 'fMinimum'));
+    check('TrackBar inspector offers Maximum', insInputs().some((i) => i.id === 'fMaximum'));
+    check('TrackBar inspector offers Value', insInputs().some((i) => i.id === 'fValue'));
+
     // ---- Items editor: verify it appears for ComboBox/ListBox and posts commits
     const itemsTestSchema = {
         ...schema,

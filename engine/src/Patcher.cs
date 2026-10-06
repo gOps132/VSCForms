@@ -255,6 +255,61 @@ public sealed class Patcher
                 InsertItemsBlock(cs, id, incomingArray);
             }
         }
+
+        // TextBox properties
+        if (simpleType == "TextBox")
+        {
+            if (cs.Properties.TryGetValue("Multiline", out var ml) && ml.Right is LiteralExpressionSyntax)
+            {
+                if (CurrentBool(ml) != p.Multiline)
+                    Replace(ml.Right.Span, (p.Multiline ?? false) ? "true" : "false");
+            }
+            else if (p.Multiline is true && !cs.Properties.ContainsKey("Multiline"))
+            {
+                InsertProperty(cs, id, "Multiline", "true");
+            }
+
+            if (cs.Properties.TryGetValue("ReadOnly", out var ro) && ro.Right is LiteralExpressionSyntax)
+            {
+                if (CurrentBool(ro) != p.ReadOnly)
+                    Replace(ro.Right.Span, (p.ReadOnly ?? false) ? "true" : "false");
+            }
+            else if (p.ReadOnly is true && !cs.Properties.ContainsKey("ReadOnly"))
+            {
+                InsertProperty(cs, id, "ReadOnly", "true");
+            }
+
+            if (cs.Properties.TryGetValue("MaxLength", out var maxL))
+            {
+                if (CurrentInt(maxL) is { } curMax && curMax != p.MaxLength && p.MaxLength is int newMax)
+                    Replace(maxL.Right.Span, newMax.ToString(CultureInfo.InvariantCulture));
+            }
+            else if (p.MaxLength is int freshMax && !cs.Properties.ContainsKey("MaxLength"))
+            {
+                InsertProperty(cs, id, "MaxLength", freshMax.ToString(CultureInfo.InvariantCulture));
+            }
+
+            if (cs.Properties.TryGetValue("PasswordChar", out var pc))
+            {
+                var curPc = CurrentChar(pc);
+                if (p.PasswordChar is { Length: > 0 } newPc && (curPc == null || curPc.ToString() != newPc))
+                    Replace(pc.Right.Span, $"'{EscapeChar(newPc[0])}'");
+                else if (string.IsNullOrEmpty(p.PasswordChar) && curPc != null)
+                    Replace(pc.Right.Span, "'\\0'");
+            }
+            else if (!string.IsNullOrEmpty(p.PasswordChar) && !cs.Properties.ContainsKey("PasswordChar"))
+            {
+                InsertProperty(cs, id, "PasswordChar", $"'{EscapeChar(p.PasswordChar![0])}'");
+            }
+        }
+
+        // Leaf widget values and ranges
+        if (simpleType is "TrackBar" or "ProgressBar" or "NumericUpDown")
+        {
+            PatchRangeProperty(cs, id, "Minimum", p.Minimum, simpleType);
+            PatchRangeProperty(cs, id, "Maximum", p.Maximum, simpleType);
+            PatchRangeProperty(cs, id, "Value", p.Value, simpleType);
+        }
     }
 
     /// <summary>
@@ -967,6 +1022,94 @@ public sealed class Patcher
 
     private static bool? CurrentBool(AssignmentExpressionSyntax a) =>
         a.Right is LiteralExpressionSyntax l ? l.Token.Value is true : null;
+
+    private static int? CurrentInt(AssignmentExpressionSyntax a) =>
+        a.Right is LiteralExpressionSyntax l && l.Token.Value is int i ? i : null;
+
+    private static char? CurrentChar(AssignmentExpressionSyntax a) =>
+        a.Right is LiteralExpressionSyntax l && l.Token.Value is char c ? c : null;
+
+    private static string EscapeChar(char c) => c switch
+    {
+        '\'' => "\\'",
+        '\\' => "\\\\",
+        '\0' => "\\0",
+        '\n' => "\\n",
+        '\r' => "\\r",
+        '\t' => "\\t",
+        _ => c.ToString(),
+    };
+
+    private void PatchRangeProperty(DesignerDocument.ControlSyntax cs, string id, string propName, decimal? targetVal, string simpleType)
+    {
+        if (targetVal is not { } val) return;
+
+        if (cs.Properties.TryGetValue(propName, out var propAssign))
+        {
+            var curVal = CurrentDecimal(propAssign.Right);
+            if (curVal == val) return;
+
+            if (propAssign.Right is ObjectCreationExpressionSyntax oce && oce.ArgumentList is { } args)
+            {
+                if (args.Arguments.Count == 1 && args.Arguments[0].Expression is ArrayCreationExpressionSyntax ace && ace.Initializer is { } init && init.Expressions.Count == 4)
+                {
+                    var bits = decimal.GetBits(val);
+                    var indent = BodyIndent();
+                    var newArr = $"new int[] {{\n{indent}    {bits[0]},\n{indent}    {bits[1]},\n{indent}    {bits[2]},\n{indent}    {bits[3]}}}";
+                    Replace(ace.Span, newArr);
+                }
+                else
+                {
+                    ReplaceCreationArgs(propAssign.Right, $"({val.ToString(CultureInfo.InvariantCulture)})");
+                }
+            }
+            else
+            {
+                var formatted = simpleType == "NumericUpDown" && propAssign.Right.ToString().EndsWith("M", StringComparison.OrdinalIgnoreCase)
+                    ? val.ToString(CultureInfo.InvariantCulture) + "M"
+                    : ((int)val).ToString(CultureInfo.InvariantCulture);
+                Replace(propAssign.Right.Span, formatted);
+            }
+        }
+        else
+        {
+            var formatted = simpleType == "NumericUpDown"
+                ? $"{val.ToString(CultureInfo.InvariantCulture)}"
+                : $"{((int)val).ToString(CultureInfo.InvariantCulture)}";
+            InsertProperty(cs, id, propName, formatted);
+        }
+    }
+
+    private static decimal? CurrentDecimal(ExpressionSyntax e)
+    {
+        if (e is LiteralExpressionSyntax lit && lit.Token.Value is { } v)
+            try { return Convert.ToDecimal(v, CultureInfo.InvariantCulture); } catch { return null; }
+        if (e is PrefixUnaryExpressionSyntax { OperatorToken.RawKind: (int)SyntaxKind.MinusToken } pre
+            && pre.Operand is LiteralExpressionSyntax negLit && negLit.Token.Value is { } nv)
+            try { return -Convert.ToDecimal(nv, CultureInfo.InvariantCulture); } catch { return null; }
+        if (e is ObjectCreationExpressionSyntax oce && oce.ArgumentList?.Arguments.Count == 1)
+        {
+            var arg = oce.ArgumentList.Arguments[0].Expression;
+            if (arg is LiteralExpressionSyntax alit && alit.Token.Value is { } av)
+                try { return Convert.ToDecimal(av, CultureInfo.InvariantCulture); } catch { return null; }
+            if (arg is ArrayCreationExpressionSyntax ace && ace.Initializer is { } init)
+            {
+                var vals = new List<int>();
+                foreach (var expr in init.Expressions)
+                {
+                    if (expr is LiteralExpressionSyntax elit && elit.Token.Value is int iv)
+                        vals.Add(iv);
+                    else if (expr is PrefixUnaryExpressionSyntax { OperatorToken.RawKind: (int)SyntaxKind.MinusToken } neg
+                        && neg.Operand is LiteralExpressionSyntax nlit && nlit.Token.Value is int niv)
+                        vals.Add(-niv);
+                    else break;
+                }
+                if (vals.Count == 4)
+                    try { return new decimal(vals.ToArray()); } catch { return null; }
+            }
+        }
+        return null;
+    }
 
     private static bool IsThisReceiver(ExpressionSyntax e) =>
         e is MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax };

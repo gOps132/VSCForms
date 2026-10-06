@@ -457,6 +457,42 @@ else
   echo "$ITEMS_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
 fi
 
+sect "[roslyn] textBox: multiline, readOnly, maxLength, passwordChar insert and replace"
+work simple SimpleDialog
+python_tweak "
+for c in s['controls']:
+    if c['id']=='txtName':
+        c['properties'].update(multiline=True, readOnly=True, maxLength=64, passwordChar='*')" >/dev/null
+grep -qF 'this.txtName.Multiline = true;' "$FILE" \
+  && ok "Multiline inserted" || bad "Multiline not inserted"
+grep -qF 'this.txtName.ReadOnly = true;' "$FILE" \
+  && ok "ReadOnly inserted" || bad "ReadOnly not inserted"
+grep -qF 'this.txtName.MaxLength = 64;' "$FILE" \
+  && ok "MaxLength inserted" || bad "MaxLength not inserted"
+grep -qF "this.txtName.PasswordChar = '*';" "$FILE" \
+  && ok "PasswordChar inserted" || bad "PasswordChar not inserted"
+
+sect "[roslyn] leaf widgets: minimum, maximum, value insert and replace"
+work leafwidgets LeafForm
+python_tweak "
+for c in s['controls']:
+    if c['id']=='trackVolume':
+        c['properties'].update(minimum=10, maximum=100, value=50)
+    elif c['id']=='progressLoad':
+        c['properties'].update(minimum=0, maximum=200, value=75)
+    elif c['id']=='numQuantity':
+        c['properties'].update(minimum=5, maximum=50, value=25)" >/dev/null
+grep -qF 'this.trackVolume.Minimum = 10;' "$FILE" \
+  && ok "TrackBar Minimum inserted" || bad "TrackBar Minimum not inserted"
+grep -qF 'this.trackVolume.Maximum = 100;' "$FILE" \
+  && ok "TrackBar Maximum inserted" || bad "TrackBar Maximum not inserted"
+grep -qF 'this.trackVolume.Value = 50;' "$FILE" \
+  && ok "TrackBar Value inserted" || bad "TrackBar Value not inserted"
+grep -qF 'this.progressLoad.Maximum = 200;' "$FILE" \
+  && ok "ProgressBar Maximum inserted" || bad "ProgressBar Maximum not inserted"
+grep -qF 'this.numQuantity.Value = 25;' "$FILE" \
+  && ok "NumericUpDown Value inserted" || bad "NumericUpDown Value not inserted"
+
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
 # --------------------------------------------------------------- compile tier

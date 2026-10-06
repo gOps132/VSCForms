@@ -814,6 +814,30 @@
             box.appendChild(itemsContainer);
         }
 
+        // TextBox-specific properties
+        if (simple === 'TextBox' && !appearanceBlocked) {
+            box.appendChild(el('h4', null, 'TextBox'));
+            box.appendChild(boolField('Multiline', !!c.properties.multiline, appearanceBlocked,
+                (v) => setProp(c, 'multiline', v)));
+            box.appendChild(boolField('ReadOnly', !!c.properties.readOnly, appearanceBlocked,
+                (v) => setProp(c, 'readOnly', v)));
+            box.appendChild(numField('MaxLength', c.properties.maxLength ?? 32767, appearanceBlocked,
+                (v) => setProp(c, 'maxLength', v)));
+            box.appendChild(strField('PasswordChar', c.properties.passwordChar ?? '', appearanceBlocked,
+                (v) => setProp(c, 'passwordChar', v ? v.slice(0, 1) : '')));
+        }
+
+        // Leaf widget values and ranges (TrackBar, ProgressBar, NumericUpDown)
+        if (['TrackBar', 'ProgressBar', 'NumericUpDown'].includes(simple) && !appearanceBlocked) {
+            box.appendChild(el('h4', null, 'Range'));
+            box.appendChild(numField('Minimum', c.properties.minimum ?? 0, appearanceBlocked,
+                (v) => setProp(c, 'minimum', v)));
+            box.appendChild(numField('Maximum', c.properties.maximum ?? 100, appearanceBlocked,
+                (v) => setProp(c, 'maximum', v)));
+            box.appendChild(numField('Value', c.properties.value ?? 0, appearanceBlocked,
+                (v) => setProp(c, 'value', v)));
+        }
+
         // Rename is its own message, not a schema edit. A schema carrying a new id reads to the
         // engine as "old one deleted, new one inserted" — which would duplicate the control and
         // throw away its properties.
@@ -883,8 +907,12 @@
 
     function numField(label, value, disabled, onChange) {
         const f = el('div', 'field');
-        f.appendChild(el('label', null, label));
+        const id = 'f' + label.replace(/\s+/g, '');
+        const lab = el('label', null, label);
+        lab.setAttribute('for', id);
+        f.appendChild(lab);
         const i = document.createElement('input');
+        i.id = id;
         i.type = 'number'; i.value = String(value); i.disabled = !!disabled;
         i.addEventListener('change', () => {
             const v = parseInt(i.value, 10);
@@ -895,8 +923,12 @@
     }
     function strField(label, value, disabled, onChange) {
         const f = el('div', 'field');
-        f.appendChild(el('label', null, label));
+        const id = 'f' + label.replace(/\s+/g, '');
+        const lab = el('label', null, label);
+        lab.setAttribute('for', id);
+        f.appendChild(lab);
         const i = document.createElement('input');
+        i.id = id;
         i.type = 'text'; i.value = value; i.disabled = !!disabled;
         i.addEventListener('change', () => onChange(i.value));
         f.appendChild(i);

@@ -531,7 +531,74 @@ public sealed class DesignerDocument
             p.Items = items.ToArray();
         }
 
+        // TextBox-specific properties
+        if (simpleType == "TextBox")
+        {
+            if (cs.Properties.TryGetValue("Multiline", out var ml) && ml.Right is LiteralExpressionSyntax mll)
+                p.Multiline = mll.Token.Value is true;
+
+            if (cs.Properties.TryGetValue("ReadOnly", out var ro) && ro.Right is LiteralExpressionSyntax rol)
+                p.ReadOnly = rol.Token.Value is true;
+
+            if (cs.Properties.TryGetValue("MaxLength", out var maxL) && maxL.Right is LiteralExpressionSyntax maxLit
+                && maxLit.Token.Value is int maxV)
+                p.MaxLength = maxV;
+
+            if (cs.Properties.TryGetValue("PasswordChar", out var pc) && pc.Right is LiteralExpressionSyntax pcLit
+                && pcLit.Token.Value is char pcChar)
+                p.PasswordChar = pcChar.ToString();
+        }
+
+        // Leaf widget values and ranges (TrackBar, ProgressBar, NumericUpDown)
+        if (simpleType is "TrackBar" or "ProgressBar" or "NumericUpDown")
+        {
+            if (cs.Properties.TryGetValue("Minimum", out var min))
+                p.Minimum = ParseNumber(min.Right);
+
+            if (cs.Properties.TryGetValue("Maximum", out var max))
+                p.Maximum = ParseNumber(max.Right);
+
+            if (cs.Properties.TryGetValue("Value", out var val))
+                p.Value = ParseNumber(val.Right);
+        }
+
         return p;
+    }
+
+    private static decimal? ParseNumber(ExpressionSyntax e)
+    {
+        if (e is LiteralExpressionSyntax lit && lit.Token.Value is { } v)
+        {
+            try { return Convert.ToDecimal(v, CultureInfo.InvariantCulture); } catch { return null; }
+        }
+        if (e is PrefixUnaryExpressionSyntax { OperatorToken.RawKind: (int)SyntaxKind.MinusToken } pre
+            && pre.Operand is LiteralExpressionSyntax negLit && negLit.Token.Value is { } nv)
+        {
+            try { return -Convert.ToDecimal(nv, CultureInfo.InvariantCulture); } catch { return null; }
+        }
+        if (e is ObjectCreationExpressionSyntax oce && oce.ArgumentList?.Arguments.Count == 1)
+        {
+            var arg = oce.ArgumentList.Arguments[0].Expression;
+            if (arg is LiteralExpressionSyntax alit && alit.Token.Value is { } av)
+                try { return Convert.ToDecimal(av, CultureInfo.InvariantCulture); } catch { return null; }
+            if (arg is ArrayCreationExpressionSyntax ace && ace.Initializer is { } init)
+            {
+                var vals = new List<int>();
+                foreach (var expr in init.Expressions)
+                {
+                    if (expr is LiteralExpressionSyntax elit && elit.Token.Value is int iv)
+                        vals.Add(iv);
+                    else if (expr is PrefixUnaryExpressionSyntax { OperatorToken.RawKind: (int)SyntaxKind.MinusToken } neg
+                        && neg.Operand is LiteralExpressionSyntax nlit && nlit.Token.Value is int niv)
+                        vals.Add(-niv);
+                    else
+                        break;
+                }
+                if (vals.Count == 4)
+                    try { return new decimal(vals.ToArray()); } catch { return null; }
+            }
+        }
+        return null;
     }
 
     /// <summary>True when the expression is a bare `this` — i.e. a form-level member access.</summary>

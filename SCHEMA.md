@@ -98,6 +98,14 @@ interface ControlProperties {
   visible?: boolean
   enabled?: boolean
   font?: { size: number; bold: boolean; italic: boolean; family?: string }
+  items?: string[]             // ComboBox and ListBox items
+  multiline?: boolean          // TextBox only
+  readOnly?: boolean           // TextBox only
+  maxLength?: number           // TextBox only
+  passwordChar?: string        // TextBox only
+  minimum?: number             // TrackBar, ProgressBar, NumericUpDown
+  maximum?: number             // TrackBar, ProgressBar, NumericUpDown
+  value?: number               // TrackBar, ProgressBar, NumericUpDown
 }
 ```
 
