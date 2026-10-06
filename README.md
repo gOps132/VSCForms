@@ -82,6 +82,31 @@ MyDialog/
 No `Form1.resx`: the SDK template never emits one, so `InitializeComponent()` has no
 `ApplyResources` call and the form is editable rather than refused.
 
+## Roadmap
+
+Two open plans, both drafts, both sequenced. Read them before starting work — they explain
+*why* the order is what it is.
+
+| Plan | Covers | Depends on |
+|---|---|---|
+| [`docs/spec-canvas-qol.md`](docs/spec-canvas-qol.md) | zoom, pan, multi-select, align, copy, rulers | nothing |
+| [`docs/spec-features.md`](docs/spec-features.md) | control types, properties, structural features | nothing |
+
+Two findings from those plans are worth stating here rather than burying:
+
+- **QOL comes before features on purpose.** Zoom touches every coordinate calculation in the
+  canvas, because a scaled element's `getBoundingClientRect()` returns *scaled* pixels. Doing
+  that audit before ten new controls exist is strictly cheaper.
+- **The refusals matter more than the type table.** 41.6% of real forms use
+  `resources.ApplyResources` and 40.9% use `Dock`/`Anchor`; both are refused. So adding types
+  moves the editable population far less than it looks, and ADR 0003 is the highest-leverage
+  decision in the project rather than a limitation to work around.
+
+Already implemented, kept as records of why: [`spec-phase-2.md`](docs/spec-phase-2.md)
+(generator, declared dialects, rename), [`spec-rename.md`](docs/spec-rename.md),
+[`spec-example-compatibility.md`](docs/spec-example-compatibility.md) (uncommitted — §5 of the
+phase-2 spec supersedes its Part A).
+
 ## Documentation
 
 | | |

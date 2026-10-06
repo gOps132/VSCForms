@@ -1,6 +1,7 @@
 # Rename: MacForms → VSCForms
 
-**Status:** draft for review — no code changed.
+**Status:** IMPLEMENTED — commit `aecc50e`. Kept as the record of *why* the rename had to land
+before phase 2 and what would have broken otherwise.
 **Scope:** rename the project, the extension, the engine binary, and every internal identifier.
 Additive to [`spec-phase-2.md`](spec-phase-2.md); this must land **before** it, so phase 2 is
 written against the final name.

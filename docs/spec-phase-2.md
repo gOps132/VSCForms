@@ -1,6 +1,12 @@
 # Phase 2 — generator command, rename, declared dialects
 
-**Status:** draft for review — no code changed.
+**Status:** IMPLEMENTED — commits `f5944e4`, `b62df62`, `f174c87`, `e80ad92`. Kept as the
+record of *why* each item was shaped the way it was; where the implementation and this document
+disagree, the document is wrong and should be corrected.
+**Deviations:** `<ImplicitUsings>` and `dotnet_style_qualification_for_property` were specified
+here but are deliberately NOT read. See SCHEMA.md "Declared style" for why — in short, in a
+Designer File every qualified member is a control *field* reference, and we always emit
+fully-qualified type names, which compile either way.
 **Scope:** three independent items, sequenced below. Each is additive; none changes the
 Form Schema's meaning, and none touches a byte of any existing fixture.
 
