@@ -8,6 +8,9 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **ComboBox and ListBox `Items` collection**: parses `Items.AddRange` and `Items.Add`,
+  surgically patches replace, insert, and delete, and adds an interactive list editor
+  in the canvas inspector.
 - **Four leaf widgets**: `TrackBar`, `ProgressBar`, `NumericUpDown`, `DateTimePicker`. All are
   geometry-only — none renders text, so the canvas disables `Text` for them, and none has its
   value modelled, so the canvas shows no value rather than inventing one. Handled types: 14.
