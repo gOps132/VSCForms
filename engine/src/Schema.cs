@@ -57,6 +57,7 @@ public sealed class ControlProperties
     [JsonPropertyName("visible")] public bool? Visible { get; set; }
     [JsonPropertyName("enabled")] public bool? Enabled { get; set; }
     [JsonPropertyName("font")] public FontDto? Font { get; set; }
+    [JsonPropertyName("items")] public string[]? Items { get; set; }
 }
 
 public sealed class FontDto

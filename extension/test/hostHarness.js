@@ -761,6 +761,52 @@ setTimeout(async () => {
         }
     }
 
+    // ---- Items editor: verify it appears for ComboBox/ListBox and posts commits
+    const itemsTestSchema = {
+        ...schema,
+        controls: [
+            { id: 'cboTest', type: 'System.Windows.Forms.ComboBox', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 120, height: 23, text: '', tabIndex: 0, items: ['A', 'B'] } },
+            { id: 'btnTest', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 10, y: 50, width: 80, height: 23, text: 'Go', tabIndex: 1 } },
+        ],
+        analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        form: { name: 'TestForm', text: 'Test', clientSize: { width: 200, height: 200 }, className: 'TestForm' },
+    };
+    send({ type: 'load', data: itemsTestSchema });
+    await settled();
+    const cboNode = ctlNode('cboTest');
+    cboNode.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    // The items editor should be in the inspector - look for the input fields
+    const itemsEditor = ids.inspector.querySelector('.items-editor');
+    const itemsInputs = itemsEditor ? itemsEditor.querySelectorAll('input') : [];
+    check('Items editor shows input fields for existing items', itemsInputs.length >= 2, 'got ' + itemsInputs.length);
+    // Add a new item via the "add" button (last input is "New item…", last button is "+")
+    const addInputs = itemsEditor ? itemsEditor.querySelectorAll('input') : [];
+    const addInput = addInputs[addInputs.length - 1];
+    const addBtn = itemsEditor ? itemsEditor.querySelector('button') : null;
+    check('Items editor has add controls', addInput && addBtn, 'missing add controls');
+    addInput.value = 'C';
+    addBtn.dispatch('click', {});
+    // Wait for commit to be posted (debounced 220ms, wait longer to be safe)
+    await new Promise((r) => setTimeout(r, 400));
+    // Find the LATEST commit (find returns first, we want last)
+    const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+    const itemsCommit = commits[commits.length - 1];
+    const sentCbo = itemsCommit && itemsCommit.data.controls.find((c) => c.id === 'cboTest');
+    check('Adding an item posts a commit with updated items array',
+        sentCbo && Array.isArray(sentCbo.properties.items) && sentCbo.properties.items.length === 3 && sentCbo.properties.items[2] === 'C',
+        sentCbo ? JSON.stringify(sentCbo.properties.items) : 'no commit (commits: ' + commits.length + ')');
+
+    // Items editor should NOT appear for Button
+    const btnNode = ctlNode('btnTest');
+    btnNode.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    const btnItemsEditor = ids.inspector.querySelector('.items-editor');
+    const btnItemsInputs = btnItemsEditor ? btnItemsEditor.querySelectorAll('input') : [];
+    check('Items editor does NOT appear for Button', !btnItemsEditor || btnItemsInputs.length === 0, 'got ' + btnItemsInputs.length + ' inputs in items-editor');
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);

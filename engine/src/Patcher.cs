@@ -219,6 +219,42 @@ public sealed class Patcher
         // For an INSERT there is no existing spelling to preserve, so the fully qualified form
         // is emitted: it compiles in every dialect, including the templated one with implicit
         // usings, which is the only dialect where a short name would also work.
+
+        // Items — replace/insert/delete the entire Items block.
+        // The incoming items are in node.Properties.Items (string[] or null).
+        // The current items statements are in cs.ItemsStatements (List<ExpressionStatementSyntax>).
+        // We only handle this for ComboBox/ListBox (handled types with Items).
+        var simpleType = TypeTable.SimpleName(cs.Type);
+        var incomingItems = node.Properties.Items;
+        if ((simpleType == "ComboBox" || simpleType == "ListBox") && (incomingItems is { } || cs.ItemsStatements.Count > 0))
+        {
+            var currentItems = ExtractItemsFromStatements(cs.ItemsStatements);
+            var incomingArray = incomingItems ?? Array.Empty<string>();
+
+            if (incomingArray.Length == 0)
+            {
+                if (currentItems.Count > 0)
+                {
+                    // DELETE: remove the items statements
+                    DeleteItemsBlock(cs);
+                }
+                // else: both empty → no change
+            }
+            else if (currentItems.Count > 0)
+            {
+                if (!currentItems.SequenceEqual(incomingArray))
+                {
+                    // REPLACE: rewrite the entire items block as a single AddRange
+                    ReplaceItemsBlock(cs, incomingArray);
+                }
+                // else: items equal → no change
+            }
+            else
+            {
+                // INSERT: control has no items, add an AddRange
+                InsertItemsBlock(cs, id, incomingArray);
+            }
+        }
     }
 
     /// <summary>
@@ -421,6 +457,123 @@ public sealed class Patcher
         if (anchor is not null) InsertLineAfter(anchor, line);
         else if (cs.InitAssignment is not null) InsertLineAfter(cs.InitAssignment, line);
         else if (cs.AddCall is not null) InsertLineAfter(cs.AddCall, line);
+    }
+
+    // ----------------------------------------------------------- Items patching
+
+    /// <summary>Extracts items from a list of Items.Add / Items.AddRange statements.</summary>
+    private static List<string> ExtractItemsFromStatements(List<ExpressionStatementSyntax> stmts)
+    {
+        var items = new List<string>();
+        foreach (var stmt in stmts)
+        {
+            if (stmt.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax itemsCall } inv)
+            {
+                var method = itemsCall.Name.Identifier.Text;
+                if (method == "Add")
+                {
+                    if (inv.ArgumentList.Arguments.Count == 1
+                        && inv.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax lit
+                        && lit.IsKind(SyntaxKind.StringLiteralExpression))
+                        items.Add(lit.Token.ValueText);
+                }
+                else if (method == "AddRange")
+                {
+                    if (inv.ArgumentList.Arguments.Count == 1)
+                    {
+                        var argExpr = inv.ArgumentList.Arguments[0].Expression;
+                        if (argExpr is ArrayCreationExpressionSyntax ace && ace.Initializer is not null)
+                        {
+                            foreach (var element in ace.Initializer.Expressions)
+                                if (element is LiteralExpressionSyntax rangeLit
+                                    && rangeLit.IsKind(SyntaxKind.StringLiteralExpression))
+                                    items.Add(rangeLit.Token.ValueText);
+                        }
+                        else if (argExpr is ObjectCreationExpressionSyntax oce && oce.ArgumentList is not null)
+                        {
+                            foreach (var arg in oce.ArgumentList.Arguments)
+                                if (arg.Expression is LiteralExpressionSyntax rangeLit
+                                    && rangeLit.IsKind(SyntaxKind.StringLiteralExpression))
+                                    items.Add(rangeLit.Token.ValueText);
+                        }
+                    }
+                }
+            }
+        }
+        return items;
+    }
+
+    /// <summary>Replaces the entire items block (first to last statement) with a single AddRange.</summary>
+    private void ReplaceItemsBlock(DesignerDocument.ControlSyntax cs, string[] newItems)
+    {
+        if (cs.ItemsStatements.Count == 0) return;
+
+        // Safety: ensure no non-items statements lie between the first and last items statement.
+        var first = cs.ItemsStatements.First().SpanStart;
+        var last = cs.ItemsStatements.Last().Span.End;
+        var body = _doc.InitializeComponent?.Body;
+        if (body is not null)
+        {
+            foreach (var stmt in body.Statements)
+            {
+                if (stmt.SpanStart > first && stmt.Span.End < last && !cs.ItemsStatements.Contains(stmt))
+                    return; // another statement in between — bail out
+            }
+        }
+
+        var indent = BodyIndent();
+        var thisPrefix = This;
+        var id = cs.Id;
+        var line = $"{indent}{thisPrefix}{id}.Items.AddRange(new object[] {{ {FormatItemsArray(newItems)} }});{_eol}";
+
+        // Replace the span from first to last items statement
+        var span = new TextSpan(first, last - first);
+        Replace(span, line);
+    }
+
+    /// <summary>Deletes all items statements.</summary>
+    private void DeleteItemsBlock(DesignerDocument.ControlSyntax cs)
+    {
+        if (cs.ItemsStatements.Count == 0) return;
+
+        var first = cs.ItemsStatements.First().SpanStart;
+        var last = cs.ItemsStatements.Last().Span.End;
+
+        // Safety check: no other statements in between
+        var body = _doc.InitializeComponent?.Body;
+        if (body is not null)
+        {
+            foreach (var stmt in body.Statements)
+            {
+                if (stmt.SpanStart > first && stmt.Span.End < last && !cs.ItemsStatements.Contains(stmt))
+                    return;
+            }
+        }
+
+        var span = new TextSpan(first, last - first);
+        Replace(span, "");
+    }
+
+    /// <summary>Inserts an Items.AddRange for a control that has no items yet.</summary>
+    private void InsertItemsBlock(DesignerDocument.ControlSyntax cs, string id, string[] items)
+    {
+        var indent = BodyIndent();
+        var thisPrefix = This;
+        var line = $"{indent}{thisPrefix}{id}.Items.AddRange(new object[] {{ {FormatItemsArray(items)} }});{_eol}";
+
+        // Anchor after the last property assignment, or init, or add call — same as InsertProperty
+        var anchor = cs.Properties.Values
+            .OrderByDescending(a => a.SpanStart)
+            .FirstOrDefault();
+        if (anchor is not null) InsertLineAfter(anchor, line);
+        else if (cs.InitAssignment is not null) InsertLineAfter(cs.InitAssignment, line);
+        else if (cs.AddCall is not null) InsertLineAfter(cs.AddCall, line);
+    }
+
+    /// <summary>Formats items as C# string literals: "a", "b", "c" (without braces).</summary>
+    private static string FormatItemsArray(string[] items)
+    {
+        return string.Join(", ", items.Select(s => $"\"{s}\""));
     }
 
     private void PatchFormText(string newText)

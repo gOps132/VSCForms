@@ -381,6 +381,82 @@ grep -q 'this.dtpDue.Location = new System.Drawing.Point(60, 90);' "$FILE" \
   && ok "and that line is the new Location" || bad "the changed line is not the Location"
 
 echo
+# ---------------------------------------------------------------------------
+# Items — docs/spec-items.md. ComboBox/ListBox Items.AddRange / Items.Add.
+# ---------------------------------------------------------------------------
+sect "[roslyn] items: parse reads Items.AddRange and Items.Add in order"
+work items ItemsForm
+OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")
+echo "$OUT" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['schema']
+a=d['analysis']
+assert a['coveragePercent']==100, a
+assert len(d['controls'])==4, len(d['controls'])
+byid={c['id']:c for c in d['controls']}
+assert byid['cboRole']['properties']['items']==['Admin','User','Guest'], byid['cboRole']['properties']
+assert byid['lstTags']['properties']['items']==['urgent','important','normal'], byid['lstTags']['properties']
+assert byid['cboEmpty']['properties']['items']==[], byid['cboEmpty']['properties']
+assert 'items' not in byid['btnGo']['properties'], byid['btnGo']['properties']
+" && ok "items parsed correctly for ComboBox and ListBox" || bad "items not parsed"
+
+sect "[roslyn] items: replace rewrites the AddRange argument"
+work items ItemsForm
+python_tweak "
+for c in s['controls']:
+    if c['id']=='cboRole':
+        c['properties']['items']=['Manager','Staff']" >/dev/null
+grep -qF 'this.cboRole.Items.AddRange(new object[] { "Manager", "Staff" });' "$FILE" \
+  && ok "AddRange argument replaced" || bad "AddRange not replaced"
+# Check only the Items line for old items, not the Text property
+grep 'this.cboRole.Items.AddRange' "$FILE" | grep -qF '"Admin"' && bad "old item Admin still present in Items" || ok "old items removed from Items"
+
+sect "[roslyn] items: insert adds an AddRange to a control with none"
+work items ItemsForm
+python_tweak "
+for c in s['controls']:
+    if c['id']=='cboEmpty':
+        c['properties']['items']=['Red','Green','Blue']" >/dev/null
+grep -qF 'this.cboEmpty.Items.AddRange(new object[] { "Red", "Green", "Blue" });' "$FILE" \
+  && ok "AddRange inserted for control with no items" || bad "AddRange not inserted"
+
+sect "[roslyn] items: delete removes the items statements"
+work items ItemsForm
+python_tweak "
+for c in s['controls']:
+    if c['id']=='lstTags':
+        c['properties']['items']=[]" >/dev/null
+grep -qF 'lstTags.Items.Add' "$FILE" && bad "Items.Add still present after delete" \
+  || ok "items statements removed"
+
+sect "[roslyn] items: fixture compiles as a real WinForms project"
+ITEMS_SRC=$(mktemp -d)/items/src
+mkdir -p "$ITEMS_SRC"
+cp fixtures/items/ItemsForm.Designer.cs "$ITEMS_SRC/"
+{ echo "using System;"; echo "using System.Windows.Forms;"; echo "namespace FixtureItems {"
+  echo "  public partial class ItemsForm : Form {"
+  echo "    public ItemsForm() { InitializeComponent(); }"
+  echo "  }"; echo "}"; } > "$ITEMS_SRC/Form.cs"
+cat > "$ITEMS_SRC/I.csproj" <<'CSPROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+CSPROJ
+ITEMS_BUILD=$(cd "$ITEMS_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$ITEMS_BUILD" | grep -q "Build succeeded"; then
+  ok "the items fixture compiles as real WinForms controls"
+else
+  bad "items fixture FAILED to compile"
+  echo "$ITEMS_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
 # --------------------------------------------------------------- compile tier

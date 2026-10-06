@@ -765,6 +765,54 @@
                 (v) => setProp(c, 'font', Object.assign({}, f, { italic: v }))));
         }
 
+        // Items list editor — only for ComboBox and ListBox (they have Items in the schema)
+        if ((simple === 'ComboBox' || simple === 'ListBox') && !appearanceBlocked) {
+            box.appendChild(el('h4', null, 'Items'));
+            const itemsContainer = el('div', 'items-editor');
+            const items = c.properties.items ?? [];
+
+            function renderItems() {
+                itemsContainer.innerHTML = '';
+                items.forEach((item, idx) => {
+                    const row = el('div', 'item-row');
+                    const input = el('input', null, '');
+                    input.type = 'text';
+                    input.value = item;
+                    input.addEventListener('change', () => {
+                        items[idx] = input.value;
+                        commit();
+                    });
+                    const removeBtn = el('button', 'small danger', '×');
+                    removeBtn.addEventListener('click', () => {
+                        items.splice(idx, 1);
+                        commit();
+                    });
+                    row.appendChild(input);
+                    row.appendChild(removeBtn);
+                    itemsContainer.appendChild(row);
+                });
+                const addRow = el('div', 'item-row');
+                const addInput = el('input', null, '');
+                addInput.type = 'text';
+                addInput.placeholder = 'New item…';
+                const addBtn = el('button', 'small', '+');
+                addBtn.addEventListener('click', () => {
+                    const v = addInput.value.trim();
+                    if (v) {
+                        items.push(v);
+                        addInput.value = '';
+                        commit();
+                    }
+                });
+                addRow.appendChild(addInput);
+                addRow.appendChild(addBtn);
+                itemsContainer.appendChild(addRow);
+            }
+
+            renderItems();
+            box.appendChild(itemsContainer);
+        }
+
         // Rename is its own message, not a schema edit. A schema carrying a new id reads to the
         // engine as "old one deleted, new one inserted" — which would duplicate the control and
         // throw away its properties.

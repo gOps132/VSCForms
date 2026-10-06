@@ -64,6 +64,8 @@ public sealed class DesignerDocument
         public Dictionary<string, AssignmentExpressionSyntax> Properties { get; init; } = new();
         /// <summary>Container field name this control was added to, or null for top level.</summary>
         public string? Parent { get; set; }
+        /// <summary>Statements that populate Items (Add/AddRange). Order matters — it IS the list.</summary>
+        public List<ExpressionStatementSyntax> ItemsStatements { get; init; } = new();
     }
 
     // ---------------------------------------------------------------- parse
@@ -195,6 +197,17 @@ public sealed class DesignerDocument
                 {
                     existing.AddCall = es;
                     existing.Parent = container;
+                }
+                continue;
+            }
+
+            // x.Items.Add("a") / x.Items.AddRange(new object[] { "a", "b" })
+            // The receiver of .Items must be a control name (this.x or bare x).
+            if (TryParseItemsCall(es.Expression, out var itemsCtrl, out var itemsStmt))
+            {
+                if (index.TryGetValue(itemsCtrl, out var itemsTarget))
+                {
+                    itemsTarget.ItemsStatements.Add(itemsStmt);
                 }
                 continue;
             }
@@ -449,6 +462,75 @@ public sealed class DesignerDocument
         if (cs.Properties.TryGetValue("Font", out var fn))
             p.Font = ParseFont(fn.Right);
 
+        // Items — only for ComboBox and ListBox. Always emit the field (empty array if no items).
+        var simpleType = TypeTable.SimpleName(cs.Type);
+        if (simpleType == "ComboBox" || simpleType == "ListBox")
+        {
+            var items = new List<string>();
+            if (cs.ItemsStatements.Count > 0)
+            {
+                foreach (var stmt in cs.ItemsStatements)
+                {
+                    if (stmt.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax itemsCall } inv)
+                    {
+                        var method = itemsCall.Name.Identifier.Text;
+                        if (method == "Add")
+                        {
+                            if (inv.ArgumentList.Arguments.Count == 1
+                                && inv.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax addLit
+                                && addLit.IsKind(SyntaxKind.StringLiteralExpression))
+                            {
+                                items.Add(addLit.Token.ValueText);
+                            }
+                            else
+                            {
+                                return p; // unmodelled shape — omit items entirely
+                            }
+                        }
+                        else if (method == "AddRange")
+                        {
+                            if (inv.ArgumentList.Arguments.Count != 1) return p;
+                            var argExpr = inv.ArgumentList.Arguments[0].Expression;
+                            // Accept both ArrayCreationExpressionSyntax (new object[] { ... })
+                            // and ObjectCreationExpressionSyntax (rare but possible)
+                            if (argExpr is ArrayCreationExpressionSyntax ace && ace.Initializer is not null)
+                            {
+                                foreach (var element in ace.Initializer.Expressions)
+                                    if (element is LiteralExpressionSyntax rangeLit
+                                        && rangeLit.IsKind(SyntaxKind.StringLiteralExpression))
+                                        items.Add(rangeLit.Token.ValueText);
+                                    else
+                                        return p; // unmodelled element — omit items entirely
+                            }
+                            else if (argExpr is ObjectCreationExpressionSyntax oce && oce.ArgumentList is not null)
+                            {
+                                foreach (var arg in oce.ArgumentList.Arguments)
+                                    if (arg.Expression is LiteralExpressionSyntax rangeLit
+                                        && rangeLit.IsKind(SyntaxKind.StringLiteralExpression))
+                                        items.Add(rangeLit.Token.ValueText);
+                                    else
+                                        return p; // unmodelled element — omit items entirely
+                            }
+                            else
+                            {
+                                return p; // unmodelled shape — omit items entirely
+                            }
+                        }
+                        else
+                        {
+                            return p; // unmodelled method — omit items entirely
+                        }
+                    }
+                    else
+                    {
+                        return p; // unmodelled statement — omit items entirely
+                    }
+                }
+            }
+            // Always set Items, even if empty — so the canvas knows the editor is available
+            p.Items = items.ToArray();
+        }
+
         return p;
     }
 
@@ -608,6 +690,74 @@ public sealed class DesignerDocument
         // Returning true with a null child would make the caller skip the statement without
         // recording anything, silently losing the Controls.Add. Report it as unrecognised.
         return child is not null;
+    }
+
+    /// <summary>
+    /// Recognises `x.Items.Add(...)` and `x.Items.AddRange(...)` where x is a control name.
+    /// Returns the control name and the full statement (so we can rewrite/delete it later).
+    /// Only literal string arguments (for Add) or array-creation expressions (for AddRange)
+    /// with literal string elements are accepted — anything else makes the collection unmodelled.
+    /// </summary>
+    private static bool TryParseItemsCall(ExpressionSyntax expr, out string controlName, out ExpressionStatementSyntax stmt)
+    {
+        controlName = "";
+        stmt = null!;
+        // Shape: <recv>.Items.Add("x")  or  <recv>.Items.AddRange(new object[] { "x", "y" })
+        // where <recv> is `this.cbo` or bare `cbo`.
+        if (expr is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax itemsCall } inv) return false;
+        if (itemsCall.Name.Identifier.Text is not ("Add" or "AddRange")) return false;
+        if (itemsCall.Expression is not MemberAccessExpressionSyntax itemsAccess) return false;
+        if (itemsAccess.Name.Identifier.Text != "Items") return false;
+
+        if (!TryGetControlName(itemsAccess.Expression, out controlName)) return false;
+
+        // For now, only accept literal arrays/strings. Other shapes make the collection unmodelled.
+        var method = itemsCall.Name.Identifier.Text;
+        if (method == "Add")
+        {
+            if (inv.ArgumentList.Arguments.Count != 1) return false;
+            if (inv.ArgumentList.Arguments[0].Expression is not LiteralExpressionSyntax lit) return false;
+            if (!lit.IsKind(SyntaxKind.StringLiteralExpression)) return false;
+        }
+        else if (method == "AddRange")
+        {
+            if (inv.ArgumentList.Arguments.Count != 1) return false;
+            var argExpr = inv.ArgumentList.Arguments[0].Expression;
+            // Accept both: new object[] { ... } (ArrayCreationExpressionSyntax)
+            // and: new string[] { ... } (also ArrayCreationExpressionSyntax)
+            // as well as ObjectCreationExpressionSyntax for completeness
+            bool isArrayCreation = argExpr is ArrayCreationExpressionSyntax ace
+                && (ace.Type.ToString() is "object[]" or "string[]");
+            bool isObjectCreation = argExpr is ObjectCreationExpressionSyntax oce
+                && oce.Type.ToString() is "object[]" or "string[]";
+            if (!isArrayCreation && !isObjectCreation) return false;
+
+            if (argExpr is ArrayCreationExpressionSyntax ace2 && ace2.Initializer is not null)
+            {
+                foreach (var element in ace2.Initializer.Expressions)
+                    if (element is not LiteralExpressionSyntax lit || !lit.IsKind(SyntaxKind.StringLiteralExpression))
+                        return false;
+            }
+            else if (argExpr is ObjectCreationExpressionSyntax oce2 && oce2.ArgumentList is not null)
+            {
+                foreach (var arg in oce2.ArgumentList.Arguments)
+                    if (arg.Expression is not LiteralExpressionSyntax lit || !lit.IsKind(SyntaxKind.StringLiteralExpression))
+                        return false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // We need the full statement for rewriting later.
+        if (inv.Parent is ExpressionStatementSyntax parentStmt)
+        {
+            stmt = parentStmt;
+            return true;
+        }
+        else
+            return false;
     }
 
     /// <summary>Flattens the integer/whatever arguments of `new Point(a, b)` style calls.</summary>
