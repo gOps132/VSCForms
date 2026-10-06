@@ -9,9 +9,10 @@ still painful to use.
 
 ## 0. Facts this rests on (verified, not assumed)
 
-- **11 handled types** (`engine/src/TypeTable.cs`): Button, Label, TextBox, CheckBox,
-  RadioButton, ComboBox, ListBox, PictureBox, Panel, GroupBox, and Form. **Containers: Panel and
-  GroupBox only.**
+- **14 handled types** (`engine/src/TypeTable.cs`) plus `Form`, which is resolved separately:
+  Button, Label, TextBox, CheckBox, RadioButton, ComboBox, ListBox, PictureBox, Panel,
+  GroupBox, and now TrackBar, ProgressBar, NumericUpDown, DateTimePicker.
+  **Containers: Panel and GroupBox only** — the leaf widgets are handled but hold no children.
 - Measured over a 154-file corpus: **47.9% per-form coverage ceiling**, **16.2%** of forms fully
   representable, **41.6%** use `resources.ApplyResources`, **40.9%** use `Dock`/`Anchor`.
 - The two refusals dominate everything: a form using either is read-only regardless of which

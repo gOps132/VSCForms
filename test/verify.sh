@@ -202,6 +202,67 @@ CHANGED=$(diff /tmp/mf-font.cs "$FILE" | grep -c '^<')
 # patcher then silently discards. Both failures look like "it half works", which is the worst
 # shape a bug can have.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# THE TWO-LIST RULE, enforced across files.
+#
+# AGENTS.md requires a type in `TypeTable.Handled` AND in the canvas `HANDLED` list. The
+# failure is silent in both directions:
+#   engine knows, canvas does not  -> renders as a locked box with no stated reason
+#   canvas knows, engine does not  -> accepts input the patcher then discards (worse)
+#
+# A harness assertion can only compare the canvas against a LITERAL copy of the engine's list,
+# which proves canvas ⊆ literal and lets the literal drift. So this compares the two REAL
+# files. It is the only assertion here that can fail without anything else failing first.
+# ---------------------------------------------------------------------------
+sect "[roslyn] the engine type table and the canvas toolbox are the same set"
+python3 - <<'PYEOF'
+import re, sys
+
+engine = open('engine/src/TypeTable.cs', encoding='utf-8').read()
+canvas = open('extension/media/canvas.js', encoding='utf-8').read()
+
+handled = re.search(r'private static readonly Dictionary<string, string> Handled.*?\{(.*?)\n    \};',
+                    engine, re.S).group(1)
+e_types = set(re.findall(r'\["System\.Windows\.Forms\.(\w+)"\]', handled))
+
+palette = re.search(r'const HANDLED = \[(.*?)\n    \];', canvas, re.S).group(1)
+c_types = set(re.findall(r"\['(\w+)',\s*'t-", palette))
+
+missing = sorted(e_types - c_types)
+orphan = sorted(c_types - e_types)
+if missing:
+    print('  engine handles these but the canvas has no tool — they will render LOCKED:')
+    print('   ', ', '.join(missing))
+if orphan:
+    print('  the canvas offers tools the engine does NOT handle — edits will be discarded:')
+    print('   ', ', '.join(orphan))
+sys.exit(1 if (missing or orphan) else 0)
+PYEOF
+[ $? -eq 0 ] && ok "engine and canvas agree on all $(grep -c '\["System.Windows.Forms' engine/src/TypeTable.cs) handled types" \
+  || bad "the two type lists disagree"
+
+# And the prefixes must match too, or every generated control of that type is named ctl1, ctl2.
+python3 - <<'PYEOF'
+import re, sys
+engine = open('engine/src/TypeTable.cs', encoding='utf-8').read()
+canvas = open('extension/media/canvas.js', encoding='utf-8').read()
+
+e_prefix = dict(re.findall(r'"(\w+)" => "(\w+)"',
+    re.search(r'public static string Prefix.*?switch\s*(.*?);', engine, re.S).group(1)))
+c_prefix = dict((m[0], m[1]) for m in re.findall(r"(\w+):\s*'(\w+)'",
+    re.search(r'const PREFIX = \{(.*?)\n    \};', canvas, re.S).group(1)))
+
+palette = set(re.findall(r"\['(\w+)'", re.search(r'const HANDLED = \[(.*?)\n    \];', canvas, re.S).group(1)))
+bad = []
+for t in sorted(palette):
+    if e_prefix.get(t) != c_prefix.get(t):
+        bad.append(f"{t}: engine={e_prefix.get(t)} canvas={c_prefix.get(t)}")
+for b in bad: print('  ', b)
+sys.exit(1 if bad else 0)
+PYEOF
+[ $? -eq 0 ] && ok "every type allocates the same prefix in the engine and the canvas" \
+  || bad "prefixes disagree between the engine and the canvas"
+
 sect "[roslyn] leaf widgets read as modelled, not locked"
 work leafwidgets LeafForm
 # Re-parse: `work` stages a new file, so $OUT is stale from the previous section otherwise.

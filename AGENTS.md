@@ -127,9 +127,13 @@ Two tiers carry the most weight, and they are not the same kind of test:
   Note that `ArgumentList.Span` INCLUDES the parentheses — `Arguments.Span` is the bare list.
 - `fixtures/` is **hand-authored** on purpose — the measurement corpus is GPL-3.0 or
   unlicensed. See `fixtures/README.md`. Author fixtures so tests can assert exact diffs.
-- Measured limits, not guesses: **47.9%** per-form coverage ceiling for the 10 handled types,
-  **41.6%** of real forms use `ApplyResources`, **40.9%** use `Dock`/`Anchor`. Those drive the
-  refusals. Re-measure before changing the type table.
+- Measured limits, not guesses: **41.6%** of real forms use `ApplyResources`, **40.9%** use
+  `Dock`/`Anchor`. Those drive the refusals.
+- **The 47.9% per-form coverage ceiling is STALE.** It was measured at 10 handled types; there
+  are now 14 (`docs/spec-leaf-widgets.md`). Do not quote it as a current figure and do not infer
+  that adding types moves coverage much — §1 of `docs/spec-features.md` shows it does not,
+  because most forms that need a new type are refused anyway. Re-measuring needs a fresh
+  corpus, which is deliberately not committed (`fixtures/README.md`).
 - Type resolution is **purely syntactic** — we never load an assembly. A type we don't
   recognise is locked, not an error.
 - Adding a type to `engine/src/TypeTable.cs` requires a row in the canvas `HANDLED` list too,

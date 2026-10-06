@@ -101,7 +101,11 @@ fixture. One fixture per type is overkill for four geometry-only widgets, so:
 3. The fixture compiles as a real `net10.0-windows` WinForms project.
 4. The canvas palette offers all four; dropping one allocates `trk1`/`prg1`/`num1`/`dtp1`.
 5. The inspector disables `Text` for all four.
-6. `git grep -c` shows no remaining hardcoded "10 handled control types" anywhere.
+6. **The two type lists are compared against each other, in both directions, by
+   `test/verify.sh`** — the real `TypeTable.cs` against the real canvas `HANDLED` array, plus
+   their prefixes. A harness assertion could only compare the canvas against a literal copy of
+   the engine's list, which lets the copy drift; the other direction of §2's rule would have no
+   test at all. No hardcoded "10 handled control types" remains in any current document.
 7. `test/run-all.sh` is green, and the coverage figure reported for the new fixture is 100%.
 
 ## 7. Open decisions

@@ -234,9 +234,16 @@ Step 6 is the safety invariant. If the diff logic is ever unsure, it emits nothi
 
 Fully modelled — real widgets, editable properties:
 
+**14 control types**, plus `Form` itself:
+
 `Button`, `Label`, `TextBox`, `CheckBox`, `RadioButton`, `ComboBox`, `ListBox`,
 `PictureBox`, `Panel`, `GroupBox`, `TrackBar`, `ProgressBar`, `NumericUpDown`,
-`DateTimePicker`, `Form`
+`DateTimePicker`, and `Form`
+
+`Form` is listed here but is NOT in `TypeTable.Handled` — it is resolved separately, because a
+form is the document rather than a control inside it. So "14 types" means 14 rows in
+`Handled`, and 15 names on this list. The two must not be conflated; the count in
+`CONTEXT.md` is the `Handled` count.
 
 The four leaf widgets are **geometry-only**: none renders text, so the canvas disables the
 `Text` field for them, and none has `Minimum`/`Maximum`/`Value` modelled, so the canvas shows

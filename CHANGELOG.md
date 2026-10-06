@@ -5,6 +5,34 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+
+### Added
+
+- **Four leaf widgets**: `TrackBar`, `ProgressBar`, `NumericUpDown`, `DateTimePicker`. All are
+  geometry-only — none renders text, so the canvas disables `Text` for them, and none has its
+  value modelled, so the canvas shows no value rather than inventing one. Handled types: 14.
+- Canvas QOL: zoom (`Cmd/Ctrl`+wheel, `Cmd/Ctrl` `+`/`-`/`0`, `Fit`), space- and middle-drag
+  panning, rulers, a zoom bar, multi-select, marquee select, align, distribute,
+  `Cmd/Ctrl+D` duplicate, `Escape` to deselect, and a grid-snap toggle.
+- `VSCForms: New Project…` — generates a WinForms project with a classic `.sln` and opens it in
+  the canvas.
+- Control rename, which also updates the hand-written code-behind when the reference is
+  unambiguous and refuses when it is not (ADR 0008).
+- Appearance properties that were already in the schema but unreachable: `Enabled`, `Visible`,
+  `BackColor`, `Font`.
+- Dialect detection reads `dotnet_style_qualification_for_field` from a nearby `.editorconfig` —
+  advisory, and consulted only where the file itself carries no evidence.
+- A `layout` CI job comparing the Form Schema against real WinForms runtime `Bounds`
+  (Windows-only).
+
+### Notes
+
+- **The 47.9% per-form coverage ceiling predates the leaf widgets and has NOT been re-measured.**
+  It was measured at 10 handled types; it is now 14. The measurement corpus is deliberately not
+  committed (GPL-3.0 or unlicensed — see `fixtures/README.md`), so re-measuring needs a fresh
+  one. `AGENTS.md` says to re-measure before changing the type table; that was not possible
+  here, and the limitation is recorded rather than hidden behind an unchanged number.
+
 ## [0.1.0] — 2026-10-05
 
 First working prototype.

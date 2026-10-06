@@ -300,22 +300,17 @@ check('form size rendered', String(ids['form-size'].textContent) === '292 x 196'
 // the engine actually reports for a form containing every handled type.
 const tools = ids.toolbox.querySelectorAll('.tool');
 const toolNames = tools.map((t) => String(t.textContent || t._text || ''));
-check('the toolbox offers one tool per handled type', tools.length >= 10 && tools.length === new Set(toolNames).size,
+check('the toolbox has no duplicate entries', tools.length === new Set(toolNames).size,
     'got ' + tools.length + ': ' + toolNames.join(','));
 for (const t of ['TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker']) {
     check('the toolbox offers ' + t, toolNames.includes(t), toolNames.join(','));
 }
 
-// The two-list rule: every palette tool must be a type the ENGINE handles. A canvas-only entry
-// accepts input the patcher then silently discards, which is the worse half of that failure.
-const engineTypes = new Set([
-    'Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton', 'ComboBox', 'ListBox',
-    'PictureBox', 'Panel', 'GroupBox', 'TrackBar', 'ProgressBar', 'NumericUpDown',
-    'DateTimePicker',
-]);
-const orphan = toolNames.filter((n) => !engineTypes.has(n));
-check('every palette tool corresponds to an engine-handled type',
-    orphan.length === 0, 'canvas-only types: ' + orphan.join(','));
+// NOTE ON SCOPE: the two-list rule is enforced properly in test/verify.sh, which compares the
+// REAL engine file against the REAL canvas file in both directions. A check here could only
+// compare the canvas against a literal copy of the engine's list — which proves canvas ⊆ that
+// copy and lets the copy drift. Asserting the copy's contents instead would be a test that can
+// never fail, so this block deliberately asserts only what the DOM can honestly prove.
 
 // ---- committing an edit produces a commit message with a full schema
 ids.canvas.querySelectorAll('.ctl');
