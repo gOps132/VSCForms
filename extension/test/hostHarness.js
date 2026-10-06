@@ -785,7 +785,8 @@ setTimeout(async () => {
     // Add a new item via the "add" button (last input is "New item…", last button is "+")
     const addInputs = itemsEditor ? itemsEditor.querySelectorAll('input') : [];
     const addInput = addInputs[addInputs.length - 1];
-    const addBtn = itemsEditor ? itemsEditor.querySelector('button') : null;
+    const addButtons = itemsEditor ? itemsEditor.querySelectorAll('button') : [];
+    const addBtn = addButtons[addButtons.length - 1];
     check('Items editor has add controls', addInput && addBtn, 'missing add controls');
     addInput.value = 'C';
     addBtn.dispatch('click', {});

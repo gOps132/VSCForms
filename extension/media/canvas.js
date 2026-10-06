@@ -769,7 +769,8 @@
         if ((simple === 'ComboBox' || simple === 'ListBox') && !appearanceBlocked) {
             box.appendChild(el('h4', null, 'Items'));
             const itemsContainer = el('div', 'items-editor');
-            const items = c.properties.items ?? [];
+            if (!c.properties.items) c.properties.items = [];
+            const items = c.properties.items;
 
             function renderItems() {
                 itemsContainer.innerHTML = '';

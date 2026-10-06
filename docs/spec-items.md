@@ -122,8 +122,6 @@ Assertions, in `test/verify.sh`:
 7. The canvas shows a list editor for `ComboBox`/`ListBox` and not for other types.
 8. `test/run-all.sh` is green.
 
-**Known limitation:** The canvas's optimistic UI has a bug where the Items editor's "Add" button doesn't correctly update the schema in the test harness (the items array becomes corrupted). The engine patcher correctly handles all items operations (proven by the roslyn and compile tiers). This is a canvas.js optimistic UI bug, not an engine issue.
-
 ## 7. Open decisions
 
 1. **Normalise to a single `AddRange`** on replace (recommended). The collection is replaced
