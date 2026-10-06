@@ -226,7 +226,7 @@ const schema = {
         { id: 'btnSubmit', type: 'System.Windows.Forms.Button', children: [], locked: false,
           properties: { x: 96, y: 154, width: 84, height: 27, text: 'Submit', tabIndex: 3 } },
         { id: 'ThirdPartyGauge', type: 'ThirdParty.Widgets.GaugeControl', children: [], locked: true,
-          lockedReason: 'GaugeControl is not one of the 10 handled control types.',
+          lockedReason: 'GaugeControl is not one of the handled control types, so its appearance is not modelled.',
           properties: { x: 10, y: 10, width: 80, height: 28 } },
     ],
     analysis: {
@@ -295,8 +295,27 @@ check('form title rendered', String(ids['form-title-text'].textContent) === 'Sim
 check('form size rendered', String(ids['form-size'].textContent) === '292 x 196');
 
 // toolbox
+// The count is asserted, but hardcoding it means every added type breaks a test that was
+// never about the count. Assert the SHAPE instead, and cross-check the number against what
+// the engine actually reports for a form containing every handled type.
 const tools = ids.toolbox.querySelectorAll('.tool');
-check('toolbox lists the 10 handled types', tools.length === 10, 'got ' + tools.length);
+const toolNames = tools.map((t) => String(t.textContent || t._text || ''));
+check('the toolbox offers one tool per handled type', tools.length >= 10 && tools.length === new Set(toolNames).size,
+    'got ' + tools.length + ': ' + toolNames.join(','));
+for (const t of ['TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker']) {
+    check('the toolbox offers ' + t, toolNames.includes(t), toolNames.join(','));
+}
+
+// The two-list rule: every palette tool must be a type the ENGINE handles. A canvas-only entry
+// accepts input the patcher then silently discards, which is the worse half of that failure.
+const engineTypes = new Set([
+    'Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton', 'ComboBox', 'ListBox',
+    'PictureBox', 'Panel', 'GroupBox', 'TrackBar', 'ProgressBar', 'NumericUpDown',
+    'DateTimePicker',
+]);
+const orphan = toolNames.filter((n) => !engineTypes.has(n));
+check('every palette tool corresponds to an engine-handled type',
+    orphan.length === 0, 'canvas-only types: ' + orphan.join(','));
 
 // ---- committing an edit produces a commit message with a full schema
 ids.canvas.querySelectorAll('.ctl');
@@ -707,6 +726,45 @@ setTimeout(async () => {
     await settled();
     check('distribute horizontally posts a commit too — the pair is symmetric',
         sandbox.__sent.some((m) => m.type === 'commit'), 'dist-h is missing while dist-v exists');
+
+    // ---- leaf widgets: dropping one, and the defaults it lands with.
+    // A wrong default size is a silent quality bug: no tier sees it, the user just resizes
+    // immediately, and every resize is a real write to their file.
+    const LEAF = [
+        ['TrackBar', 'trk', 120, 56],
+        ['ProgressBar', 'prg', 140, 20],
+        ['NumericUpDown', 'num', 100, 22],
+        ['DateTimePicker', 'dtp', 120, 23],
+    ];
+    for (const [simple, prefix, w, h] of LEAF) {
+        send({ type: 'load', data: schema });
+        await settled();
+        const box = canvasEl.getBoundingClientRect();
+        sandbox.__sent.length = 0;
+        stage.dispatch('drop', {
+            clientX: box.left + 40, clientY: box.top + 40,
+            dataTransfer: { getData: (k) => (k === 'text/vscforms-control' ? simple : '') },
+            preventDefault() { },
+        });
+        await settled();
+        const dropCommit = sandbox.__sent.find((m) => m.type === 'commit');
+        const added = dropCommit && dropCommit.data.controls.find((x) => x.type.endsWith('.' + simple));
+        check(`${simple} drops with the ${prefix} prefix`,
+            added && added.id.startsWith(prefix), added ? added.id : 'not added');
+        check(`${simple} lands at the design-time default ${w}x${h}`,
+            added && added.properties.width === w && added.properties.height === h,
+            added ? `${added.properties.width}x${added.properties.height}` : 'n/a');
+
+        // None of the four renders text, so Text must be DISABLED — a field that silently goes
+        // nowhere is worse than no field, because it looks like it works.
+        if (added) {
+            ctlNode(added.id).dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+            const textInput = insInputs().find((i) => i.type === 'text' && i.value === (added.properties.text || ''));
+            check(`${simple} disables the Text field it cannot honour`,
+                !!textInput && textInput.disabled === true,
+                textInput ? 'disabled=' + textInput.disabled : 'no text input found');
+        }
+    }
 
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);

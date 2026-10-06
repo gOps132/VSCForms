@@ -205,6 +205,43 @@ body { display: flex; flex-direction: column; }
 .ctl.t-panel,.ctl.t-groupbox { background: transparent; border: 1px dashed var(--border); }
 .ctl.t-groupbox { padding-top: 6px; }
 
+/* ------------------------------------------------------------- leaf widgets
+   Structural diagrams, not pixel reproductions (ADR 0006). The goal is a shape the user
+   recognises at a glance. NONE of these shows a value: Minimum/Maximum/Value/Format are not
+   in the schema, so any number on screen would be inventing state about the user's form. */
+.ctl.t-trackbar, .ctl.t-progressbar, .ctl.t-numericupdown, .ctl.t-datetimepicker {
+  background: var(--vscode-input-background, #2a2a2a);
+}
+.ctl.t-trackbar::before {
+  content: ''; position: absolute; left: 6px; right: 6px; top: 50%;
+  height: 4px; margin-top: -2px; border-radius: 2px;
+  background: var(--border);
+}
+.ctl.t-trackbar::after {
+  content: ''; position: absolute; left: 30%; top: 50%;
+  width: 9px; height: 18px; margin-top: -9px; border-radius: 2px;
+  background: var(--vscode-focusBorder, #0a84ff);
+}
+/* A static partial fill. It is a diagram of the TYPE, not of the value — Value is not modelled,
+   so any proportion we chose would be a claim about the form we cannot support. */
+.ctl.t-progressbar::before {
+  content: ''; position: absolute; left: 2px; top: 2px; bottom: 2px;
+  width: 55%; border-radius: 2px;
+  background: var(--vscode-progressBar-background, #0a84ff);
+}
+.ctl.t-numericupdown::after, .ctl.t-datetimepicker::after {
+  content: ''; position: absolute; right: 2px; top: 2px; bottom: 2px; width: 16px;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  border-left: 1px solid var(--border); border-radius: 0 2px 2px 0;
+}
+.ctl.t-numericupdown::before, .ctl.t-datetimepicker::before {
+  content: ''; position: absolute; right: 5px; top: 50%; width: 8px; height: 8px;
+  margin-top: -6px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-bottom: 5px solid var(--fg);
+}
+.ctl.t-datetimepicker::before { border-bottom: 0; border-top: 5px solid var(--fg); }
+
 /* Locked = parsed fine, deliberately not modelled. Never editable, never rewritten. */
 .ctl.locked {
   background: var(--locked); border: 1px dashed var(--muted);

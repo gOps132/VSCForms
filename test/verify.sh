@@ -195,6 +195,100 @@ grep -qE "this\.btnSubmit\.Font = new System\.Drawing\.Font\(\"Segoe UI\", 14F, 
 CHANGED=$(diff /tmp/mf-font.cs "$FILE" | grep -c '^<')
 [ "$CHANGED" -eq 1 ] && ok "Font changed exactly one line" || bad "Font changed $CHANGED lines"
 
+# ---------------------------------------------------------------------------
+# Leaf widgets — docs/spec-leaf-widgets.md. Four types, and the risk is not the engine: it is
+# the TWO-LIST RULE. A type in TypeTable but not in the canvas HANDLED list renders as a locked
+# box with no stated reason; a type in the canvas but not the engine accepts input that the
+# patcher then silently discards. Both failures look like "it half works", which is the worst
+# shape a bug can have.
+# ---------------------------------------------------------------------------
+sect "[roslyn] leaf widgets read as modelled, not locked"
+work leafwidgets LeafForm
+# Re-parse: `work` stages a new file, so $OUT is stale from the previous section otherwise.
+send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)['schema']
+ids={c['id'] for c in s['controls']}
+for want in ['trackVolume','progressLoad','numQuantity','dtpDue']:
+    assert want in ids, (want, sorted(ids))
+locked=[c['id'] for c in s['controls'] if c['locked']]
+assert not locked, 'a SUPPORTED type is rendering as LOCKED: ' + str(locked)
+assert s['analysis']['coveragePercent']==100.0, s['analysis']
+" && ok "all four parse as modelled at 100% coverage" || bad "leaf widgets not modelled"
+
+sect "[roslyn] adding each leaf widget emits the right lines and prefix"
+for spec in "System.Windows.Forms.TrackBar:trk:120:56" \
+            "System.Windows.Forms.ProgressBar:prg:140:20" \
+            "System.Windows.Forms.NumericUpDown:num:100:22" \
+            "System.Windows.Forms.DateTimePicker:dtp:120:23"; do
+  IFS=':' read -r type prefix w h <<< "$spec"
+  simple="${type##*.}"
+  work leafwidgets LeafForm
+  python_tweak "
+s['controls'].append({'id':'new$prefix','type':'$type','children':[],
+ 'properties':{'x':400,'y':300,'width':$w,'height':$h,'tabIndex':9},'locked':False})
+s['analysis']['modelledCount']+=1" >/dev/null
+  MISSING=""
+  for part in "private $type new$prefix;" \
+              "new$prefix = new $type();" \
+              "new$prefix.Location = new System.Drawing.Point(400, 300);" \
+              "new$prefix.Name = \"new$prefix\";" \
+              "new$prefix.Size = new System.Drawing.Size($w, $h);" \
+              "Controls.Add(this.new$prefix);"; do
+    grep -qF "$part" "$FILE" || MISSING="$MISSING"$'\n'"        - $part"
+  done
+  [ -z "$MISSING" ] && ok "$simple added with prefix $prefix" || bad "$simple add is missing parts:$MISSING"
+done
+
+sect "[roslyn] the leaf widget fixture compiles as a real WinForms project"
+# The compile gate is the only check that catches a wrong emitted property or an illegal
+# default size — both of which produce a diff that looks entirely reasonable.
+LEAF_SRC=$(mktemp -d)/leaf/src
+mkdir -p "$LEAF_SRC"
+cp fixtures/leafwidgets/LeafForm.Designer.cs "$LEAF_SRC/"
+{ echo "using System;"; echo "using System.Windows.Forms;"; echo "namespace FixtureLeafWidgets {"
+  echo "  public partial class LeafForm : Form {"
+  echo "    public LeafForm() { InitializeComponent(); }"
+  echo "  }"; echo "}"; } > "$LEAF_SRC/Form.cs"
+cat > "$LEAF_SRC/L.csproj" <<'CSPROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+CSPROJ
+LEAF_BUILD=$(cd "$LEAF_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$LEAF_BUILD" | grep -q "Build succeeded"; then
+  ok "the four leaf widgets compile as real WinForms controls"
+else
+  bad "leaf widget fixture FAILED to compile"
+  echo "$LEAF_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+
+sect "[roslyn] an unmodelled property of a leaf widget is left alone"
+# DateTimePicker.Value and .CustomFormat are NOT in the schema. Moving the control must not
+# disturb them — they survive because we never touch what we do not model (ADR 0001).
+work leafwidgets LeafForm
+cp "$FILE" /tmp/mf-leaf.cs
+python_tweak "
+for c in s['controls']:
+    if c['id']=='dtpDue': c['properties'].update(x=60,y=90)" >/dev/null
+grep -q 'this.dtpDue.Value = new DateTime(2026, 10, 6);' "$FILE" \
+  && ok "DateTimePicker.Value survives a move untouched" || bad "Value was disturbed"
+grep -q 'this.dtpDue.CustomFormat = "yyyy-MM-dd";' "$FILE" \
+  && ok "DateTimePicker.CustomFormat survives a move untouched" || bad "CustomFormat was disturbed"
+CHANGED=$(diff /tmp/mf-leaf.cs "$FILE" | grep -c '^<')
+# Exactly one: the Location line. Anything more means we touched a property we do not model.
+[ "$CHANGED" -eq 1 ] && ok "moving dtpDue changed exactly one line — its Location" \
+  || bad "move changed $CHANGED lines, expected 1"
+grep -q 'this.dtpDue.Location = new System.Drawing.Point(60, 90);' "$FILE" \
+  && ok "and that line is the new Location" || bad "the changed line is not the Location"
+
 echo
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

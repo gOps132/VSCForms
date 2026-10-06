@@ -9,7 +9,7 @@ partial class WiredForm
     /// </summary>
     private System.Windows.Forms.Button btnCalculate;
     private System.Windows.Forms.Label lblResult;
-    private System.Windows.Forms.TrackBar trackLevel;
+    private System.Windows.Forms.TabControl tabDetails;
 
     /// <summary>
     ///  Clean up any resources being used.
@@ -34,8 +34,7 @@ partial class WiredForm
         this.components = new System.ComponentModel.Container();
         this.btnCalculate = new System.Windows.Forms.Button();
         this.lblResult = new System.Windows.Forms.Label();
-        this.trackLevel = new System.Windows.Forms.TrackBar();
-        this.trackLevel.BeginInit();
+        this.tabDetails = new System.Windows.Forms.TabControl();
         this.SuspendLayout();
         //
         // btnCalculate
@@ -57,15 +56,13 @@ partial class WiredForm
         this.lblResult.TabIndex = 1;
         this.lblResult.Text = "0.00";
         //
-        // trackLevel
+        // tabDetails
         //
-        this.trackLevel.Location = new System.Drawing.Point(120, 130);
-        this.trackLevel.Name = "trackLevel";
-        this.trackLevel.Size = new System.Drawing.Size(200, 56);
-        this.trackLevel.TabIndex = 2;
-        this.trackLevel.TickStyle = System.Windows.Forms.TickStyle.None;
-        this.trackLevel.Scroll += new System.EventHandler(this.trackLevel_Scroll);
-        this.trackLevel.EndInit();
+        this.tabDetails.Location = new System.Drawing.Point(120, 130);
+        this.tabDetails.Name = "tabDetails";
+        this.tabDetails.Size = new System.Drawing.Size(200, 120);
+        this.tabDetails.TabIndex = 2;
+        this.tabDetails.SelectedIndexChanged += new System.EventHandler(this.tabDetails_SelectedIndexChanged);
         this.ResumeLayout(false);
         this.PerformLayout();
         //

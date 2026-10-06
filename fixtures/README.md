@@ -60,3 +60,21 @@ incidental — it is exactly what happens when a user opens a real file.
   being violated.
 - **`malformed/`** — empty value, a line with no separator, a `true:warning` severity form, and
   a leading `=`. None may be fatal, and none may be read as intent.
+
+## The leaf-widget fixture
+
+`leafwidgets/LeafForm.Designer.cs` carries all four Phase A types — `TrackBar`, `ProgressBar`,
+`NumericUpDown`, `DateTimePicker` — in one classic-dialect file, and exists for
+`docs/spec-leaf-widgets.md`.
+
+It is one fixture rather than four because all four are geometry-only leaves: they differ in
+their prefix and default size, not in any parsing behaviour. Splitting them would duplicate the
+same assertions four times.
+
+**Its `Controls.Add` calls are load-bearing.** Real Visual Studio output always emits one per
+control, and without them the parser has no way to know a control belongs to the form — the
+first version of this fixture omitted them and all four controls silently vanished from the
+schema. That is the fixture-fidelity trap described above, hit again by the same author.
+
+Its `DateTimePicker` also carries `Value`, `Format` and `CustomFormat`, none of which are in the
+schema, so the rename and move assertions can prove they survive untouched.

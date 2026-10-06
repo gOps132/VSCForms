@@ -32,15 +32,16 @@ a real Windows `HWND`, so a webview cannot execute it. See
 What that means in practice:
 
 - Forms using `Dock`/`Anchor` or `resources.ApplyResources` open **read-only**, with the reason.
-- Controls outside 10 types render as **locked boxes**; their code is never touched.
+- Controls outside our 14 types render as **locked boxes**; their code is never touched.
 - **Renaming is refused rather than guessed** when the code-behind holds a reference we cannot
   resolve unambiguously — see [ADR 0008](docs/adr/0008-rename-boundary.md).
 - The canvas is a **structural diagram** of what the serializer will emit, not a preview of
   what Windows will draw.
 - **No event scaffolding** in v1.
 
-Measured over 154 real Designer files: **47.9%** per-form coverage ceiling. A well-structured
-real-world form reaches **91.4%**.
+Measured over 154 real Designer files at **10** handled types: **47.9%** per-form coverage
+ceiling. Four leaf widgets have been added since, and that figure has **not** been re-measured —
+the corpus is not committed. A well-structured real-world form reaches **91.4%**.
 
 ## Verify
 

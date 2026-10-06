@@ -235,9 +235,14 @@ Step 6 is the safety invariant. If the diff logic is ever unsure, it emits nothi
 Fully modelled — real widgets, editable properties:
 
 `Button`, `Label`, `TextBox`, `CheckBox`, `RadioButton`, `ComboBox`, `ListBox`,
-`PictureBox`, `Panel`, `GroupBox`, `Form`
+`PictureBox`, `Panel`, `GroupBox`, `TrackBar`, `ProgressBar`, `NumericUpDown`,
+`DateTimePicker`, `Form`
 
-Everything else (~37 distinct types measured across a 154-file corpus) renders as a locked
+The four leaf widgets are **geometry-only**: none renders text, so the canvas disables the
+`Text` field for them, and none has `Minimum`/`Maximum`/`Value` modelled, so the canvas shows
+no value. Both are deliberate — see `docs/spec-leaf-widgets.md` §3.
+
+Everything else (~33 distinct types measured across a 154-file corpus) renders as a locked
 grey placeholder box labelled with its type name. This is intentional and documented, not a
 gap to be papered over.
 

@@ -68,7 +68,14 @@ in the canvas `HANDLED` list.** A type in only one of the two renders as a locke
 way to tell why — the exact symptom `AGENTS.md` calls out. So the cost per type is two rows
 plus a renderer, and forgetting the second row is the likely failure.
 
-### Phase A — leaf widgets (S, no schema change, no patcher work)
+### Phase A — leaf widgets (S, no schema change, no patcher work) — DONE
+
+Implemented; see `spec-leaf-widgets.md` for the executable detail. `TrackBar`, `ProgressBar`,
+`NumericUpDown` and `DateTimePicker` are handled, and the fixture compiles.
+
+**The measured 47.9% ceiling is now stale.** It was taken at 10 handled types. The corpus is
+deliberately not committed, so re-measuring needs a fresh one — noted in CHANGELOG, README and
+CONTEXT rather than quietly left as a claim about 14 types.
 
 Ordered by how often they appear in the editable population:
 
@@ -161,7 +168,8 @@ churn on every edit, which is exactly what the dialect work exists to prevent.
 
 Each step is independently shippable and independently testable.
 
-1. **QOL** (`spec-canvas-qol.md`) — zoom first, alone. It touches every coordinate calculation,
+0. ~~**QOL** (`spec-canvas-qol.md`)~~ — done.
+1. ~~**Properties already in the schema**~~ — done, minus `Items`. It touches every coordinate calculation,
    so doing it before new controls exist is strictly cheaper.
 2. **Properties that are already in the schema** (§3) — cheapest real capability here. No schema
    change, no ADR, and it makes every form more editable the moment it lands.

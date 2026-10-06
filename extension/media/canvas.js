@@ -138,12 +138,28 @@
         ['PictureBox', 't-picturebox', '#5a5a5a'],
         ['Panel', 't-panel', '#6b6b6b'],
         ['GroupBox', 't-groupbox', '#6b6b6b'],
+        // Leaf widgets — docs/spec-leaf-widgets.md. Every row here needs a matching row in
+        // engine/src/TypeTable.cs: a type the engine knows but the canvas does not renders as a
+        // locked box with no stated reason, and one the canvas knows but the engine does not
+        // accepts input the patcher then silently discards.
+        ['TrackBar', 't-trackbar', '#7ec7ff'],
+        ['ProgressBar', 't-progressbar', '#3a3d41'],
+        ['NumericUpDown', 't-numericupdown', '#2a2a2a'],
+        ['DateTimePicker', 't-datetimepicker', '#2a2a2a'],
     ];
     const PREFIX = {
         Button: 'btn', Label: 'lbl', TextBox: 'txt', CheckBox: 'chk',
         RadioButton: 'rad', ComboBox: 'cbo', ListBox: 'lst', PictureBox: 'pic',
         Panel: 'pnl', GroupBox: 'grp',
+        TrackBar: 'trk', ProgressBar: 'prg', NumericUpDown: 'num', DateTimePicker: 'dtp',
     };
+
+    /**
+     * Types that render NO text. `Text` is disabled for these rather than wired to a property
+     * that does not exist on the control — an editable field that goes nowhere is worse than no
+     * field, because it looks like it works.
+     */
+    const NO_TEXT = new Set(['Panel', 'TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker']);
 
     /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
     const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
@@ -716,7 +732,8 @@
         box.appendChild(numField('Y', c.properties.y, appearanceBlocked, (v) => setProp(c, 'y', v)));
         box.appendChild(numField('Width', c.properties.width, appearanceBlocked, (v) => setProp(c, 'width', v)));
         box.appendChild(numField('Height', c.properties.height, appearanceBlocked, (v) => setProp(c, 'height', v)));
-        box.appendChild(strField('Text', c.properties.text ?? '', appearanceBlocked || simple === 'Panel',
+        box.appendChild(strField('Text', c.properties.text ?? '',
+            appearanceBlocked || NO_TEXT.has(simple),
             (v) => setProp(c, 'text', v)));
         box.appendChild(numField('TabIndex', c.properties.tabIndex ?? 0, appearanceBlocked,
             (v) => setProp(c, 'tabIndex', v)));
@@ -865,6 +882,12 @@
             PictureBox: { w: 100, h: 100, text: '' },
             Panel: { w: 200, h: 120, text: '' },
             GroupBox: { w: 220, h: 160, text: 'GroupBox' },
+            // WinForms design-time defaults. A control dropped at an arbitrary size is one the
+            // user immediately resizes — and every resize is a real write to their file.
+            TrackBar: { w: 120, h: 56, text: '' },
+            ProgressBar: { w: 140, h: 20, text: '' },
+            NumericUpDown: { w: 100, h: 22, text: '' },
+            DateTimePicker: { w: 120, h: 23, text: '' },
         }[simple] || { w: 100, h: 30, text: simple };
 
         const node = {

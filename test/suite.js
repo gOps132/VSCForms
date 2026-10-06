@@ -251,12 +251,12 @@ async function run(vscode) {
         const codeBehind = path.join(dir, 'Wired.cs');
         const before = [fs.readFileSync(designer, 'utf8'), fs.readFileSync(codeBehind, 'utf8')];
 
-        // `trackLevel` is still a control in this form, so this name is genuinely taken.
+        // `tabDetails` is still a control in this form, so this name is genuinely taken.
         const r = await vscode.commands.executeCommand(
-            'vscforms._testSeam', 'rename', { designer, from: 'btnCompute', to: 'trackLevel' });
+            'vscforms._testSeam', 'rename', { designer, from: 'btnCompute', to: 'tabDetails' });
         assert.ok(!r.ok, 'a duplicate name should have been refused');
         assert.strictEqual(r.errorKind, 'conflict');
-        assert.ok(/trackLevel/.test(r.error), 'the refusal should name the conflict: ' + r.error);
+        assert.ok(/tabDetails/.test(r.error), 'the refusal should name the conflict: ' + r.error);
 
         // A refusal is only trustworthy if NOTHING was written. Half a rename would leave the
         // two files disagreeing, which is the one outcome worse than not renaming at all.

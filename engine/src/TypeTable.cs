@@ -22,6 +22,17 @@ public static class TypeTable
         ["System.Windows.Forms.PictureBox"] = "picturebox",
         ["System.Windows.Forms.Panel"] = "panel",
         ["System.Windows.Forms.GroupBox"] = "groupbox",
+        // Leaf widgets — docs/spec-leaf-widgets.md. Geometry-only: none of them renders text,
+        // so the inspector disables `Text` for all four, exactly as it does for Panel.
+        //
+        // They are handled LEAF widgets, which is why they sit here and not in `Containers`:
+        // only Panel and GroupBox model children as a nested tree. They were briefly added to
+        // the wrong list, which declared all four containers — the canvas would then have
+        // nested children into a TrackBar.
+        ["System.Windows.Forms.TrackBar"] = "trackbar",
+        ["System.Windows.Forms.ProgressBar"] = "progressbar",
+        ["System.Windows.Forms.NumericUpDown"] = "numericupdown",
+        ["System.Windows.Forms.DateTimePicker"] = "datetimepicker",
     };
 
     /// <summary>Types whose children we model as a nested tree.</summary>
@@ -69,6 +80,10 @@ public static class TypeTable
             "PictureBox" => "pic",
             "Panel" => "pnl",
             "GroupBox" => "grp",
+            "TrackBar" => "trk",
+            "ProgressBar" => "prg",
+            "NumericUpDown" => "num",
+            "DateTimePicker" => "dtp",
             "Form" => "frm",
             _ => "ctl",
         };

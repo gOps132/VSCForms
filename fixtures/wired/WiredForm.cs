@@ -15,7 +15,7 @@ namespace FixtureWired;
 ///   btnCalculate.Enabled = false;   member-access receiver -> REWRITE
 ///   lblResult.Text = ...;          member-access receiver -> REWRITE
 ///   btnCalculate_Click(...)        method declaration     -> leave alone
-///   trackLevel_Scroll(...)         method declaration     -> leave alone
+///   tabDetails_SelectedIndexChanged(..) method declaration    -> leave alone
 /// The handler name deliberately still contains the control name: the handler is a METHOD, not a
 /// control, so rewriting it would break the wiring. A local variable of the same name is injected
 /// by the test rather than living here, so this fixture compiles as-is.
@@ -31,7 +31,7 @@ public partial class WiredForm : Form
         // renamer is permitted to rewrite outside it, so the fixture needs one or the code-behind
         // path is never exercised.
         btnCalculate.Enabled = false;
-        trackLevel.Minimum = 0;
+        tabDetails.SelectedIndex = 0;
     }
 
     private void btnCalculate_Click(object sender, EventArgs e)
@@ -39,8 +39,8 @@ public partial class WiredForm : Form
         lblResult.Text = level.ToString("F2");
     }
 
-    private void trackLevel_Scroll(object sender, EventArgs e)
+    private void tabDetails_SelectedIndexChanged(object sender, EventArgs e)
     {
-        level = trackLevel.Value / 10.0;
+        level += 1.0;
     }
 }
