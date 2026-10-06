@@ -36,7 +36,9 @@ These are load-bearing. Each has caused or prevented a real bug.
    body indentation. Read files as bytes — `File.ReadAllText` consumes the BOM and would alter
    line 1 of every file on every edit.
 4. **Never write a `locked` control.** No property edits, no deletion, no rename. If the diff
-   logic is uncertain, emit nothing.
+   logic is uncertain, emit nothing. In the canvas this means a Locked Control may be
+   *selected* (that is how its reason is readable) but must never JOIN a multi-selection: a
+   group drag iterates the selection, so a locked member would be moved by dragging a sibling.
 5. **Never write a refused form.** If `analysis.refuses` is non-empty, `generate` returns
    `ok: false` and the file is untouched (ADR 0003).
 6. **stdout is a protocol channel.** The engine speaks newline-delimited JSON on stdout.

@@ -330,9 +330,15 @@
             if (e.target.classList.contains('handle')) return;
             // Shift+click extends rather than replaces; a plain click always collapses, so the
             // selection can never contain a control the user cannot see selected.
-            const extend = e.shiftKey && !readOnly;
+            // A Locked Control must never enter the selection. Not merely because it cannot be
+            // dragged: `selection` is what a group drag iterates, so a locked member would be
+            // MOVED by dragging a sibling — writing a control we have promised never to write
+            // (AGENTS.md invariant 4). The guard has to be before select(), not after it.
+            if (c.locked) { select(c.id); return; }
+            if (readOnly) return;
+
+            const extend = e.shiftKey;
             if (extend) select(c.id, true); else if (!selection.has(c.id) || selection.size > 1) select(c.id);
-            if (c.locked || readOnly) return;
             beginDrag(e, c, node, containerNode);
         });
         node.addEventListener('dblclick', () => { if (!c.locked) select(c.id); });
@@ -444,12 +450,24 @@
         const s = selected();
         if (s.length < 2 || !selectionEditable()) return;
 
+        // Distribute evens the GAPS between the extremes, which is what every designer means
+        // by it. Distributing the control centres would be a different, rarer operation.
+        //
+        // It is a GROUP operation and therefore sits OUTSIDE the per-control loop below. The
+        // first version put it inside as a `case` with a `return`, which exited align() before
+        // commit() — so it mutated the optimistic model, posted nothing, and never wrote the
+        // file. The canvas harness had no distribute case, so nothing caught it.
+        if (kind === 'dist-v' || kind === 'dist-h') {
+            distribute(kind === 'dist-h' ? 'x' : 'y', kind === 'dist-h' ? 'width' : 'height', s);
+            commit();
+            renderCanvas();
+            return;
+        }
+
         const left = Math.min(...s.map((c) => c.properties.x));
         const right = Math.max(...s.map((c) => c.properties.x + c.properties.width));
         const top = Math.min(...s.map((c) => c.properties.y));
         const bottom = Math.max(...s.map((c) => c.properties.y + c.properties.height));
-        const spread = right - left;
-        const across = bottom - top;
 
         for (const c of s) {
             const p = c.properties;
@@ -460,22 +478,35 @@
                 case 'top': p.y = top; break;
                 case 'bottom': p.y = bottom - p.height; break;
                 case 'vcenter': p.y = Math.round((top + bottom - p.height) / 2); break;
-                case 'dist-v': {
-                    const gaps = s.length - 1;
-                    if (gaps < 1) return;
-                    const slack = across - s.reduce((n, c) => n + c.properties.height, 0);
-                    let y = top;
-                    [...s].sort((a, b) => a.properties.y - b.properties.y).forEach((c, i) => {
-                        if (i === 0) { c.properties.y = top; y = top + c.properties.height; return; }
-                        c.properties.y = Math.round(y + (slack / gaps) * i - (c.properties.height / 2));
-                        y = c.properties.y + c.properties.height;
-                    });
-                    return;
-                }
             }
         }
         commit();
         renderCanvas();
+    }
+
+    /**
+     * Even out the gaps between the extremes along one axis. The two outermost controls stay
+     * put; everything between them is repositioned so each gap is the same size.
+     */
+    function distribute(axis, extentAxis, group) {
+        const sorted = [...group].sort((a, b) => a.properties[axis] - b.properties[axis]);
+        const gaps = sorted.length - 1;
+        if (gaps < 1) return;
+
+        const first = sorted[0].properties;
+        const last = sorted[sorted.length - 1].properties;
+        const span = last[axis] + last[extentAxis] - first[axis];
+        const used = sorted.reduce((n, c) => n + c.properties[extentAxis], 0);
+        const slack = span - used;
+        if (slack <= 0) return;   // no room to distribute into; leave the layout alone
+
+        const step = slack / gaps;
+        let cursor = first[axis] + sorted[0].properties[extentAxis];
+        for (let i = 1; i < sorted.length - 1; i++) {
+            cursor += step;
+            sorted[i].properties[axis] = Math.round(cursor);
+            cursor += sorted[i].properties[extentAxis];
+        }
     }
 
     /** The operations a multi-selection offers, also bound to keyboard shortcuts. */
@@ -487,12 +518,17 @@
             ['Align Top', () => align('top')],
             ['Align Middle', () => align('vcenter')],
             ['Align Bottom', () => align('bottom')],
+            ['Distribute Horizontally', () => align('dist-h')],
             ['Distribute Vertically', () => align('dist-v')],
         ];
     }
 
-    /** Align shortcuts, matching the VS designer: Cmd/Ctrl + L/R/T/B/M/C. */
+    /**
+     * Align shortcuts, matching the VS designer: Cmd/Ctrl + L/R/T/B/M/C. Distribution is
+     * bound to Cmd/Ctrl + Shift + the same keys, which is what the VS designer uses.
+     */
     const ALIGN_KEYS = { l: 'left', c: 'hcenter', r: 'right', t: 'top', m: 'vcenter', b: 'bottom' };
+    const DISTRIBUTE_KEYS = { h: 'dist-h', v: 'dist-v' };
 
     // ------------------------------------------------------------- duplicate
     /**
@@ -517,6 +553,7 @@
         });
         schema.controls.push(...copies);
         selection = new Set(copies.map((c) => c.id));
+        recomputeCoverage();
         commit();
         renderCanvas();
         renderInspector();
@@ -849,6 +886,18 @@
         commit();
     }
 
+    /**
+     * Recompute coverage from the counts. Done in ONE place because duplicate and delete both
+     * change `modelledCount`, and duplicating the formula in two places is how the Coverage
+     * Banner starts disagreeing with the form it describes.
+     */
+    function recomputeCoverage() {
+        const total = schema.analysis.modelledCount + schema.analysis.unmodelledCount;
+        schema.analysis.coveragePercent = total
+            ? Math.round(schema.analysis.modelledCount * 10000 / total) / 100
+            : 100;
+    }
+
     function deleteControl(id) {
         if (readOnly) return;
         const c = findControl(id);
@@ -860,8 +909,7 @@
             }
         })(schema.controls);
         schema.analysis.modelledCount = Math.max(0, schema.analysis.modelledCount - 1);
-        const total = schema.analysis.modelledCount + schema.analysis.unmodelledCount;
-        schema.analysis.coveragePercent = total ? Math.round(schema.analysis.modelledCount * 10000 / total) / 100 : 100;
+        recomputeCoverage();
         selection = new Set();
         commit();
     }
@@ -1098,6 +1146,11 @@
                     case '0': setZoom(1); return;
                     case 'd': case 'D': e.preventDefault(); duplicateSelected(); return;
                     default: {
+                        // Shift + the same key distributes along that axis, which is what the
+                        // VS designer does. Without it, dist-v had no shortcut at all and
+                        // dist-h did not exist.
+                        const spread = DISTRIBUTE_KEYS[e.key.toLowerCase()];
+                        if (e.shiftKey && spread) { e.preventDefault(); align(spread); return; }
                         const kind = ALIGN_KEYS[e.key.toLowerCase()];
                         if (kind) { e.preventDefault(); align(kind); }
                         return;

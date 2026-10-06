@@ -1,7 +1,7 @@
 # Feature gaps against the Visual Studio WinForms designer
 
-**Status:** ACCEPTED — decisions resolved in §8. **Phase 0 of §6 (the already-in-schema
-properties) is being implemented now**; the rest stays sequenced and unimplemented.
+**Status:** ACCEPTED — decisions resolved in §8. **Partially implemented**: §8 decision 6 minus
+`Items`. See §8b for exactly what shipped.
 **Read alongside** [`spec-canvas-qol.md`](spec-canvas-qol.md), which covers the *interaction*
 gaps. This covers the *capability* gaps. They are separate: a perfectly smooth canvas that
 cannot represent a `TabControl` is still limited, and a complete type table with no zoom is
@@ -201,15 +201,20 @@ not the form. That is the bug a flat renderer would have.
 5. **`example/` stays untouched** while `spec-phase-2.md` §5 is unresolved. `TrackBar` (Phase A)
    would take it from 91.4% to 100%, which is a good demonstration and a reason to revisit
    whether it should be committed at all.
-6. **Properties wired in this pass, in order of cost:** `Enabled`, `Visible`, `BackColor`,
-   `Items` for `ComboBox`/`ListBox`, then `Font`. The first four are small and mechanical.
-   `Font` is last because emitting a `new Font(...)` is a *construction*, not an assignment, and
-   it is the one that can silently churn a file's dialect — see §3.
+6. **Properties wired in this pass, in order of cost:** `Enabled`, `Visible`, `BackColor`, then
+   `Font`. `Font` is last because emitting a `new Font(...)` is a *construction*, not an
+   assignment, and it is the one that can silently churn a file's dialect — see §3.
+   **`Items` was dropped from this pass.** It needs a schema field, a parser change for
+   `Items.AddRange(...)`, and a list editor in the canvas, which is a different size of work
+   from the other four. It stays the obvious next property.
 
 ## 8b. Implementation scope for this pass
 
-Implemented now: §8 decision 6 — `Enabled`, `Visible`, `BackColor`, `ComboBox`/`ListBox` `Items`,
-`Font`. Plus the QOL work in `spec-canvas-qol.md`, without which these are unusable at zoom.
+Implemented now: §8 decision 6 **minus `Items`** — `Enabled`, `Visible`, `BackColor`, `Font`.
+Plus the QOL work in `spec-canvas-qol.md`, without which these are unusable at zoom.
 
-Not implemented, recorded so the boundary is explicit: Phase A leaf widgets, Phase B
-`TabControl`, Phase C placeholders, z-order, event scaffolding.
+Not implemented, recorded so the boundary is explicit: `ComboBox`/`ListBox` `Items`, Phase A
+leaf widgets, Phase B `TabControl`, Phase C placeholders, z-order, event scaffolding.
+
+Within QOL, also not implemented: clipboard copy/paste (`Cmd/Ctrl+D` duplicates instead) and
+z-order, which is deferred by decision 4.

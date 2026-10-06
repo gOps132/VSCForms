@@ -97,7 +97,7 @@ interface ControlProperties {
   backColor?: string           // CSS colour string, e.g. '#ff0000' or '' for default
   visible?: boolean
   enabled?: boolean
-  font?: { size: number; bold: boolean; italic: boolean }
+  font?: { size: number; bold: boolean; italic: boolean; family?: string }
 }
 ```
 

@@ -647,6 +647,67 @@ setTimeout(async () => {
         insInputs().filter((i) => i.id !== 'fEnabled' && i.id !== 'fVisible').length >= 3,
         JSON.stringify(insInputs().map((i) => i.id)));
 
+    // ---- a Locked Control must never JOIN a multi-selection.
+    // It stays selectable on its own — that is how you read why it is locked — but it must
+    // never end up in a GROUP, because `selection` is what a group drag iterates. A locked
+    // member would then be MOVED by dragging a sibling, writing a control we have promised
+    // never to write. AGENTS.md invariant 4.
+    send({ type: 'load', data: schema });
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('ThirdPartyGauge').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    const lockedSel = canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id);
+    check('a Locked Control stays selectable on its own, so its reason is readable',
+        lockedSel.includes('ThirdPartyGauge'), lockedSel.join(','));
+    check('shift+click on a Locked Control does NOT build a group',
+        !(lockedSel.includes('ThirdPartyGauge') && lockedSel.length > 1), lockedSel.join(','));
+
+    // And the group-drag consequence, which is the invariant that actually matters.
+    send({ type: 'load', data: schema });
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    ctlNode('ThirdPartyGauge').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    const gaugeLeft = ctlNode('ThirdPartyGauge').style.left;
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    sandbox.window.dispatch('mousemove', { clientX: 200, clientY: 100 });
+    sandbox.window.dispatch('mouseup', {});
+    mirrorScale();
+    check('dragging a sibling cannot move a Locked Control',
+        ctlNode('ThirdPartyGauge').style.left === gaugeLeft,
+        `${gaugeLeft} -> ${ctlNode('ThirdPartyGauge').style.left}`);
+
+    // ---- distribute must COMMIT.
+    // It was a `case` with a `return` inside align(), which exited before commit(): it moved
+    // the optimistic model, posted nothing, and never wrote the file. Only align-left was
+    // covered, so nothing noticed.
+    send({ type: 'load', data: schema });
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'v', metaKey: true, shiftKey: true, preventDefault() { } });
+    await settled();
+    check('distribute vertically posts a commit',
+        sandbox.__sent.some((m) => m.type === 'commit'),
+        'distribute mutated the model but never wrote the file');
+    const vCommit = sandbox.__sent.find((m) => m.type === 'commit');
+    const ys = (vCommit ? vCommit.data.controls : []).filter((c) => !c.locked)
+        .map((c) => c.properties.y).sort((a, b) => a - b);
+    check('distribute actually changed the layout', ys.length === 2 && ys[0] !== ys[1],
+        JSON.stringify(ys));
+
+    send({ type: 'load', data: schema });
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'h', metaKey: true, shiftKey: true, preventDefault() { } });
+    await settled();
+    check('distribute horizontally posts a commit too — the pair is symmetric',
+        sandbox.__sent.some((m) => m.type === 'commit'), 'dist-h is missing while dist-v exists');
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
