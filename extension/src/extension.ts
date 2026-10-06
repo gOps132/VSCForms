@@ -191,7 +191,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
 
                 case 'commit': {
                     if (parsed.ok === false) return;
-                    await this.commit(doc, post, msg.schema as FormSchema);
+                    await this.commit(doc, post, (msg.data ?? msg.schema) as FormSchema);
                     break;
                 }
 
@@ -221,7 +221,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 // what makes the dirty-marker and undo assertions meaningful.
                 case 'testCommit': {
                     if (parsed.ok === false) return;
-                    await this.commit(doc, post, msg.schema as FormSchema);
+                    await this.commit(doc, post, (msg.data ?? msg.schema) as FormSchema);
                     break;
                 }
             }
