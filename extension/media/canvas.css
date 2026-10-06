@@ -63,17 +63,86 @@ body { display: flex; flex-direction: column; }
 .tool[disabled] { opacity: .4; cursor: not-allowed; }
 
 .stage {
+  position: relative;
   flex: 1 1 auto; overflow: auto; display: flex; align-items: flex-start;
-  justify-content: center; padding: 20px;
+  justify-content: flex-start; padding: 20px 20px 48px 20px;
   background:
     repeating-conic-gradient(rgba(128,128,128,.06) 0% 25%, transparent 0% 50%) 50%/16px 16px;
 }
+/* Space-to-pan. `grab`/`grabbing` on the cursor is the only feedback that a mode is armed,
+   which is why the blur reset in canvas.js matters so much. */
+.stage.panning { cursor: grab; }
+.stage.panning * { cursor: grabbing !important; }
+
+/* --------------------------------------------------------------------- rulers */
+.ruler, .ruler-corner {
+  position: sticky; flex: 0 0 auto; z-index: 3;
+  background: var(--vscode-sideBar-background, #252526);
+  border-color: var(--border);
+}
+.ruler-h {
+  top: 0; height: 14px; width: 100%;
+  border-bottom: 1px solid var(--border);
+  /* background-size is set by canvas.js so a tick keeps meaning the same FORM distance at
+     any zoom — a fixed CSS gradient would lie the moment the canvas is scaled. */
+  background-image: repeating-linear-gradient(90deg,
+    var(--border) 0 1px, transparent 1px 100%);
+  background-size: 40px 100%;
+}
+.ruler-v {
+  left: 0; width: 14px; align-self: stretch;
+  border-right: 1px solid var(--border);
+  background-image: repeating-linear-gradient(180deg,
+    var(--border) 0 1px, transparent 1px 100%);
+  background-size: 100% 40px;
+}
+.ruler-corner { width: 14px; height: 14px; border-right: 1px solid var(--border); }
+
+/* ------------------------------------------------------------------- zoom bar */
+.zoombar {
+  position: sticky; bottom: 0; left: 0; margin-left: -20px;
+  display: flex; align-items: center; gap: 2px; padding: 6px 20px;
+  z-index: 4;
+}
+.zoombar button {
+  min-width: 24px; height: 20px; padding: 0 6px; cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--border); border-radius: 3px; font-size: 11px;
+}
+.zoombar button:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+#zoom-label {
+  min-width: 46px; text-align: center; font-size: 11px;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+
+/* The marquee is positioned in FORM units inside the scaled canvas, so it needs no maths. */
+.marquee {
+  position: absolute; pointer-events: none; z-index: 5;
+  border: 1px solid var(--vscode-focusBorder, #0a84ff);
+  background: rgba(10, 132, 255, .12);
+}
+
+/* -------------------------------------------------------------- status bar row */
+.statusbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.status-tools { display: flex; align-items: center; gap: 6px; }
+.status-tools button {
+  cursor: pointer; font-size: 10px; padding: 1px 6px;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 3px;
+}
+.status-tools button:hover { background: var(--vscode-list-hoverBackground); color: var(--fg); }
 
 /* ----------------------------------------------------------------- form frame */
 .form-frame {
   border: 1px solid var(--border); background: var(--bg);
   box-shadow: 0 2px 12px rgba(0,0,0,.28);
   flex: 0 0 auto;
+  /* transform + transform-origin are set by canvas.js so zoom grows the frame from its
+     top-left. Without origin 0 0 the form would zoom toward its centre and drift away
+     from the pointer the user is zooming about. */
 }
 .form-title {
   height: 22px; display: flex; align-items: center; justify-content: space-between;

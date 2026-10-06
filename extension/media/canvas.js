@@ -17,7 +17,8 @@
     // ---------------------------------------------------------------- state
     /** @type {FormSchema|null} */
     let schema = null;
-    let selectedId = null;
+    /** Selected ids. A Set, not a string: multi-select is the base case, not a mode. */
+    let selection = new Set();
     /** Set when the form refuses editing: canvas becomes read-only. */
     let readOnly = false;
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
@@ -25,6 +26,105 @@
 
     const SNAP = 4;          // px within which an edge snaps
     const GRID = 8;          // movement granularity
+
+    // ------------------------------------------------------------- view state
+    // Zoom and pan are VIEW state: they never touch `schema`, never post a commit, and are
+    // never undoable. That is why they need no protocol change and no engine work.
+    //
+    // Zoom is a transform, so every control moves for free. The cost is that
+    // `getBoundingClientRect()` on a transformed element returns SCALED pixels — so every
+    // pointer delta must be divided by the scale. `formDelta()` is the single place that
+    // happens; see docs/spec-canvas-qol.md §1.
+    const ZOOM_MIN = 0.25;
+    const ZOOM_MAX = 4;
+    const ZOOM_STEP = 1.25;
+    const view = { scale: 1, panning: false, snap: true };
+
+    /** Pointer delta in FORM units. The only place the scale is divided out. */
+    function formDelta(ev, origin) {
+        const k = view.scale || 1;
+        return { dx: (ev.clientX - origin.mx) / k, dy: (ev.clientY - origin.my) / k };
+    }
+
+    /** Round to the grid in FORM space, never in screen space — screen rounding drifts at
+     *  fractional zoom and pulls controls off the grid they are snapped to. */
+    function snapTo(v) {
+        return view.snap ? Math.round(v / GRID) * GRID : Math.round(v);
+    }
+
+    function frameEl() { return document.querySelector('.form-frame') || $('canvas'); }
+
+    function applyZoom() {
+        const k = view.scale;
+        // The frame carries the transform too, or its border and title bar would not grow with
+        // the content. transform-origin must be top-left or the form grows down-right.
+        for (const node of [$('canvas'), frameEl()]) {
+            if (!node) continue;
+            node.style.transformOrigin = '0 0';
+            node.style.transform = `scale(${k})`;
+        }
+        const label = $('zoom-label');
+        if (label) label.textContent = Math.round(k * 100) + '%';
+        renderRulers();
+    }
+
+    /** Zoom about the cursor, keeping the form-space point under it under it. */
+    function zoomAt(cx, cy, factor) {
+        const host = frameEl();
+        if (!host) return;
+        const k0 = view.scale || 1;
+        const k1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k0 * factor));
+        if (k1 === k0) return;
+
+        const rect = host.getBoundingClientRect();
+        // Form-space point currently under the pointer.
+        const fx = (cx - rect.left) / k0;
+        const fy = (cy - rect.top) / k0;
+
+        view.scale = k1;
+        applyZoom();
+
+        // Without re-scrolling, zooming about the cursor slides the form out from under the
+        // user's hand — the classic reason "zoom to cursor" feels broken.
+        host.scrollLeft = (host.scrollLeft || 0) + (cx - rect.left) - fx * k1;
+        host.scrollTop = (host.scrollTop || 0) + (cy - rect.top) - fy * k1;
+    }
+
+    function zoomBy(factor) {
+        const host = frameEl();
+        if (!host) return;
+        const r = host.getBoundingClientRect();
+        zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor);
+    }
+
+    function setZoom(k) {
+        view.scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
+        applyZoom();
+    }
+
+    function zoomToFit() {
+        const host = frameEl();
+        const canvas = $('canvas');
+        if (!host || !canvas || !schema) return;
+        const stage = document.querySelector('.stage');
+        const availW = (stage && stage.clientWidth) || 0;
+        const availH = (stage && stage.clientHeight) || 0;
+        if (!availW || !availH) return;
+        // 40px of chrome for the frame border and title bar.
+        setZoom(Math.min(availW / (schema.form.clientSize.width + 40),
+                         availH / (schema.form.clientSize.height + 60)));
+    }
+
+    /** Cheap orientation, not a measuring instrument: a tick every 5 grid units, scaled with
+     *  the canvas so a tick keeps meaning the same form distance at any zoom. */
+    function renderRulers() {
+        const major = GRID * 5 * view.scale;
+        for (const id of ['ruler-h', 'ruler-v']) {
+            const r = $(id);
+            if (!r) continue;
+            r.style.backgroundSize = (id === 'ruler-h' ? `${major}px 100%` : `100% ${major}px`);
+        }
+    }
 
     // ---------------------------------------------------------------- toolbox
     const HANDLED = [
@@ -64,6 +164,18 @@
     function findControl(id) {
         return allControls(schema ? schema.controls : []).find((c) => c.id === id) || null;
     }
+
+    /** Selected controls, in schema order so alignment output is deterministic. */
+    function selected() {
+        return allControls(schema ? schema.controls : []).filter((c) => selection.has(c.id));
+    }
+
+    /** The selection can be edited only when it is non-empty, not refused, and fully modelled. */
+    function selectionEditable() {
+        const s = selected();
+        return s.length > 0 && !readOnly && s.every((c) => !c.locked);
+    }
+
     function simpleName(t) { const i = t.lastIndexOf('.'); return i < 0 ? t : t.slice(i + 1); }
 
     /**
@@ -198,9 +310,11 @@
         }
         if (readOnly) node.classList.add('readonly');
 
-        if (c.id === selectedId) {
+        if (selection.has(c.id)) {
             node.classList.add('selected');
-            if (!c.locked && !readOnly) renderHandles(node);
+            // Handles only make sense for a single selection; on a group they would imply the
+            // group can be resized, which is not what a drag does.
+            if (selection.size === 1 && !c.locked && !readOnly) renderHandles(node);
         }
 
         // A container positions its children absolutely, so it must not be a flex/column
@@ -210,19 +324,30 @@
 
         node.addEventListener('mousedown', (e) => {
             if (e.target.classList.contains('handle')) return;
-            select(c.id);
+            // Shift+click extends rather than replaces; a plain click always collapses, so the
+            // selection can never contain a control the user cannot see selected.
+            const extend = e.shiftKey && !readOnly;
+            if (extend) select(c.id, true); else if (!selection.has(c.id) || selection.size > 1) select(c.id);
             if (c.locked || readOnly) return;
             beginDrag(e, c, node, containerNode);
         });
         node.addEventListener('dblclick', () => { if (!c.locked) select(c.id); });
         node.addEventListener('keydown', (e) => {
             if (c.locked || readOnly) return;
-            const step = e.shiftKey ? 10 : GRID;
-            if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteControl(c.id); return; }
-            if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(c, -step, 0); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(c, step, 0); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(c, 0, -step); }
-            else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(c, 0, step); }
+            // GRID is FORM units. A nudge must never be "8 screen pixels" — at 50% zoom that
+            // would be a 16px move, and the control would drift off its grid.
+            const step = e.shiftKey ? GRID * 2 : GRID;
+            const many = selected();
+            const nudgeTarget = many.length > 1 && many.some((m) => m.id === c.id) ? many : [c];
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                for (const t of nudgeTarget) deleteControl(t.id);
+                return;
+            }
+            const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+            if (!d) return;
+            e.preventDefault();
+            for (const t of nudgeTarget) nudge(t, d[0], d[1]);
         });
 
         parent.appendChild(node);
@@ -244,7 +369,7 @@
             const h = el('div', 'handle ' + dir);
             h.dataset.dir = dir;
             h.addEventListener('mousedown', (e) => {
-                const c = findControl(selectedId);
+                const c = findControl(node.dataset.id);
                 if (!c || c.locked || readOnly) return;
                 e.stopPropagation();
                 beginResize(e, c, node, dir);
@@ -254,10 +379,37 @@
     }
 
     // ------------------------------------------------------------- selection
-    function select(id) {
-        selectedId = id;
+    function select(id, extend) {
+        if (extend) {
+            if (selection.has(id)) selection.delete(id); else selection.add(id);
+        } else {
+            selection = new Set(id ? [id] : []);
+        }
         renderCanvas();
         renderInspector();
+        renderStatusForSelection();
+    }
+
+    /** Select everything in a rectangle. Marquee selection is view state — it posts nothing. */
+    function selectInRect(a, b) {
+        const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
+        const y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
+        selection = new Set(
+            allControls(schema ? schema.controls : [])
+                .filter((c) => !c.locked
+                    && c.properties.x < x2 && c.properties.x + c.properties.width > x1
+                    && c.properties.y < y2 && c.properties.y + c.properties.height > y1)
+                .map((c) => c.id));
+        renderCanvas();
+        renderInspector();
+        renderStatusForSelection();
+    }
+
+    function renderStatusForSelection() {
+        const n = selection.size;
+        if (n === 0) return;
+        const el = $('status');
+        if (el) el.textContent = `${n} control${n > 1 ? 's' : ''} selected.`;
     }
 
     // ---------------------------------------------------------------- editing
@@ -278,6 +430,109 @@
         commit();
     }
 
+    // ------------------------------------------------------- align / distribute
+    /**
+     * Alignment is pure geometry over data the schema already holds, so it needs no protocol
+     * change. One commit covers the whole group: N controls moved is one user action and must
+     * be one undo step.
+     */
+    function align(kind) {
+        const s = selected();
+        if (s.length < 2 || !selectionEditable()) return;
+
+        const left = Math.min(...s.map((c) => c.properties.x));
+        const right = Math.max(...s.map((c) => c.properties.x + c.properties.width));
+        const top = Math.min(...s.map((c) => c.properties.y));
+        const bottom = Math.max(...s.map((c) => c.properties.y + c.properties.height));
+        const spread = right - left;
+        const across = bottom - top;
+
+        for (const c of s) {
+            const p = c.properties;
+            switch (kind) {
+                case 'left': p.x = left; break;
+                case 'right': p.x = right - p.width; break;
+                case 'hcenter': p.x = Math.round((left + right - p.width) / 2); break;
+                case 'top': p.y = top; break;
+                case 'bottom': p.y = bottom - p.height; break;
+                case 'vcenter': p.y = Math.round((top + bottom - p.height) / 2); break;
+                case 'dist-v': {
+                    const gaps = s.length - 1;
+                    if (gaps < 1) return;
+                    const slack = across - s.reduce((n, c) => n + c.properties.height, 0);
+                    let y = top;
+                    [...s].sort((a, b) => a.properties.y - b.properties.y).forEach((c, i) => {
+                        if (i === 0) { c.properties.y = top; y = top + c.properties.height; return; }
+                        c.properties.y = Math.round(y + (slack / gaps) * i - (c.properties.height / 2));
+                        y = c.properties.y + c.properties.height;
+                    });
+                    return;
+                }
+            }
+        }
+        commit();
+        renderCanvas();
+    }
+
+    /** The operations a multi-selection offers, also bound to keyboard shortcuts. */
+    function alignActions() {
+        return [
+            ['Align Left', () => align('left')],
+            ['Align Center', () => align('hcenter')],
+            ['Align Right', () => align('right')],
+            ['Align Top', () => align('top')],
+            ['Align Middle', () => align('vcenter')],
+            ['Align Bottom', () => align('bottom')],
+            ['Distribute Vertically', () => align('dist-v')],
+        ];
+    }
+
+    /** Align shortcuts, matching the VS designer: Cmd/Ctrl + L/R/T/B/M/C. */
+    const ALIGN_KEYS = { l: 'left', c: 'hcenter', r: 'right', t: 'top', m: 'vcenter', b: 'bottom' };
+
+    // ------------------------------------------------------------- duplicate
+    /**
+     * Ctrl/Cmd+D rather than clipboard copy/paste. Clipboard in a webview needs permissions and
+     * an async round-trip through the extension host; duplicate gets most of the value for none
+     * of the risk, and can grow into real copy/paste later without a schema change.
+     */
+    function duplicateSelected() {
+        if (readOnly) return;
+        const s = selected().filter((c) => !c.locked);
+        if (!s.length) return;
+
+        const used = new Set(allControls(schema.controls).map((c) => c.id));
+        const copies = s.map((src) => {
+            const copy = JSON.parse(JSON.stringify(src));
+            copy.id = uniqueId(used, src.id);
+            // Offset by one grid unit so the copy does not sit exactly under the original.
+            copy.properties.x += GRID;
+            copy.properties.y += GRID;
+            schema.analysis.modelledCount += 1;
+            return copy;
+        });
+        schema.controls.push(...copies);
+        selection = new Set(copies.map((c) => c.id));
+        commit();
+        renderCanvas();
+        renderInspector();
+    }
+
+    /** btnSubmit -> btnSubmit2, btnSubmit3 … never colliding with an existing name. */
+    function uniqueId(used, base) {
+        let n = 2;
+        let candidate = base + n;
+        while (used.has(candidate)) { n += 1; candidate = base + n; }
+        used.add(candidate);
+        return candidate;
+    }
+
+    /** The live DOM node for a control id. Re-resolved per frame: a selection change
+     *  re-renders the canvas and replaces every node, so a captured node can be detached. */
+    function nodeFor(id) {
+        return $('canvas').querySelectorAll('.ctl').find((n) => n.dataset.id === id) || null;
+    }
+
     // ------------------------------------------------------------------ drag
     function beginDrag(e, c, node, containerNode) {
         e.preventDefault();
@@ -286,13 +541,26 @@
             ? containerNode.getBoundingClientRect()
             : $('canvas').getBoundingClientRect();
 
+        // Dragging any member of a multi-selection moves the WHOLE selection by one delta,
+        // which is what makes group positioning possible at all.
+        const group = selection.size > 1 ? selected() : [c];
+        const groupStart = group.map((g) => ({ g, x: g.properties.x, y: g.properties.y }));
+
         function move(ev) {
-            const dx = Math.round((ev.clientX - origin.mx) / GRID) * GRID;
-            const dy = Math.round((ev.clientY - origin.my) / GRID) * GRID;
-            c.properties.x = origin.x + dx;
-            c.properties.y = origin.y + dy;
-            node.style.left = c.properties.x + 'px';
-            node.style.top = c.properties.y + 'px';
+            // Divide the scale out FIRST, then snap in form space. Snapping in screen space
+            // drifts at fractional zoom and pulls controls off the grid.
+            const { dx, dy } = formDelta(ev, origin);
+            const stepX = snapTo(dx);
+            const stepY = snapTo(dy);
+            for (const s of groupStart) {
+                s.g.properties.x = s.x + stepX;
+                s.g.properties.y = s.y + stepY;
+                const n = nodeFor(s.g.id);
+                if (n) {
+                    n.style.left = s.g.properties.x + 'px';
+                    n.style.top = s.g.properties.y + 'px';
+                }
+            }
             showGuides(c, parentBox);
             updateInspectorValues();
         }
@@ -300,7 +568,8 @@
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
             clearGuides();
-            if (c.properties.x !== origin.x || c.properties.y !== origin.y) commit();
+            const moved = groupStart.some((s) => s.g.properties.x !== s.x || s.g.properties.y !== s.y);
+            if (moved) commit();
         }
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
@@ -310,8 +579,8 @@
         e.preventDefault();
         const o = { x: c.properties.x, y: c.properties.y, w: c.properties.width, h: c.properties.height };
         function move(ev) {
-            const dx = ev.clientX - e.clientX;
-            const dy = ev.clientY - e.clientY;
+            // Same rule as drag: form units in, form units out.
+            const { dx, dy } = formDelta(ev, { mx: e.clientX, my: e.clientY });
             let { x, y, w, h } = o;
             if (dir.includes('e')) w = Math.max(o.w + dx, 2);
             if (dir.includes('s')) h = Math.max(o.h + dy, 2);
@@ -319,10 +588,13 @@
             if (dir.includes('n')) { h = Math.max(o.h - dy, 2); y = o.y + (o.h - h); }
             c.properties.x = Math.round(x); c.properties.y = Math.round(y);
             c.properties.width = Math.round(w); c.properties.height = Math.round(h);
-            node.style.left = c.properties.x + 'px';
-            node.style.top = c.properties.y + 'px';
-            node.style.width = Math.max(c.properties.width, 2) + 'px';
-            node.style.height = Math.max(c.properties.height, 2) + 'px';
+            const live = nodeFor(c.id);
+            if (live) {
+                live.style.left = c.properties.x + 'px';
+                live.style.top = c.properties.y + 'px';
+                live.style.width = Math.max(c.properties.width, 2) + 'px';
+                live.style.height = Math.max(c.properties.height, 2) + 'px';
+            }
             updateInspectorValues();
         }
         function up() {
@@ -365,11 +637,22 @@
     function renderInspector() {
         const box = $('inspector');
         box.innerHTML = '';
-        const c = findControl(selectedId);
-        if (!c) {
+        const sel = selected();
+        if (sel.length === 0) {
             box.appendChild(el('div', 'empty', 'Select a control to edit its properties.'));
             return;
         }
+        if (sel.length > 1) {
+            // A shared X/Y/Width/Height would be a lie unless every selected control happens
+            // to agree, so a multi-selection shows only what is genuinely common plus the
+            // operations that act on the group.
+            box.appendChild(el('h3', null, `${sel.length} controls selected`));
+            for (const [label, fn] of alignActions()) {
+                box.appendChild(el('button', null, label)).addEventListener('click', fn);
+            }
+            return;
+        }
+        const c = sel[0];
         const simple = simpleName(c.type);
         box.appendChild(el('h3', null, `${simple} — ${c.id}`));
 
@@ -443,8 +726,9 @@
         return f;
     }
     function updateInspectorValues() {
-        const c = findControl(selectedId);
-        if (!c) return;
+        const sel = selected();
+        if (sel.length !== 1) return;
+        const c = sel[0];
         const ins = $('inspector');
         const inputs = ins.querySelectorAll('input');
         if (inputs.length >= 6) {
@@ -487,7 +771,7 @@
         };
         schema.controls.push(node);
         schema.analysis.modelledCount += 1;
-        selectedId = node.id;
+        selection = new Set([node.id]);
         commit();
     }
 
@@ -504,11 +788,135 @@
         schema.analysis.modelledCount = Math.max(0, schema.analysis.modelledCount - 1);
         const total = schema.analysis.modelledCount + schema.analysis.unmodelledCount;
         schema.analysis.coveragePercent = total ? Math.round(schema.analysis.modelledCount * 10000 / total) / 100 : 100;
-        selectedId = null;
+        selection = new Set();
         commit();
     }
 
     // ------------------------------------------------------------ drop / paste
+    // ------------------------------------------------- view gestures (zoom / pan / marquee)
+    //
+    // Everything in this section is VIEW state. It must never touch `schema`, never post a
+    // commit, and must not be undoable — that is what lets it be added with no protocol change
+    // and no engine work. If any of it ever needs to write the model, it belongs in the
+    // editing section above instead.
+    function setupViewGestures() {
+        const stage = document.querySelector('.stage');
+        const canvas = $('canvas');
+        if (!stage) return;
+
+        // --- wheel. Plain wheel SCROLLS; only Cmd/Ctrl+wheel zooms, because a trackpad pinch
+        // arrives as ctrlKey+wheel and overriding plain wheel breaks every trackpad's muscle
+        // memory. Shift+wheel scrolls horizontally.
+        stage.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+            }
+        }, { passive: false });
+
+        // --- Space to pan. Tracked on the stage (which covers the canvas) rather than on a
+        // focused control, because focus moves between controls as the user clicks around.
+        const panHost = () => document.querySelector('.form-frame') || canvas;
+
+        stage.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.key === ' ') {
+                view.panning = true;
+                stage.classList.add('panning');
+                e.preventDefault();
+            }
+        });
+        // Losing focus with Space held would otherwise leave the canvas stuck panning, which is
+        // one of the most annoying states a canvas can get into.
+        const releasePan = () => {
+            view.panning = false;
+            stage.classList.remove('panning');
+        };
+        stage.addEventListener('keyup', releasePan);
+        stage.addEventListener('blur', releasePan);
+
+        stage.addEventListener('mousedown', (e) => {
+            // Middle mouse pans from anywhere, which is the one panning gesture that needs no
+            // modifier and so cannot collide with anything.
+            if (e.button === 1) { e.preventDefault(); beginPan(e, panHost()); return; }
+            if (!view.panning) return;
+            e.preventDefault();
+            beginPan(e, panHost());
+        });
+
+        // --- marquee. Only from empty canvas: a drag that starts on a control is a move, and
+        // stealing it would make every control unmovable.
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.target !== canvas) return;      // started on a control
+            if (e.button !== 0) return;
+            e.preventDefault();
+            beginMarquee(e);
+        });
+    }
+
+    function beginPan(e, host) {
+        const origin = { x: e.clientX, y: e.clientY, sl: host.scrollLeft, st: host.scrollTop };
+        function move(ev) {
+            host.scrollLeft = origin.sl - (ev.clientX - origin.x);
+            host.scrollTop = origin.st - (ev.clientY - origin.y);
+        }
+        function up() {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+        }
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+    }
+
+    function beginMarquee(e) {
+        const box = el('div', 'marquee');
+        $('canvas').appendChild(box);
+        // Form-space origin, so the rectangle tracks the pointer at any zoom.
+        const r = $('canvas').getBoundingClientRect();
+        const start = { x: (e.clientX - r.left) / view.scale, y: (e.clientY - r.top) / view.scale };
+
+        function move(ev) {
+            const cur = { x: (ev.clientX - r.left) / view.scale, y: (ev.clientY - r.top) / view.scale };
+            const x = Math.min(start.x, cur.x), y = Math.min(start.y, cur.y);
+            const w = Math.abs(cur.x - start.x), h = Math.abs(cur.y - start.y);
+            box.style.left = x + 'px'; box.style.top = y + 'px';
+            box.style.width = w + 'px'; box.style.height = h + 'px';
+            selectInRect(start, cur);
+        }
+        function up() {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+            box.remove();
+        }
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+    }
+
+    // ------------------------------------------------------------- zoom controls
+    function setupZoomControls() {
+        const bind = (id, fn) => { const n = $(id); if (n) n.addEventListener('click', fn); };
+        bind('zoom-in', () => zoomBy(ZOOM_STEP));
+        bind('zoom-out', () => zoomBy(1 / ZOOM_STEP));
+        bind('zoom-fit', () => zoomToFit());
+        applyZoom();
+    }
+
+    /**
+     * The snap toggle lives in its own element, not appended to the status LINE: renderStatus
+     * rewrites that element wholesale, so a control appended to it is destroyed by the first
+     * status message.
+     */
+    function setupStatusBar() {
+        const s = $('status-tools');
+        if (!s) return;
+        const toggle = el('button', 'snap-toggle', view.snap ? 'Snap: on' : 'Snap: off');
+        toggle.title = 'Snap to the 8px grid and to other controls\' edges';
+        toggle.addEventListener('click', () => {
+            view.snap = !view.snap;
+            toggle.textContent = view.snap ? 'Snap: on' : 'Snap: off';
+        });
+        s.appendChild(toggle);
+    }
+
     function setupDrop() {
         const canvasWrap = document.querySelector('.stage');
         canvasWrap.addEventListener('dragover', (e) => {
@@ -556,7 +964,7 @@
             case 'externalChange': {
                 schema = msg.data;
                 readOnly = schema.analysis.refuses.length > 0;
-                selectedId = null;
+                selection = new Set();
                 renderAll();
                 renderStatus(
                     msg.type === 'externalChange'
@@ -596,7 +1004,35 @@
         post('requestParse');
     });
 
+    // Canvas shortcuts. Cmd/Ctrl+Z is deliberately absent: undo belongs to VS Code (ADR 0004).
+    stageKeys();
+    setupViewGestures();
+    setupZoomControls();
+    setupStatusBar();
     setupDrop();
     renderStatus('Waiting for the engine…');
     post('ready');
+
+    function stageKeys() {
+        const stage = document.querySelector('.stage');
+        if (!stage) return;
+        stage.addEventListener('keydown', (e) => {
+            if (e.metaKey || e.ctrlKey) {
+                switch (e.key) {
+                    case '+': case '=': zoomBy(ZOOM_STEP); return;
+                    case '-': zoomBy(1 / ZOOM_STEP); return;
+                    case '0': setZoom(1); return;
+                    case 'd': case 'D': e.preventDefault(); duplicateSelected(); return;
+                    default: {
+                        const kind = ALIGN_KEYS[e.key.toLowerCase()];
+                        if (kind) { e.preventDefault(); align(kind); }
+                        return;
+                    }
+                }
+            }
+            // Escape clears the selection and cancels any in-progress gesture. Its absence is
+            // felt: without it there is no way out of a selection short of clicking again.
+            if (e.key === 'Escape') select(null);
+        });
+    }
 })();

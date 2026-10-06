@@ -396,14 +396,26 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
   <div class="workbench">
     <aside id="toolbox" class="toolbox"></aside>
     <main id="stage" class="stage">
+      <div class="ruler-corner"></div>
+      <div class="ruler ruler-h" id="ruler-h"></div>
+      <div class="ruler ruler-v" id="ruler-v"></div>
       <div class="form-frame">
         <div class="form-title"><span id="form-title-text"></span><span id="form-size" class="form-size"></span></div>
         <div id="canvas" class="canvas"></div>
       </div>
+      <div class="zoombar">
+        <button id="zoom-out" title="Zoom out (Cmd/Ctrl -)">−</button>
+        <span id="zoom-label">100%</span>
+        <button id="zoom-in" title="Zoom in (Cmd/Ctrl +)">+</button>
+        <button id="zoom-fit" title="Fit to window (Cmd/Ctrl 0)">Fit</button>
+      </div>
     </main>
     <aside id="inspector" class="inspector"></aside>
   </div>
-  <div id="status" class="status"></div>
+  <div class="statusbar">
+    <div id="status" class="status"></div>
+    <div id="status-tools" class="status-tools"></div>
+  </div>
   <script nonce="${nonce}" src="${asUri('canvas.js')}"></script>
 </body>
 </html>`;

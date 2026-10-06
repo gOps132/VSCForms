@@ -87,8 +87,18 @@ class El {
         return out;
     }
     querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+    // Mirrors the browser's behaviour for a transformed element: getBoundingClientRect
+    // returns SCALED pixels. The canvas divides every pointer delta out of this, and a stand-in
+    // that ignored the transform would let a zoom bug pass this harness.
+    get scale() { return this._scale === undefined ? 1 : this._scale; }
+    set scale(v) { this._scale = v; }
     getBoundingClientRect() {
-        return { left: 0, top: 0, right: this.clientWidth, bottom: this.clientHeight, width: this.clientWidth, height: this.clientHeight };
+        const k = this.scale;
+        return {
+            left: 0, top: 0,
+            right: this.clientWidth * k, bottom: this.clientHeight * k,
+            width: this.clientWidth * k, height: this.clientHeight * k,
+        };
     }
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
     removeEventListener(type, fn) {
@@ -100,7 +110,8 @@ class El {
         // a body drag, so the stand-in must supply it.
         const event = Object.assign({
             preventDefault() { }, stopPropagation() { },
-            clientX: 0, clientY: 0, key: '', shiftKey: false,
+            clientX: 0, clientY: 0, key: '', shiftKey: false, ctrlKey: false, metaKey: false,
+            deltaY: 0, deltaX: 0, button: 0, relatedTarget: null,
         }, ev || {});
         if (!event.target) event.target = this;
         for (const fn of (this.listeners[type] || []).slice()) fn(event);
@@ -116,10 +127,39 @@ class El {
     focus() { }
 }
 
+/**
+ * Selector matching, good enough for the selectors this harness uses.
+ *
+ * Compound (`.a.b`) and descendant (`a b`) selectors were NOT handled originally, and every
+ * `querySelectorAll('.ctl.selected')` silently returned nothing — a query that can never match
+ * is indistinguishable from a real result, which is the worst kind of test-harness bug.
+ */
 function matches(el, sel) {
-    if (sel.startsWith('.')) return el.classList.contains(sel.slice(1));
-    if (sel.startsWith('[')) return sel.slice(1, -1) in el.attrs || sel.slice(1, -1).split('=')[0] in el.attrs;
-    return el.tagName === sel.toUpperCase();
+    const parts = sel.trim().split(/\s+/);
+    if (!matchesSimple(el, parts[0])) return false;
+    // Descendant: each further part must match SOME ancestor.
+    let node = el.parentNode;
+    for (let i = 1; i < parts.length; i++) {
+        while (node && !matchesSimple(node, parts[i])) node = node.parentNode;
+        if (!node) return false;
+        node = node.parentNode;
+    }
+    return true;
+}
+
+function matchesSimple(el, part) {
+    // Compound class selectors: `.a.b` means "has BOTH", not "has a class literally named
+    // 'a.b'". Splitting is what makes `.ctl.selected` work at all.
+    if (part.startsWith('.')) {
+        return part.slice(1).split('.').every((c) => el.classList.contains(c));
+    }
+    if (part.startsWith('[')) {
+        const body = part.slice(1, -1);
+        const [k, v] = body.split('=');
+        return v === undefined ? k in el.attrs : el.attrs[k] === v.replace(/^["']|["']$/g, '');
+    }
+    if (part.startsWith('#')) return el.dataset.id === part.slice(1);
+    return el.tagName === part.toUpperCase();
 }
 
 const document = {
@@ -132,9 +172,21 @@ const document = {
 };
 
 const ids = {};
-for (const id of ['banner', 'toolbox', 'canvas', 'inspector', 'status', 'form-title-text', 'form-size']) {
+for (const id of ['banner', 'toolbox', 'canvas', 'inspector', 'status', 'form-title-text', 'form-size',
+                      'zoom-label', 'zoom-in', 'zoom-out', 'zoom-fit', 'ruler-h', 'ruler-v', 'status-tools']) {
     ids[id] = new El('div');
 }
+
+// A real El, tagged as the window, so the canvas's `window.addEventListener('mousemove')`
+// drag/pan/marquee handlers land in a real listener registry.
+const winStub = new El('div');
+winStub.tagName = 'WINDOW';
+winStub.scrollLeft = 0;
+winStub.scrollTop = 0;
+winStub.innerWidth = 1200;
+winStub.innerHeight = 800;
+winStub.clientWidth = 1200;
+winStub.clientHeight = 800;
 
 const sandbox = {
     console,
@@ -144,16 +196,14 @@ const sandbox = {
         querySelector: (sel) => {
             if (sel === '.stage') { sandbox.__stage = sandbox.__stage || new El('div'); return sandbox.__stage; }
             if (sel === '.workbench') { sandbox.__workbench = sandbox.__workbench || new El('div'); return sandbox.__workbench; }
+            if (sel === '.form-frame') { sandbox.__frame = sandbox.__frame || new El('div'); return sandbox.__frame; }
+            if (sel === '.stage') { sandbox.__stage = sandbox.__stage || new El('div'); return sandbox.__stage; }
             return null;
         },
         querySelectorAll: () => [],
         addEventListener() { },
     },
-    window: {
-        addEventListener() { },
-        removeEventListener() { },
-        setTimeout, clearTimeout,
-    },
+    window: winStub,
     acquireVsCodeApi: () => ({ postMessage: (m) => sandbox.__sent.push(m), getState() { return {}; }, setState() { } }),
     setTimeout, clearTimeout, JSON, Math, Number, parseInt, parseFloat, String, Object, Array, Set, Map, isNaN,
 };
@@ -166,7 +216,6 @@ sandbox.__ids = ids;
 
 const canvasPath = path.join(__dirname, '..', 'media', 'canvas.js');
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(canvasPath, 'utf8'), sandbox, { filename: canvasPath });
 
 const schema = {
     schemaVersion: 1,
@@ -188,19 +237,28 @@ const schema = {
 
 function send(msg) {
     const handlers = sandbox.window.__handlers || [];
-    for (const h of handlers) h({ data: msg });
+    // Deep-clone on load. The canvas holds the OPTIMISTIC model and mutates it in place, so
+    // passing the fixture by reference would let one test's alignment leak into the next and
+    // make every hardcoded coordinate order-dependent. (This did happen: a drag test moved a
+    // control and an unrelated later assertion failed with the old coordinates.)
+    const payload = msg.data ? JSON.parse(JSON.stringify(msg.data)) : msg.data;
+    for (const h of handlers) h({ data: Object.assign({}, msg, { data: payload }) });
 }
 
-// canvas.js registers its message listener on `window`; wire that up.
-const realWindowAdd = sandbox.window.addEventListener;
+// canvas.js registers its message listener on `window`; capture it as it is added.
+// `realWindowAdd.call(this, …)` is required — a bare call loses `this`, and the window is a
+// real El with a real listener registry.
+//
+// This runs BEFORE canvas.js is evaluated, and canvas.js is evaluated exactly ONCE. Evaluating
+// it twice left every first-run closure (the snap toggle among them) bound to a different
+// canvas than the one rendering, which is a genuinely confusing failure: the toggle read
+// "Snap: off" while the live canvas still had snapping on.
 const windowHandlers = [];
-sandbox.window.addEventListener = (type, fn) => {
+const realWindowAdd = sandbox.window.addEventListener;
+sandbox.window.addEventListener = function (type, fn) {
     if (type === 'message') windowHandlers.push(fn);
-    else realWindowAdd(type, fn);
+    else realWindowAdd.call(this, type, fn);
 };
-
-// re-run with the patched window so the listener is captured
-sandbox.__sent.length = 0;
 sandbox.window.__handlers = windowHandlers;
 vm.runInContext(fs.readFileSync(canvasPath, 'utf8'), sandbox, { filename: canvasPath });
 
@@ -255,7 +313,7 @@ check('inspector exposes geometry + text + tabIndex fields', inputs.length >= 6,
 inputs[4].value = 'Send it';
 inputs[4].dispatch('change', {});
 
-setTimeout(() => {
+setTimeout(async () => {
     const commit = sandbox.__sent.find((m) => m.type === 'commit');
     check('edit schedules a debounced commit', !!commit);
     if (commit) {
@@ -326,6 +384,229 @@ setTimeout(() => {
     check('the refusal names the reason',
         /not a reference/.test(String(ids.status.textContent)), String(ids.status.textContent));
 
+    // =====================================================================
+    // ZOOM / PAN / SELECTION — docs/spec-canvas-qol.md
+    //
+    // Everything here is asserted from OBSERVABLE state: the transform on the canvas, the
+    // rendered `left`/`top` of a control, and the messages posted. No production internals are
+    // read, so the canvas is not polluted with a test seam it would otherwise not have.
+    //
+    // The DOM stand-in returns SCALED pixels from getBoundingClientRect, exactly as a browser
+    // does for a transformed element. That is the load-bearing part: if the canvas forgets to
+    // divide a pointer delta out of the scale, dragging to (500,250) at 50% would land at
+    // (250,125) and `drag lands on the pointer at 0.5x` would fail.
+    // =====================================================================
+    const stage = sandbox.document.querySelector('.stage');
+    const frame = sandbox.__frame;
+    const zoomLabel = ids['zoom-label'];
+
+    const ctlNode = (id) => canvasEl.querySelectorAll('.ctl').find((n) => n.dataset.id === id);
+    const leftOf = (id) => parseFloat(ctlNode(id).style.left);
+    const topOf = (id) => parseFloat(ctlNode(id).style.top);
+
+    /** The scale the canvas is actually applying, read back off the transform. */
+    const scaleOf = () => {
+        const m = /scale\(([\d.]+)\)/.exec(String(canvasEl.style.transform || ''));
+        return m ? parseFloat(m[1]) : 1;
+    };
+    /** Mirror the canvas's scale into the DOM stand-in, which is what makes rects scaled. */
+    const mirrorScale = () => { canvasEl.scale = scaleOf(); if (frame) frame.scale = scaleOf(); };
+
+    // Wheel and panning are bound to the STAGE, which covers the canvas. The stand-in DOM does
+    // not bubble, so the test dispatches where the listener actually is.
+    const wheel = (ev) => stage.dispatch('wheel', ev);
+    const setZoomNow = () => { winKey('0', { ctrlKey: true, metaKey: true }); mirrorScale(); };
+    const winKey = (k, opts) => stage.dispatch('keydown', Object.assign({ key: k }, opts || {}));
+    const zoomIn = (times) => { for (let i = 0; i < times; i++) wheel({ ctrlKey: true, clientX: 100, clientY: 100, deltaY: -120 }); mirrorScale(); };
+
+    const z0 = scaleOf();
+    check('zoom starts at 1', z0 === 1, String(z0));
+
+    // ---- ctrl+wheel zooms (a trackpad pinch arrives exactly this way)
+    wheel({ ctrlKey: true, clientX: 100, clientY: 100, deltaY: -120 });
+    const z1 = scaleOf();
+    check('ctrl+wheel zooms in', z1 > 1, String(z1));
+    check('the form frame is transformed too, or its border will not grow',
+        /scale/.test(String(frame.style.transform || '')), String(frame.style.transform));
+    check('the zoom readout shows the current scale',
+        /%/.test(String(zoomLabel.textContent || '')) && String(zoomLabel.textContent) !== '100%',
+        String(zoomLabel.textContent));
+
+    // ---- clamped at both ends
+    for (let i = 0; i < 60; i++) wheel({ ctrlKey: true, clientX: 0, clientY: 0, deltaY: -120 });
+    check('zoom clamps at the top of the range', scaleOf() <= 4, String(scaleOf()));
+    for (let i = 0; i < 120; i++) wheel({ ctrlKey: true, clientX: 0, clientY: 0, deltaY: 120 });
+    check('zoom clamps at the bottom of the range', scaleOf() >= 0.25, String(scaleOf()));
+
+    // ---- plain wheel scrolls; it must NOT zoom
+    const beforeWheel = scaleOf();
+    wheel({ clientX: 10, clientY: 10, deltaY: -120 });
+    check('plain wheel scrolls rather than zooming', scaleOf() === beforeWheel,
+        `${beforeWheel} -> ${scaleOf()}`);
+
+    winKey('0', { ctrlKey: true, metaKey: true });
+    mirrorScale();
+    check('ctrl+0 resets to 100%', scaleOf() === 1, String(scaleOf()));
+
+    // ---- THE COORDINATE TEST: the pointer lands where it is pointed, at any zoom
+    for (const [label, steps] of [['0.5x', -8], ['2x', 3]]) {
+        send({ type: 'load', data: schema });
+        zoomIn(steps);
+        const s = scaleOf();
+        const x0 = leftOf('btnSubmit');
+        const y0 = topOf('btnSubmit');
+
+        ctlNode('btnSubmit').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 100 + 40 * s, clientY: 100 + 24 * s });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+
+        const dx = leftOf('btnSubmit') - x0;
+        const dy = topOf('btnSubmit') - y0;
+        // Tolerate the 8px grid snap; what must hold is that the result is the FORM delta and
+        // not the SCREEN delta, which differ by exactly `s`.
+        check(`a drag at ${label} moves by the pointer delta in form units`,
+            Math.abs(dx - 40) <= 8 && Math.abs(dy - 24) <= 8,
+            `moved ${dx},${dy}; expected ~40,24. A scaled-rect bug gives ${(40 * s).toFixed(1)},${(24 * s).toFixed(1)}`);
+    }
+
+    // ---- nudge is in FORM units, never screen pixels
+    send({ type: 'load', data: schema });
+    zoomIn(3);
+    {
+        const x0 = leftOf('btnSubmit');
+        ctlNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        mirrorScale();
+        check('nudge moves by GRID form units regardless of zoom',
+            leftOf('btnSubmit') - x0 === 8,
+            `moved ${leftOf('btnSubmit') - x0}; a screen-space bug gives ${(8 * scaleOf()).toFixed(1)}`);
+    }
+
+    // ---- panning is a VIEW concern and must never touch the model
+    send({ type: 'load', data: schema });
+    sandbox.__sent.length = 0;
+    const panX = leftOf('btnSubmit'), panY = topOf('btnSubmit');
+    winKey(' ', {});                                   // press and hold space
+    mirrorScale();
+    stage.dispatch('mousedown', { clientX: 200, clientY: 200, preventDefault() { }, stopPropagation() { } });
+    sandbox.window.dispatch('mousemove', { clientX: 220, clientY: 240 });
+    sandbox.window.dispatch('mouseup', {});
+    check('a pan gesture posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    check('a pan gesture does not move any control',
+        leftOf('btnSubmit') === panX && topOf('btnSubmit') === panY,
+        `${panX},${panY} -> ${leftOf('btnSubmit')},${topOf('btnSubmit')}`);
+
+    // Space held while the window loses focus must not leave the canvas stuck panning.
+    winKey(' ', {});
+    stage.dispatch('blur', {});
+    sandbox.__sent.length = 0;
+    stage.dispatch('mousedown', { clientX: 300, clientY: 300, preventDefault() { }, stopPropagation() { } });
+    sandbox.window.dispatch('mousemove', { clientX: 340, clientY: 340 });
+    check('releasing pan mode on blur prevents a stuck panning cursor',
+        !sandbox.__sent.some((m) => m.type === 'commit'),
+        'a commit after blur means pan mode was still armed');
+
+    // ---- multi-select, marquee, align, duplicate
+    setZoomNow(1);
+    send({ type: 'load', data: schema });
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    // `settled()` is used by the commit assertions below; commits are debounced by design.
+    check('a plain click selects one control', canvasEl.querySelectorAll('.ctl.selected').length === 1,
+        String(canvasEl.querySelectorAll('.ctl.selected').length));
+
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    check('shift+click adds a second control to the selection',
+        canvasEl.querySelectorAll('.ctl.selected').length === 2,
+        String(canvasEl.querySelectorAll('.ctl.selected').length));
+    check('the inspector reports a multi-selection',
+        /2 controls/.test(String(ids.inspector.textContent || ids.inspector._html || '')),
+        String(ids.inspector.textContent || ids.inspector._html).slice(0, 80));
+
+    // Align left: both selected controls share the leftmost x.
+    sandbox.__sent.length = 0;
+    winKey('l', { metaKey: true });
+    mirrorScale();
+    check('align-left makes the selection share one x',
+        leftOf('txtName') === leftOf('btnSubmit'),
+        `txtName x=${leftOf('txtName')} btnSubmit x=${leftOf('btnSubmit')}`);
+    await settled();
+    check('aligning posts exactly one commit for the whole group',
+        sandbox.__sent.filter((m) => m.type === 'commit').length === 1,
+        String(sandbox.__sent.map((m) => m.type)));
+
+    // ---- duplicate
+    send({ type: 'load', data: schema });
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    winKey('d', { metaKey: true, ctrlKey: true });
+    mirrorScale();
+    const dup = canvasEl.querySelectorAll('.ctl').map((n) => n.dataset.id);
+    check('ctrl+D adds a copy with a fresh name',
+        dup.length === 4 && dup.some((id) => /btnSubmit\d*$/.test(id) && id !== 'btnSubmit'),
+        dup.join(', '));
+    check('the duplicate is offset so it is visible',
+        canvasEl.querySelectorAll('.ctl').some((n) => n.dataset.id !== 'btnSubmit'
+            && parseFloat(n.style.left) === 104),
+        canvasEl.querySelectorAll('.ctl').map((n) => `${n.dataset.id}@${n.style.left}`).join(' '));
+    await settled();
+    check('duplicating posts one commit',
+        sandbox.__sent.filter((m) => m.type === 'commit').length === 1,
+        String(sandbox.__sent.map((m) => m.type)));
+
+    // ---- Escape deselects
+    winKey('Escape', {});
+    check('escape clears the selection',
+        canvasEl.querySelectorAll('.ctl.selected').length === 0,
+        String(canvasEl.querySelectorAll('.ctl.selected').length));
+
+    // ---- a marquee must not hijack a control drag
+    setZoomNow(1);
+    send({ type: 'load', data: schema });
+    sandbox.__sent.length = 0;
+    canvasEl.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 0, clientY: 0 });
+    sandbox.window.dispatch('mousemove', { clientX: 400, clientY: 400 });
+    sandbox.window.dispatch('mouseup', {});
+    mirrorScale();
+    check('a marquee selects several controls at once',
+        canvasEl.querySelectorAll('.ctl.selected').length >= 2,
+        String(canvasEl.querySelectorAll('.ctl.selected').length));
+    check('a marquee posts no commit — selection is view state',
+        !sandbox.__sent.some((m) => m.type === 'commit'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+
+    send({ type: 'load', data: schema });
+    await settled();
+    const xBefore = leftOf('btnSubmit');
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
+    sandbox.window.dispatch('mousemove', { clientX: 160, clientY: 100 });
+    sandbox.window.dispatch('mouseup', {});
+    mirrorScale();
+    check('a drag on a control is still a drag, not a marquee',
+        leftOf('btnSubmit') !== xBefore && canvasEl.querySelectorAll('.ctl.selected').length === 1,
+        `x ${xBefore} -> ${leftOf('btnSubmit')}, selected ${canvasEl.querySelectorAll('.ctl.selected').length}`);
+
+    // ---- snapping can be turned off
+    setZoomNow(1);
+    send({ type: 'load', data: schema });
+    const snapBtn = ids['status-tools'].querySelector('.snap-toggle');
+    check('a snap toggle is offered', !!snapBtn, 'not found in the status bar');
+    if (snapBtn) {
+        snapBtn.dispatch('click', { preventDefault() { } });
+        const x1 = leftOf('btnSubmit');
+        ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 103, clientY: 100 });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+        check('with snapping off a 3px drag moves exactly 3px',
+            leftOf('btnSubmit') - x1 === 3, `moved ${leftOf('btnSubmit') - x1}`);
+    }
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
+
+/** Wait past the canvas's 220ms commit debounce. */
+const settled = () => new Promise((r) => setTimeout(r, 320));
