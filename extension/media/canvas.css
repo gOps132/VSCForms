@@ -134,6 +134,14 @@ body { display: flex; flex-direction: column; }
   border: 1px solid var(--border); border-radius: 3px;
 }
 .status-tools button:hover { background: var(--vscode-list-hoverBackground); color: var(--fg); }
+.status-tools button.run-btn {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--fg);
+  font-weight: 500;
+}
+.status-tools button.run-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
 
 /* ----------------------------------------------------------------- form frame */
 .form-frame {

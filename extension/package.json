@@ -5,6 +5,10 @@
   "version": "0.1.0",
   "publisher": "gOps132",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gOps132/VSCForms"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -47,6 +51,12 @@
     ],
     "commands": [
       {
+        "command": "vscforms.runProject",
+        "title": "Run in Wine",
+        "category": "VSCForms",
+        "icon": "$(play)"
+      },
+      {
         "command": "vscforms.openInDesigner",
         "title": "Open in Designer",
         "category": "VSCForms"
@@ -79,15 +89,30 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Absolute path to the design engine binary. Leave empty to use the engine bundled with this extension. Only useful when developing the extension against an engine built by hand."
+        },
+        "vscforms.winePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the Wine binary. Leave empty to auto-detect system Wine, Whisky, or CrossOver."
+        },
+        "vscforms.winePrefix": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Custom WINEPREFIX directory. Leave empty to auto-detect Whisky bottles or default wineprefix."
         }
       }
     },
     "menus": {
       "editor/title": [
         {
+          "command": "vscforms.runProject",
+          "when": "resourceExtname == .cs",
+          "group": "navigation@1"
+        },
+        {
           "command": "vscforms.openInTextEditor",
           "when": "resourceExtname == .cs",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "commandPalette": [
@@ -96,7 +121,14 @@
           "when": "false"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "vscforms.runProject",
+        "key": "f5",
+        "when": "activeCustomEditorId == 'vscforms.formDesigner'"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

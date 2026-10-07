@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { EngineClient, FormSchema } from './engineClient';
+import { runProject } from './projectRunner';
 
 let engine: EngineClient;
 let provider: DesignerEditorProvider | undefined;
@@ -224,6 +225,11 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                     await this.commit(doc, post, (msg.data ?? msg.schema) as FormSchema);
                     break;
                 }
+
+                case 'runProject': {
+                    await vscode.commands.executeCommand('vscforms.runProject', doc.uri);
+                    break;
+                }
             }
         });
 
@@ -372,6 +378,9 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 if (!res.ok) throw new Error(`newProject failed (${res.errorKind}): ${res.error}`);
                 return res;
             }
+            case 'runProject': {
+                return runProject(this.context, arg as vscode.Uri);
+            }
             default:
                 throw new Error('unknown test seam: ' + which);
         }
@@ -494,6 +503,20 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('vscforms.openInDesigner', async () => {
             const uri = vscode.window.activeTextEditor?.document.uri;
             if (uri) await vscode.commands.executeCommand('vscode.openWith', uri, DesignerEditorProvider.viewType);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('vscforms.runProject', async (uriArg?: vscode.Uri) => {
+            let uri = uriArg;
+            if (!uri) uri = vscode.window.activeTextEditor?.document.uri;
+            if (!uri) {
+                const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+                const input = tab?.input;
+                if (input instanceof vscode.TabInputCustom) uri = input.uri;
+                else if (input instanceof vscode.TabInputText) uri = input.uri;
+            }
+            await runProject(context, uri);
         })
     );
 
