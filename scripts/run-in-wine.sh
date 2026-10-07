@@ -36,6 +36,7 @@ else
     "/Applications/Wine Devel.app/Contents/Resources/wine/bin/wine"
     "/Applications/Wine Crossover.app/Contents/Resources/wine/bin/wine64"
     "/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/wine64"
+    "$HOME/Library/Application Support/com.isaacmarovitz.Whisky/Libraries/Wine/bin/wine64"
   )
   for c in "${CANDIDATES[@]}"; do
     if command -v "$c" >/dev/null 2>&1 || [ -x "$c" ]; then
@@ -127,9 +128,16 @@ fi
 
 echo "==> Ready: $EXE"
 
-# 5. Execute with Wine
 # macOS Apple Silicon W^X / JIT protection compatibility for CoreCLR under Rosetta/Wine
 export DOTNET_EnableWriteXorExecute=0
+
+# Default to Whisky bottle prefix if WINEPREFIX is not set
+if [ -z "${WINEPREFIX:-}" ]; then
+  WHISKY_BOTTLE=$(find "$HOME/Library/Containers/com.isaacmarovitz.Whisky/Bottles" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1 || true)
+  if [ -n "$WHISKY_BOTTLE" ]; then
+    export WINEPREFIX="$WHISKY_BOTTLE"
+  fi
+fi
 
 # Suppress harmless Wine debug spam unless WINE_DEBUG is set
 if [ -z "${WINE_DEBUG:-}" ]; then
