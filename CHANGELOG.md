@@ -8,7 +8,7 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
-- **Run in Wine command & in-editor buttons**: added `VSCForms: Run in Wine` (`vscforms.runProject`), an editor title bar play button (`$(play)`), an in-canvas `▶ Run` button in the status bar, and `F5` keybinding. Auto-detects Wine (system Wine, Whisky runtime, CrossOver), auto-detects bottles/prefixes, prompts with one-click installation guidance if Wine is missing, and publishes self-contained `win-x64` to launch in an integrated VS Code terminal with Apple Silicon Rosetta JIT flags (`DOTNET_EnableWriteXorExecute=0`).
+- **Run in Wine command & editor toolbar action**: added `VSCForms: Run in Wine` (`vscforms.runProject`), an editor title bar play button (`$(play)`), and `F5` keybinding. Auto-detects Wine (system Wine, Whisky runtime, CrossOver), auto-detects bottles/prefixes, prompts with one-click installation guidance if Wine is missing, and publishes self-contained `win-x64` to launch in an integrated VS Code terminal with Apple Silicon Rosetta JIT flags (`DOTNET_EnableWriteXorExecute=0`).
 - **`scripts/run-in-wine.sh` & `scripts/open-in-wine.sh`**: standalone CLI script to build and launch WinForms projects under Wine on macOS / Linux.
 - **Structural container nesting (`TabControl` & `TabPage`)**: models two-level container hierarchies
   (`TabControl` -> `TabPage` -> child controls), renders interactive tab-strips with page activation,

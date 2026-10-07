@@ -1183,11 +1183,6 @@
     function setupStatusBar() {
         const s = $('status-tools');
         if (!s) return;
-        const runBtn = el('button', 'run-btn', '▶ Run');
-        runBtn.title = 'Build and run this WinForms project (F5)';
-        runBtn.addEventListener('click', () => post('runProject'));
-        s.appendChild(runBtn);
-
         const toggle = el('button', 'snap-toggle', view.snap ? 'Snap: on' : 'Snap: off');
         toggle.title = 'Snap to the 8px grid and to other controls\' edges';
         toggle.addEventListener('click', () => {

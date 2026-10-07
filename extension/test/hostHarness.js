@@ -603,17 +603,6 @@ setTimeout(async () => {
         leftOf('btnSubmit') !== xBefore && canvasEl.querySelectorAll('.ctl.selected').length === 1,
         `x ${xBefore} -> ${leftOf('btnSubmit')}, selected ${canvasEl.querySelectorAll('.ctl.selected').length}`);
 
-    // ---- Run button is offered in status bar and posts runProject
-    const runBtn = ids['status-tools'].querySelector('.run-btn');
-    check('a run button is offered in the status bar', !!runBtn, 'not found in the status bar');
-    if (runBtn) {
-        sandbox.__sent.length = 0;
-        runBtn.dispatch('click', { preventDefault() { } });
-        check('clicking run posts runProject message',
-            sandbox.__sent.some((m) => m.type === 'runProject'),
-            'expected runProject message');
-    }
-
     // ---- snapping can be turned off
     setZoomNow(1);
     send({ type: 'load', data: schema });
