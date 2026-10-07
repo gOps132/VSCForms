@@ -66,6 +66,9 @@ public sealed class DesignerDocument
         public string? Parent { get; set; }
         /// <summary>Statements that populate Items (Add/AddRange). Order matters — it IS the list.</summary>
         public List<ExpressionStatementSyntax> ItemsStatements { get; init; } = new();
+        /// <summary>True if this control has a field declaration OR an instantiation — i.e. it's
+        /// not merely synthesized from an orphaned Controls.Add call.</summary>
+        public bool HasRealEvidence { get; set; }
     }
 
     // ---------------------------------------------------------------- parse
@@ -165,6 +168,7 @@ public sealed class DesignerDocument
                     thisQualifiedInstantiations.Add(instName);
                 if (!index.ContainsKey(instName))
                     index[instName] = NewControlSyntax(instName, QualifiedTypeName(oce.Type), instField, es, es, parent: null);
+                index[instName].HasRealEvidence = true;
                 continue;
             }
 
@@ -191,12 +195,16 @@ public sealed class DesignerDocument
                     var ty = declaredTypes.GetValueOrDefault(child, "System.Windows.Forms.Control");
                     var init = FindInitAssignment(statements, child);
                     existing = NewControlSyntax(child, ty, field, init ?? es, es, parent: container);
+                    // Real evidence = field declaration OR instantiation statement found
+                    existing.HasRealEvidence = field is not null || init is not null;
                     index[child] = existing;
                 }
                 else
                 {
                     existing.AddCall = es;
                     existing.Parent = container;
+                    // If we already had real evidence, keep it; otherwise check if this AddCall
+                    // gives us new evidence (it doesn't — AddCall alone isn't evidence)
                 }
                 continue;
             }
@@ -322,6 +330,19 @@ public sealed class DesignerDocument
         if (index.Count > 0 && index.Values.All(c => !TypeTable.IsHandled(c.Type)))
             r.Warnings.Add("No controls in this form are of a type VSCForms models.");
 
+        // --- integrity check: Controls.Add for controls with no field/instantiation ---
+        // A Controls.Add(x) where x has no field declaration or instantiation is a corrupted
+        // designer file. VS designer refuses to load in this state; we should too.
+        foreach (var kv in index)
+        {
+            if (kv.Value.AddCall is not null && !kv.Value.HasRealEvidence)
+            {
+                r.Refuses.Add("orphaned-controls-add");
+                r.Warnings.Add($"Controls.Add({kv.Key}) references a control that has no field declaration or instantiation. The designer file is corrupted — fix it manually before editing in VSCForms.");
+                break; // one is enough to refuse
+            }
+        }
+
         return r;
     }
 
@@ -398,6 +419,7 @@ public sealed class DesignerDocument
                 ClassName = formType.Identifier.Text,
                 Text = ReadFormText(ic) ?? "",
                 ClientSize = clientSize,
+                BackColor = ReadFormBackColor(ic),
             },
             Controls = controls,
             Analysis = new Analysis
@@ -458,6 +480,21 @@ public sealed class DesignerDocument
 
         if (cs.Properties.TryGetValue("BackColor", out var bc))
             p.BackColor = ParseColor(bc.Right);
+
+        if (cs.Properties.TryGetValue("ForeColor", out var fc))
+            p.ForeColor = ParseColor(fc.Right);
+
+        if (cs.Properties.TryGetValue("Checked", out var chk) && chk.Right is LiteralExpressionSyntax chkl)
+            p.Checked = chkl.Token.Value is true;
+
+        if (cs.Properties.TryGetValue("TextAlign", out var ta))
+            p.TextAlign = ParseMemberName(ta.Right);
+
+        if (cs.Properties.TryGetValue("BorderStyle", out var bs))
+            p.BorderStyle = ParseMemberName(bs.Right);
+
+        if (cs.Properties.TryGetValue("AutoSize", out var asz) && asz.Right is LiteralExpressionSyntax aszl)
+            p.AutoSize = aszl.Token.Value is true;
 
         if (cs.Properties.TryGetValue("Font", out var fn))
             p.Font = ParseFont(fn.Right);
@@ -547,6 +584,9 @@ public sealed class DesignerDocument
             if (cs.Properties.TryGetValue("PasswordChar", out var pc) && pc.Right is LiteralExpressionSyntax pcLit
                 && pcLit.Token.Value is char pcChar)
                 p.PasswordChar = pcChar.ToString();
+
+            if (cs.Properties.TryGetValue("ScrollBars", out var sb))
+                p.ScrollBars = ParseMemberName(sb.Right);
         }
 
         // Leaf widget values and ranges (TrackBar, ProgressBar, NumericUpDown)
@@ -676,6 +716,15 @@ public sealed class DesignerDocument
                 && TryGetFormProperty(a.Left, out var n) && n == "Text"
                 && a.Right is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
                 return lit.Token.ValueText;
+        return null;
+    }
+
+    private static string? ReadFormBackColor(MethodDeclarationSyntax ic)
+    {
+        foreach (var stmt in ic.Body?.Statements ?? default)
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var n) && n == "BackColor")
+                return ParseColor(a.Right);
         return null;
     }
 
@@ -888,6 +937,8 @@ public sealed class DesignerDocument
                 "White" => "#FFFFFF", "Black" => "#000000", "Gray" => "#808080",
                 "Silver" => "#C0C0C0", "Yellow" => "#FFFF00", "Orange" => "#FFA500",
                 "Green" => "#008000", "Navy" => "#000080", "Teal" => "#008080",
+                "Olive" => "#808000", "Maroon" => "#800000", "Purple" => "#800080",
+                "Aqua" or "Cyan" => "#00FFFF", "Fuchsia" or "Magenta" => "#FF00FF",
                 "Transparent" => "", "Control" => "", "Window" => "", "WindowText" => "",
                 _ => null
             };
@@ -896,6 +947,13 @@ public sealed class DesignerDocument
 
         return text switch { _ => null };
     }
+
+    internal static string? ParseMemberName(ExpressionSyntax expr) => expr switch
+    {
+        MemberAccessExpressionSyntax m => m.Name.Identifier.Text,
+        IdentifierNameSyntax id => id.Identifier.Text,
+        _ => null,
+    };
 }
 
 public sealed class DesignException : Exception
