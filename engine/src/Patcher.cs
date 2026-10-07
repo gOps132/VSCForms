@@ -713,9 +713,6 @@ public sealed class Patcher
         // `Controls.Add` calls to anchor on; a freshly-templated project has NEITHER, so every
         // anchor below has a fallback. Without those fallbacks we emit a `Controls.Add` for an
         // undeclared field, which does not compile.
-        bool IsInstantiation(SyntaxNode s) =>
-            s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Right: ObjectCreationExpressionSyntax } };
-
         bool IsFormProperty(SyntaxNode s) =>
             s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
                 && TryGetFormProperty(a.Left, out var n)
@@ -732,12 +729,22 @@ public sealed class Patcher
         else
             InsertLineBefore(formType.CloseBraceToken, $"private {type} {id};");
 
-        // 2. Instantiation — after the last `this.x = new T();`, else at the top of the body.
-        var initAnchor = stmts.LastOrDefault(IsInstantiation);
+        // 2. Instantiation — after the last REAL control instantiation. This must come from
+        // the syntax index, never from scanning statements for `x = new T()`: property
+        // constructions (`Location = new Point()`, `ClientSize = new Size()`, `Font = new
+        // Font()`) share that exact shape, so the scan anchored the init AFTER its own
+        // property block and emitted use-before-def — a NullReferenceException at runtime
+        // that still compiles, so no tier caught it.
+        ExpressionStatementSyntax? initAnchor = _doc.Controls.Values
+            .Select(c => c.InitAssignment)
+            .Where(s => s?.Expression is AssignmentExpressionSyntax
+                { Right: ObjectCreationExpressionSyntax })
+            .OrderBy(s => s!.SpanStart)
+            .LastOrDefault();
         if (initAnchor is not null)
             InsertLineAfter(initAnchor, BodyIndent() + $"{This}{id} = new {type}();");
         else if (stmts.Count > 0)
-            InsertLineBefore(stmts[0], $"this.{id} = new {type}();");
+            InsertLineBefore(stmts[0], $"{This}{id} = new {type}();");
 
         // 3/4. Property block and Controls.Add. These often share an anchor in a fresh project,
         // so collect them and merge per anchor — otherwise two zero-width inserts at the same
