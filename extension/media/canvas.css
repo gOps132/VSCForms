@@ -320,6 +320,16 @@ body { display: flex; flex-direction: column; }
 }
 .ctl.locked::before { content: '\🔒'; margin-right: 4px; font-style: normal; }
 
+/* Active container (drill-down mode) — distinct ring to show scope. */
+.ctl.active-container {
+  outline: 2px solid var(--vscode-focusBorder, #0a84ff);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
+}
+.ctl.active-container > .ctl-caption {
+  font-weight: 600;
+}
+
 .ctl.readonly { cursor: default; opacity: .75; }
 
 .handle {

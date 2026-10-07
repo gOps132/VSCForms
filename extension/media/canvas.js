@@ -21,6 +21,9 @@
     let selection = new Set();
     /** Set when the form refuses editing: canvas becomes read-only. */
     let readOnly = false;
+    /** The container we have "drilled into" via double-click. When set, only its
+     *  children are selectable. Click outside or Escape to exit. */
+    let activeContainer = null;
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
     // editor share one history. See the keydown handler at the bottom of this file.
 
@@ -201,6 +204,32 @@
         return allControls(schema ? schema.controls : []).find((c) => c.id === id) || null;
     }
 
+    /** Returns the container control that directly contains `id`, or null if top-level. */
+    function findContainer(id) {
+        if (!schema) return null;
+        function walk(nodes, parent) {
+            for (const n of nodes || []) {
+                if (n.id === id) return parent;
+                const found = walk(n.children, n);
+                if (found) return found;
+            }
+            return null;
+        }
+        return walk(schema.controls, null);
+    }
+
+    /** Returns true if `id` is inside `activeContainer` (or is the activeContainer itself). */
+    function inActiveContainer(id) {
+        if (!activeContainer) return true; // no drill-down = everything selectable
+        if (id === activeContainer.id) return true;
+        let c = findControl(id);
+        while (c) {
+            if (c.id === activeContainer.id) return true;
+            c = findContainer(c.id);
+        }
+        return false;
+    }
+
     /** Selected controls, in schema order so alignment output is deterministic. */
     function selected() {
         return allControls(schema ? schema.controls : []).filter((c) => selection.has(c.id));
@@ -364,6 +393,11 @@
         }
         if (readOnly) node.classList.add('readonly');
 
+        // Active container (drill-down) gets a distinct ring so the user knows the scope.
+        if (activeContainer && c.id === activeContainer.id) {
+            node.classList.add('active-container');
+        }
+
         if (selection.has(c.id)) {
             node.classList.add('selected');
             // Handles only make sense for a single selection; on a group they would imply the
@@ -391,7 +425,20 @@
             if (extend) select(c.id, true); else if (!selection.has(c.id) || selection.size > 1) select(c.id);
             beginDrag(e, c, node, containerNode);
         });
-        node.addEventListener('dblclick', () => { if (!c.locked) select(c.id); });
+        node.addEventListener('dblclick', (e) => {
+            if (c.locked || readOnly) return;
+            const simple = simpleName(c.type);
+            if (containerTypes().has(simple)) {
+                // Enter container: double-click a GroupBox, Panel, TabControl, TabPage
+                activeContainer = c;
+                selection = new Set();
+                renderCanvas();
+                renderInspector();
+                renderStatus('Entered ' + c.id + ' — double-click outside or press Escape to exit', 'ok');
+            } else {
+                select(c.id);
+            }
+        });
         node.addEventListener('keydown', (e) => {
             if (c.locked || readOnly) return;
             // GRID is FORM units. A nudge must never be "8 screen pixels" — at 50% zoom that
@@ -471,6 +518,7 @@
 
     // ------------------------------------------------------------- selection
     function select(id, extend) {
+        if (id && !inActiveContainer(id)) return; // ignore clicks outside active container
         if (extend) {
             if (selection.has(id)) selection.delete(id); else selection.add(id);
         } else {
@@ -489,7 +537,8 @@
             allControls(schema ? schema.controls : [])
                 .filter((c) => !c.locked
                     && c.properties.x < x2 && c.properties.x + c.properties.width > x1
-                    && c.properties.y < y2 && c.properties.y + c.properties.height > y1)
+                    && c.properties.y < y2 && c.properties.y + c.properties.height > y1
+                    && inActiveContainer(c.id))
                 .map((c) => c.id));
         renderCanvas();
         renderInspector();
@@ -1148,6 +1197,15 @@
         canvas.addEventListener('mousedown', (e) => {
             if (e.target !== canvas) return;      // started on a control
             if (e.button !== 0) return;
+            // Click on empty canvas exits active container
+            if (activeContainer) {
+                activeContainer = null;
+                selection = new Set();
+                renderCanvas();
+                renderInspector();
+                renderStatus('Exited container', 'ok');
+                return;
+            }
             e.preventDefault();
             beginMarquee(e);
         });
@@ -1338,7 +1396,17 @@
             }
             // Escape clears the selection and cancels any in-progress gesture. Its absence is
             // felt: without it there is no way out of a selection short of clicking again.
-            if (e.key === 'Escape') select(null);
+            if (e.key === 'Escape') {
+                if (activeContainer) {
+                    activeContainer = null;
+                    selection = new Set();
+                    renderCanvas();
+                    renderInspector();
+                    renderStatus('Exited container', 'ok');
+                } else {
+                    select(null);
+                }
+            }
         });
     }
 })();
