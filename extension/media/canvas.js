@@ -56,12 +56,18 @@
 
     function applyZoom() {
         const k = view.scale;
-        // The frame carries the transform too, or its border and title bar would not grow with
-        // the content. transform-origin must be top-left or the form grows down-right.
-        for (const node of [$('canvas'), frameEl()]) {
-            if (!node) continue;
-            node.style.transformOrigin = '0 0';
-            node.style.transform = `scale(${k})`;
+        // Transform the outer frame container (or canvas fallback if no frame exists).
+        // Since #canvas is a child of .form-frame, scaling both would multiply the scale
+        // (effective scale = k * k), causing the form window to appear disproportionately
+        // larger than its child elements at low zoom levels.
+        const frame = frameEl();
+        const canvas = $('canvas');
+        if (frame) {
+            frame.style.transformOrigin = '0 0';
+            frame.style.transform = `scale(${k})`;
+            if (canvas && canvas !== frame) {
+                canvas.style.transform = '';
+            }
         }
         const label = $('zoom-label');
         if (label) label.textContent = Math.round(k * 100) + '%';
@@ -237,10 +243,13 @@
     }
 
     // ---------------------------------------------------------------- banner
-    // Coverage disclosure is mandatory. Never collapsed, never dismissible.
+    let bannerDismissed = false;
     function renderBanner() {
         const banner = $('banner');
-        if (!schema) { banner.classList.add('hidden'); return; }
+        if (!schema || (bannerDismissed && (!schema.analysis.refuses || schema.analysis.refuses.length === 0))) {
+            banner.classList.add('hidden');
+            return;
+        }
         const a = schema.analysis;
         const parts = [];
         parts.push(`<b>Coverage ${a.coveragePercent}%</b> &mdash; ${a.modelledCount} of `
@@ -258,12 +267,24 @@
         if (a.warnings && a.warnings.length) {
             parts.push('<ul>' + a.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('') + '</ul>');
         }
+
         banner.innerHTML = parts.join('<br>');
+
+        const closeBtn = el('button', 'banner-close', '✕');
+        closeBtn.title = 'Dismiss banner';
+        closeBtn.setAttribute('aria-label', 'Dismiss banner');
+        closeBtn.addEventListener('click', () => {
+            bannerDismissed = true;
+            banner.classList.add('hidden');
+        });
+        banner.appendChild(closeBtn);
+
         banner.classList.remove('hidden');
         // Layout is done with flexbox (see .workbench.banner-on), so there is no need to
         // measure the banner and set a pixel height — which was both fragile and the reason
         // this function needed requestAnimationFrame.
-        document.querySelector('.workbench').classList.add('banner-on');
+        const wb = document.querySelector('.workbench');
+        if (wb) wb.classList.add('banner-on');
     }
     function escapeHtml(s) {
         return String(s).replace(/[&<>"]/g, (c) => (
@@ -631,7 +652,9 @@
     /** The live DOM node for a control id. Re-resolved per frame: a selection change
      *  re-renders the canvas and replaces every node, so a captured node can be detached. */
     function nodeFor(id) {
-        return $('canvas').querySelectorAll('.ctl').find((n) => n.dataset.id === id) || null;
+        const canvas = $('canvas');
+        if (!canvas) return null;
+        return Array.from(canvas.querySelectorAll('.ctl')).find((n) => n.dataset.id === id) || null;
     }
 
     // ------------------------------------------------------------------ drag
@@ -713,14 +736,16 @@
     function showGuides(c, parentBox) {
         clearGuides();
         const canvas = $('canvas');
+        if (!canvas) return;
         const cb = canvas.getBoundingClientRect();
+        const k = view.scale || 1;
         const siblings = allControls(schema.controls).filter((o) => o.id !== c.id && o.properties);
         for (const o of siblings) {
-            const oy = cb.top - parentBox.top + o.properties.y;
+            const oy = (cb.top - parentBox.top) / k + o.properties.y;
             if (Math.abs(c.properties.y + c.properties.height - oy) <= SNAP) {
                 guides.push(makeGuide('h', oy, canvas.clientWidth));
             }
-            const ox = cb.left - parentBox.left + o.properties.x;
+            const ox = (cb.left - parentBox.left) / k + o.properties.x;
             if (Math.abs(c.properties.x + c.properties.width - ox) <= SNAP) {
                 guides.push(makeGuide('v', ox, canvas.clientHeight));
             }
@@ -1238,6 +1263,7 @@
             case 'load':
             case 'externalChange': {
                 schema = msg.data;
+                if (msg.type === 'load') bannerDismissed = false;
                 readOnly = schema.analysis.refuses.length > 0;
                 selection = new Set();
                 renderAll();

@@ -285,11 +285,17 @@ check('locked control is not editable via arrow keys',
         return true;
     })());
 
-// banner: coverage disclosure is mandatory
+// banner: coverage disclosure
 const bannerHtml = String(ids.banner.innerHTML || '');
 check('banner states coverage', /Coverage\s*66\.67%/.test(bannerHtml), bannerHtml.slice(0, 80));
 check('banner states unmodelled count', /1 shown as locked boxes/.test(bannerHtml));
 check('banner is visible (not hidden)', !ids.banner.classList.contains('hidden'));
+const bannerCloseBtn = ids.banner.querySelector('.banner-close');
+check('banner offers dismiss/cancel button', !!bannerCloseBtn);
+if (bannerCloseBtn) {
+    bannerCloseBtn.dispatch('click', {});
+    check('clicking dismiss hides the banner', ids.banner.classList.contains('hidden'));
+}
 
 check('form title rendered', String(ids['form-title-text'].textContent) === 'SimpleDialog');
 check('form size rendered', String(ids['form-size'].textContent) === '292 x 196');
@@ -421,7 +427,8 @@ setTimeout(async () => {
 
     /** The scale the canvas is actually applying, read back off the transform. */
     const scaleOf = () => {
-        const m = /scale\(([\d.]+)\)/.exec(String(canvasEl.style.transform || ''));
+        const tr = (frame && frame.style.transform) || canvasEl.style.transform || '';
+        const m = /scale\(([\d.]+)\)/.exec(String(tr));
         return m ? parseFloat(m[1]) : 1;
     };
     /** Mirror the canvas's scale into the DOM stand-in, which is what makes rects scaled. */
@@ -443,6 +450,8 @@ setTimeout(async () => {
     check('ctrl+wheel zooms in', z1 > 1, String(z1));
     check('the form frame is transformed too, or its border will not grow',
         /scale/.test(String(frame.style.transform || '')), String(frame.style.transform));
+    check('canvas inside form frame does not duplicate transform',
+        !canvasEl.style.transform || canvasEl.style.transform === '', String(canvasEl.style.transform));
     check('the zoom readout shows the current scale',
         /%/.test(String(zoomLabel.textContent || '')) && String(zoomLabel.textContent) !== '100%',
         String(zoomLabel.textContent));
@@ -474,6 +483,9 @@ setTimeout(async () => {
         ctlNode('btnSubmit').dispatch('mousedown',
             { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
         sandbox.window.dispatch('mousemove', { clientX: 100 + 40 * s, clientY: 100 + 24 * s });
+        check(`a drag at ${label} moves live style during mousemove`,
+            leftOf('btnSubmit') !== x0,
+            `live left is ${leftOf('btnSubmit')}; start was ${x0}`);
         sandbox.window.dispatch('mouseup', {});
         mirrorScale();
 

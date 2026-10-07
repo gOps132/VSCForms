@@ -24,10 +24,9 @@ html, body {
 }
 
 /* ------------------------------------------------------------- coverage banner */
-/* Mandatory, non-dismissible. A canvas that silently renders half a form is the
-   exact failure this project exists to avoid. */
 .banner {
-  padding: 8px 12px; font-size: 12px; line-height: 1.5;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 12px; font-size: 12px; line-height: 1.5;
   border-bottom: 1px solid var(--border);
   background: var(--warn-bg);
   border-left: 3px solid var(--warn-br);
@@ -36,12 +35,23 @@ html, body {
 .banner.hidden { display: none; }
 .banner b { font-weight: 600; }
 .banner ul { margin: 4px 0 0; padding-left: 18px; }
+.banner-content { flex: 1 1 auto; min-width: 0; }
+.banner-close {
+  flex: 0 0 auto; cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+  color: var(--fg); opacity: .7; font-size: 12px; line-height: 1;
+  padding: 3px 6px; display: inline-flex; align-items: center; justify-content: center;
+}
+.banner-close:hover {
+  opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2));
+  border-color: var(--border);
+}
 
 /* ------------------------------------------------------------------ workbench */
 /* body is a column: banner (auto) + workbench (flex:1) + status (24px). No measurement. */
 body { display: flex; flex-direction: column; }
 .workbench { flex: 1 1 auto; min-height: 0; display: flex; }
-.status { flex: 0 0 24px; }
+.statusbar { flex: 0 0 24px; }
 
 .toolbox {
   width: 132px; flex: 0 0 132px; padding: 8px 6px;
@@ -64,8 +74,10 @@ body { display: flex; flex-direction: column; }
 
 .stage {
   position: relative;
-  flex: 1 1 auto; overflow: auto; display: flex; align-items: flex-start;
-  justify-content: flex-start; padding: 20px 20px 48px 20px;
+  flex: 1 1 auto; overflow: auto; display: grid;
+  grid-template-columns: 14px auto;
+  grid-template-rows: 14px auto auto;
+  padding: 0;
   background:
     repeating-conic-gradient(rgba(128,128,128,.06) 0% 25%, transparent 0% 50%) 50%/16px 16px;
 }
@@ -76,12 +88,12 @@ body { display: flex; flex-direction: column; }
 
 /* --------------------------------------------------------------------- rulers */
 .ruler, .ruler-corner {
-  position: sticky; flex: 0 0 auto; z-index: 3;
+  position: sticky; z-index: 3;
   background: var(--vscode-sideBar-background, #252526);
   border-color: var(--border);
 }
 .ruler-h {
-  top: 0; height: 14px; width: 100%;
+  grid-column: 2; grid-row: 1; top: 0; height: 14px; width: 100%;
   border-bottom: 1px solid var(--border);
   /* background-size is set by canvas.js so a tick keeps meaning the same FORM distance at
      any zoom — a fixed CSS gradient would lie the moment the canvas is scaled. */
@@ -90,19 +102,27 @@ body { display: flex; flex-direction: column; }
   background-size: 40px 100%;
 }
 .ruler-v {
-  left: 0; width: 14px; align-self: stretch;
+  grid-column: 1; grid-row: 2; left: 0; width: 14px; height: 100%;
   border-right: 1px solid var(--border);
   background-image: repeating-linear-gradient(180deg,
     var(--border) 0 1px, transparent 1px 100%);
   background-size: 100% 40px;
 }
-.ruler-corner { width: 14px; height: 14px; border-right: 1px solid var(--border); }
+.ruler-corner {
+  grid-column: 1; grid-row: 1; top: 0; left: 0; width: 14px; height: 14px;
+  border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
 
 /* ------------------------------------------------------------------- zoom bar */
 .zoombar {
-  position: sticky; bottom: 0; left: 0; margin-left: -20px;
-  display: flex; align-items: center; gap: 2px; padding: 6px 20px;
-  z-index: 4;
+  grid-column: 2; grid-row: 3;
+  position: sticky; bottom: 12px; left: 24px;
+  justify-self: start; align-self: end;
+  display: flex; align-items: center; gap: 2px; padding: 4px 8px;
+  z-index: 4; margin: 16px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
 }
 .zoombar button {
   min-width: 24px; height: 20px; padding: 0 6px; cursor: pointer;
@@ -125,9 +145,12 @@ body { display: flex; flex-direction: column; }
 
 /* -------------------------------------------------------------- status bar row */
 .statusbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  flex: 0 0 24px; height: 24px; min-height: 24px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 10px; border-top: 1px solid var(--border);
+  background: var(--vscode-editor-background, #1e1e1e);
 }
-.status-tools { display: flex; align-items: center; gap: 6px; }
+.status-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 .status-tools button {
   cursor: pointer; font-size: 10px; padding: 1px 6px;
   background: transparent; color: var(--muted);
@@ -137,6 +160,7 @@ body { display: flex; flex-direction: column; }
 
 /* ----------------------------------------------------------------- form frame */
 .form-frame {
+  grid-column: 2; grid-row: 2; margin: 20px;
   border: 1px solid var(--border); background: var(--bg);
   box-shadow: 0 2px 12px rgba(0,0,0,.28);
   flex: 0 0 auto;
@@ -183,16 +207,16 @@ body { display: flex; flex-direction: column; }
 
 /* Approximate WinForms look. NOT pixel parity — see CONTEXT.md. */
 .ctl.t-button  { background: linear-gradient(180deg,#3a3d41,#2e3134); border-radius: 2px; }
-.ctl.t-label   { background: transparent; border-color: transparent; }
+.ctl.t-label   { background: transparent; border-color: transparent; overflow: visible; }
 .ctl.t-textbox { background: var(--vscode-input-background, #1e1e1e); }
 .ctl.t-checkbox,.ctl.t-radio { background: transparent; border-color: transparent; }
 /* An empty TextBox/ComboBox/ListBox must read as empty, not as the text "TextBox". */
 .ctl.placeholder .ctl-caption { color: var(--muted); font-style: italic; font-size: 11px; }
 /* Left-aligned captions, as WinForms renders these types. */
-.ctl.t-label > .ctl-caption,
-.ctl.t-textbox > .ctl-caption,
+.ctl.t-label > .ctl-caption { justify-content: flex-start; padding: 0; overflow: visible; }
 .ctl.t-checkbox > .ctl-caption,
-.ctl.t-radio > .ctl-caption,
+.ctl.t-radio > .ctl-caption { justify-content: flex-start; overflow: visible; }
+.ctl.t-textbox > .ctl-caption,
 .ctl.t-combobox > .ctl-caption,
 .ctl.t-listbox > .ctl-caption { justify-content: flex-start; }
 /* A container positions children absolutely and shows its own caption in the border. */
@@ -355,11 +379,15 @@ body { display: flex; flex-direction: column; }
 
 /* -------------------------------------------------------------------- status */
 .status {
-  height: 24px; display: flex; align-items: center; gap: 14px;
-  padding: 0 10px; font-size: 11px; color: var(--muted);
-  border-top: 1px solid var(--border);
+  flex: 1 1 auto; min-width: 0; height: 100%;
+  display: flex; align-items: center; gap: 14px;
+  font-size: 11px; color: var(--muted);
+  white-space: nowrap; overflow: hidden;
 }
-.status .spacer { flex: 1; }
+.status > span {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.status .spacer { flex: 1 1 auto; min-width: 8px; }
 .status .err { color: var(--err-br); }
 .status .ok { color: var(--fg); }
 /* --------------------------------------------------------------- inspector rows */
