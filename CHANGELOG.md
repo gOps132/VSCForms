@@ -8,6 +8,8 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **Run in Wine command & in-editor buttons**: added `VSCForms: Run in Wine` (`vscforms.runProject`), an editor title bar play button (`$(play)`), an in-canvas `▶ Run` button in the status bar, and `F5` keybinding. Auto-detects Wine (system Wine, Whisky runtime, CrossOver), auto-detects bottles/prefixes, prompts with one-click installation guidance if Wine is missing, and publishes self-contained `win-x64` to launch in an integrated VS Code terminal with Apple Silicon Rosetta JIT flags (`DOTNET_EnableWriteXorExecute=0`).
+- **`scripts/run-in-wine.sh` & `scripts/open-in-wine.sh`**: standalone CLI script to build and launch WinForms projects under Wine on macOS / Linux.
 - **Structural container nesting (`TabControl` & `TabPage`)**: models two-level container hierarchies
   (`TabControl` -> `TabPage` -> child controls), renders interactive tab-strips with page activation,
   and handles container insertion in the Roslyn patcher (`tabControl.Controls.Add(page)` and `page.Controls.Add(...)`).
@@ -35,6 +37,11 @@ versioning follows [SemVer](https://semver.org/).
   advisory, and consulted only where the file itself carries no evidence.
 - A `layout` CI job comparing the Form Schema against real WinForms runtime `Bounds`
   (Windows-only).
+
+### Fixed
+
+- **Fixed: canvas drag and property edits reporting "schema is required" error**: unpacked `(msg.data ?? msg.schema)` in the extension host commit listener because `canvas.js` sends `{ type: 'commit', data: schema }`.
+- **Fixed: integration test conflicting canary name**: updated canary rename target from `tabDetails` to `calDetails` in `test/suite.js` to match the `MonthCalendar` canary control in `WiredForm.Designer.cs`.
 
 ### Notes
 

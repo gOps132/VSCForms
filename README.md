@@ -20,6 +20,10 @@ code --install-extension dist/*.vsix
 Then **VSCForms: New Project…** creates a WinForms project and opens it in the canvas, or open
 any existing `*.Designer.cs`. To read the generated source instead, use **Open as Text**.
 
+To build and run the form application:
+- In VS Code: click the **`▶ Run`** button in the canvas statusbar, the `$(play)` icon in the editor tab bar, or press **`F5`** (auto-detects Wine on macOS/Linux, runs natively on Windows).
+- From terminal: `./scripts/run-in-wine.sh [project]` (or `./scripts/open-in-wine.sh`).
+
 Develop with `code --extensionDevelopmentPath=extension <workspace>`.
 
 ## What it does not do
