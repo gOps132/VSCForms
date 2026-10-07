@@ -31,6 +31,7 @@ interface FormInfo {
   text: string                // "" if unset
   clientSize: { width: number; height: number }
   className: string           // the generated partial class name
+  backColor?: string          // CSS colour string, e.g. '#f0f0f0' or '' for default
 }
 
 interface Analysis {
@@ -95,6 +96,7 @@ interface ControlProperties {
   text?: string
   tabIndex?: number
   backColor?: string           // CSS colour string, e.g. '#ff0000' or '' for default
+  foreColor?: string           // CSS colour string, e.g. '#008000' or '' for default
   visible?: boolean
   enabled?: boolean
   font?: { size: number; bold: boolean; italic: boolean; family?: string }
@@ -103,9 +105,14 @@ interface ControlProperties {
   readOnly?: boolean           // TextBox only
   maxLength?: number           // TextBox only
   passwordChar?: string        // TextBox only
+  scrollBars?: string          // TextBox only: 'None' | 'Horizontal' | 'Vertical' | 'Both'
   minimum?: number             // TrackBar, ProgressBar, NumericUpDown
   maximum?: number             // TrackBar, ProgressBar, NumericUpDown
   value?: number               // TrackBar, ProgressBar, NumericUpDown
+  checked?: boolean            // CheckBox, RadioButton
+  textAlign?: string           // Label, Button: ContentAlignment
+  borderStyle?: string         // Panel, GroupBox, PictureBox, Label: BorderStyle
+  autoSize?: boolean           // Label, CheckBox, RadioButton, Button
 }
 ```
 

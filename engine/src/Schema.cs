@@ -18,6 +18,7 @@ public sealed class FormInfo
     [JsonPropertyName("text")] public string Text { get; set; } = "";
     [JsonPropertyName("clientSize")] public required SizeDto ClientSize { get; set; }
     [JsonPropertyName("className")] public string ClassName { get; set; } = "";
+    [JsonPropertyName("backColor")] public string? BackColor { get; set; }
 }
 
 public sealed class SizeDto
@@ -54,6 +55,7 @@ public sealed class ControlProperties
     [JsonPropertyName("text")] public string? Text { get; set; }
     [JsonPropertyName("tabIndex")] public int? TabIndex { get; set; }
     [JsonPropertyName("backColor")] public string? BackColor { get; set; }
+    [JsonPropertyName("foreColor")] public string? ForeColor { get; set; }
     [JsonPropertyName("visible")] public bool? Visible { get; set; }
     [JsonPropertyName("enabled")] public bool? Enabled { get; set; }
     [JsonPropertyName("font")] public FontDto? Font { get; set; }
@@ -62,9 +64,14 @@ public sealed class ControlProperties
     [JsonPropertyName("readOnly")] public bool? ReadOnly { get; set; }
     [JsonPropertyName("maxLength")] public int? MaxLength { get; set; }
     [JsonPropertyName("passwordChar")] public string? PasswordChar { get; set; }
+    [JsonPropertyName("scrollBars")] public string? ScrollBars { get; set; }
     [JsonPropertyName("minimum")] public decimal? Minimum { get; set; }
     [JsonPropertyName("maximum")] public decimal? Maximum { get; set; }
     [JsonPropertyName("value")] public decimal? Value { get; set; }
+    [JsonPropertyName("checked")] public bool? Checked { get; set; }
+    [JsonPropertyName("textAlign")] public string? TextAlign { get; set; }
+    [JsonPropertyName("borderStyle")] public string? BorderStyle { get; set; }
+    [JsonPropertyName("autoSize")] public bool? AutoSize { get; set; }
 }
 
 public sealed class FontDto

@@ -419,7 +419,12 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
         <button id="zoom-fit" title="Fit to window (Cmd/Ctrl 0)">Fit</button>
       </div>
     </main>
-    <aside id="inspector" class="inspector"></aside>
+    <aside class="inspector">
+      <div class="inspector-search-wrap">
+        <input id="inspector-filter" class="inspector-search" type="text" placeholder="Filter properties..." />
+      </div>
+      <div id="inspector"></div>
+    </aside>
   </div>
   <div class="statusbar">
     <div id="status" class="status"></div>

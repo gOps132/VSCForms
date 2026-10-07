@@ -941,6 +941,73 @@ setTimeout(async () => {
     const page2Active = ctlNode('page2');
     check('Clicking tab switches active page and unhides it', page2Active && !page2Active.classList.contains('tabpage-hidden'));
 
+    // ---- Form inspection, handles, and new control properties
+    const formSchemaTest = {
+        schemaVersion: 1,
+        form: { name: 'MainForm', text: 'My App', clientSize: { width: 400, height: 300 }, className: 'MainForm', backColor: '#123456' },
+        controls: [
+            { id: 'chkOpt', type: 'System.Windows.Forms.CheckBox', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 100, height: 20, text: 'Enable', checked: true, foreColor: '#00ff00', borderStyle: 'FixedSingle', textAlign: 'MiddleRight', autoSize: true } },
+            { id: 'txtInput', type: 'System.Windows.Forms.TextBox', children: [], locked: false,
+              properties: { x: 10, y: 40, width: 120, height: 25, text: '', scrollBars: 'Vertical' } }
+        ],
+        analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] }
+    };
+    send({ type: 'load', data: formSchemaTest });
+    await settled();
+
+    // Check canvas applied form backColor
+    check('canvas applies form backColor', ids.canvas.style.backgroundColor === '#123456');
+
+    // Inspector with 0 selection shows Form properties
+    const formInspectorHtml = String(ids.inspector.innerHTML || ids.inspector.textContent || '');
+    check('inspector shows Form when no control is selected', /MainForm \(Form\)/.test(formInspectorHtml));
+    const formInputs = ids.inspector.querySelectorAll('input');
+    check('form inspector exposes Title, Width, Height, BackColor', formInputs.length >= 4);
+
+    // Edit form width
+    sandbox.__sent.length = 0;
+    const widthInput = formInputs.find((i) => i.id === 'fWidth');
+    check('form inspector has fWidth', !!widthInput);
+    if (widthInput) {
+        widthInput.value = '500';
+        widthInput.dispatch('change', {});
+        await settled();
+        const formCommit = sandbox.__sent.find((m) => m.type === 'commit');
+        check('editing form width commits updated clientSize.width', formCommit && formCommit.data.form.clientSize.width === 500);
+    }
+
+    // Form handles
+    const formFrameEl = sandbox.__frame;
+    const formHandles = formFrameEl ? formFrameEl.querySelectorAll('.form-handle') : [];
+    check('form frame renders 3 resize handles (e, s, se)', formHandles.length === 3, 'got: ' + formHandles.length);
+
+    // Test new control properties & visual styling
+    const chkNode = ctlNode('chkOpt');
+    check('CheckBox with checked:true has .checked class', chkNode && chkNode.classList.contains('checked'));
+    check('control has foreColor applied to style.color', chkNode && chkNode.style.color === '#00ff00');
+    check('control has border-fixedsingle class', chkNode && chkNode.classList.contains('border-fixedsingle'));
+
+    // Select chkOpt to inspect properties
+    chkNode.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 15, clientY: 15 });
+    await settled();
+    const chkInputs = ids.inspector.querySelectorAll('input');
+    const chkSelects = ids.inspector.querySelectorAll('select');
+    const autoSizeBox = chkInputs.find((i) => i.id === 'fAutoSize');
+    check('CheckBox inspector offers AutoSize', !!autoSizeBox);
+    const checkedBox = chkInputs.find((i) => i.id === 'fChecked');
+    check('CheckBox inspector offers Checked', !!checkedBox && checkedBox.checked === true);
+    const textAlignSel = chkSelects.find((s) => s.id === 'fTextAlign');
+    // Select txtInput and check ScrollBars and BorderStyle
+    const txtNode = ctlNode('txtInput');
+    txtNode.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 15, clientY: 45 });
+    await settled();
+    const txtSelects = ids.inspector.querySelectorAll('select');
+    const scrollBarsSel = txtSelects.find((s) => s.id === 'fScrollBars');
+    check('TextBox inspector offers ScrollBars', !!scrollBarsSel);
+    const borderStyleSel = txtSelects.find((s) => s.id === 'fBorderStyle');
+    check('TextBox inspector offers BorderStyle', !!borderStyleSel);
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);

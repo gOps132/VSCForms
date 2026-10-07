@@ -164,6 +164,7 @@ body { display: flex; flex-direction: column; }
   border: 1px solid var(--border); background: var(--bg);
   box-shadow: 0 2px 12px rgba(0,0,0,.28);
   flex: 0 0 auto;
+  position: relative;
   /* transform + transform-origin are set by canvas.js so zoom grows the frame from its
      top-left. Without origin 0 0 the form would zoom toward its centre and drift away
      from the pointer the user is zooming about. */
@@ -210,6 +211,30 @@ body { display: flex; flex-direction: column; }
 .ctl.t-label   { background: transparent; border-color: transparent; overflow: visible; }
 .ctl.t-textbox { background: var(--vscode-input-background, #1e1e1e); }
 .ctl.t-checkbox,.ctl.t-radio { background: transparent; border-color: transparent; }
+.ctl.t-checkbox > .ctl-caption::before {
+  content: ''; display: inline-block; width: 11px; height: 11px;
+  border: 1px solid var(--vscode-checkbox-border, var(--border));
+  background: var(--vscode-checkbox-background, transparent);
+  border-radius: 2px; margin-right: 6px; flex-shrink: 0;
+}
+.ctl.t-checkbox.checked > .ctl-caption::before {
+  background: var(--vscode-checkbox-selectBackground, var(--accent));
+  content: '✓'; color: var(--vscode-checkbox-selectForeground, #fff);
+  font-size: 9px; line-height: 11px; text-align: center; font-weight: bold;
+}
+.ctl.t-radio > .ctl-caption::before {
+  content: ''; display: inline-block; width: 11px; height: 11px;
+  border: 1px solid var(--vscode-checkbox-border, var(--border));
+  background: var(--vscode-checkbox-background, transparent);
+  border-radius: 50%; margin-right: 6px; flex-shrink: 0;
+}
+.ctl.t-radio.checked > .ctl-caption::before {
+  background: var(--vscode-checkbox-selectBackground, var(--accent));
+  box-shadow: inset 0 0 0 2px var(--bg);
+}
+.ctl.border-none { border: none !important; }
+.ctl.border-fixedsingle { border: 1px solid var(--border) !important; }
+.ctl.border-fixed3d { border: 2px inset rgba(128,128,128,0.5) !important; }
 /* An empty TextBox/ComboBox/ListBox must read as empty, not as the text "TextBox". */
 .ctl.placeholder .ctl-caption { color: var(--muted); font-style: italic; font-size: 11px; }
 /* Left-aligned captions, as WinForms renders these types. */
@@ -345,6 +370,14 @@ body { display: flex; flex-direction: column; }
 .handle.sw { left: -4px;  bottom: -4px; cursor: nesw-resize; }
 .handle.w  { left: -4px;  top: 50%;     margin-top: -3.5px; cursor: ew-resize; }
 
+.form-handle {
+  position: absolute; width: 7px; height: 7px;
+  background: var(--bg); border: 1px solid var(--accent); z-index: 5;
+}
+.form-handle.e  { right: -4px; top: 50%; margin-top: -3.5px; cursor: ew-resize; }
+.form-handle.s  { left: 50%; bottom: -4px; margin-left: -3.5px; cursor: ns-resize; }
+.form-handle.se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+
 /* Snap guides */
 .guide { position: absolute; background: #f14c4c; z-index: 20; pointer-events: none; }
 .guide.v { width: 1px; top: 0; bottom: 0; }
@@ -359,6 +392,23 @@ body { display: flex; flex-direction: column; }
 .inspector {
   width: 210px; flex: 0 0 210px; padding: 4px 8px 12px;
   border-left: 1px solid var(--border); overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.inspector-search-wrap {
+  flex: 0 0 auto; margin: 4px 0 8px 0;
+}
+.inspector-search {
+  width: 100%; padding: 4px 6px; font-size: 11px;
+  background: var(--vscode-input-background); color: var(--fg);
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 2px; font-family: inherit;
+}
+.inspector-search:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+#inspector {
+  flex: 1 1 auto;
 }
 .inspector .empty { color: var(--muted); font-size: 12px; padding: 8px 4px; }
 .field { margin: 6px 0; }

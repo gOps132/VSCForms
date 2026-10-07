@@ -91,6 +91,13 @@ public sealed class Patcher
         if (incoming.Form.Text != doc.Schema.Form.Text)
             PatchFormText(incoming.Form.Text);
 
+        if (incoming.Form.ClientSize.Width != doc.Schema.Form.ClientSize.Width
+            || incoming.Form.ClientSize.Height != doc.Schema.Form.ClientSize.Height)
+            PatchFormClientSize(incoming.Form.ClientSize);
+
+        if (incoming.Form.BackColor != doc.Schema.Form.BackColor)
+            PatchFormBackColor(incoming.Form.BackColor);
+
         // --- assemble ---------------------------------------------------------
         // Non-overlapping zero-width inserts are allowed to share a position; overlapping
         // replacements are not. Sort by span start, then drop any change that overlaps.
@@ -100,7 +107,7 @@ public sealed class Patcher
         foreach (var c in ordered)
         {
             if (c.Span.Start < cursor) continue;
-            if (c.NewText.Length == 0 && c.Span.Length == 0) { continue; }
+            if (string.IsNullOrEmpty(c.NewText) && c.Span.Length == 0) { continue; }
             accepted.Add(c);
             if (c.Span.Length > 0) cursor = c.Span.End;
         }
@@ -110,7 +117,7 @@ public sealed class Patcher
         if (Environment.GetEnvironmentVariable("MF_DEBUG") == "1")
         {
             foreach (var c in accepted)
-                Console.Error.WriteLine($"  change [{c.Span.Start}..{c.Span.End}) '{c.NewText.Replace("\n", "\\n")}'");
+                Console.Error.WriteLine($"  change [{c.Span.Start}..{c.Span.End}) '{(c.NewText ?? "").Replace("\n", "\\n")}'");
         }
 
         var finalSource = _source.WithChanges(accepted);
@@ -224,9 +231,68 @@ public sealed class Patcher
 
         // Font is a CONSTRUCTION, not a plain value: `Font = new Font(family, size, style)`.
         if (cs.Properties.TryGetValue("Font", out var fn) && p.Font is { } font)
-            foreach (var change in FontChanges(fn.Right, font)) Replace(change.Span, change.NewText);
+            foreach (var change in FontChanges(fn.Right, font)) Replace(change.Span, change.NewText ?? "");
         else if (p.Font is { } wanted && !cs.Properties.ContainsKey("Font"))
             InsertProperty(cs, id, "Font", FontLiteral(wanted));
+
+        // ForeColor
+        if (cs.Properties.TryGetValue("ForeColor", out var fc) && p.ForeColor is string foreColour)
+        {
+            if (ColorArgs(fc.Right, foreColour) is { } args && args != SourceTextFor(fc.Right))
+            {
+                if (InvocationArgs(fc.Right)?.Arguments is { } argNodes) Replace(argNodes.Span, args);
+                else ReplaceCreationArgs(fc.Right, args);
+            }
+        }
+        else if (p.ForeColor is string freshFore && !cs.Properties.ContainsKey("ForeColor"))
+        {
+            if (RgbTriplet(freshFore) is { } freshArgs)
+                InsertProperty(cs, id, "ForeColor", $"System.Drawing.Color.FromArgb({freshArgs})");
+        }
+
+        // Checked
+        if (cs.Properties.TryGetValue("Checked", out var chk) && chk.Right is LiteralExpressionSyntax)
+        {
+            if (CurrentBool(chk) != p.Checked && p.Checked is not null)
+                Replace(chk.Right.Span, p.Checked.Value ? "true" : "false");
+        }
+        else if (p.Checked is true && !cs.Properties.ContainsKey("Checked"))
+        {
+            InsertProperty(cs, id, "Checked", "true");
+        }
+
+        // TextAlign
+        if (cs.Properties.TryGetValue("TextAlign", out var ta))
+        {
+            if (p.TextAlign is { Length: > 0 } newTa && DesignerDocument.ParseMemberName(ta.Right) != newTa)
+                Replace(ta.Right.Span, $"System.Drawing.ContentAlignment.{newTa}");
+        }
+        else if (p.TextAlign is { Length: > 0 } freshTa && !cs.Properties.ContainsKey("TextAlign"))
+        {
+            InsertProperty(cs, id, "TextAlign", $"System.Drawing.ContentAlignment.{freshTa}");
+        }
+
+        // BorderStyle
+        if (cs.Properties.TryGetValue("BorderStyle", out var bs))
+        {
+            if (p.BorderStyle is { Length: > 0 } newBs && DesignerDocument.ParseMemberName(bs.Right) != newBs)
+                Replace(bs.Right.Span, $"System.Windows.Forms.BorderStyle.{newBs}");
+        }
+        else if (p.BorderStyle is { Length: > 0 } freshBs && !cs.Properties.ContainsKey("BorderStyle"))
+        {
+            InsertProperty(cs, id, "BorderStyle", $"System.Windows.Forms.BorderStyle.{freshBs}");
+        }
+
+        // AutoSize
+        if (cs.Properties.TryGetValue("AutoSize", out var asz) && asz.Right is LiteralExpressionSyntax)
+        {
+            if (CurrentBool(asz) != p.AutoSize && p.AutoSize is not null)
+                Replace(asz.Right.Span, p.AutoSize.Value ? "true" : "false");
+        }
+        else if (p.AutoSize is not null && !cs.Properties.ContainsKey("AutoSize"))
+        {
+            InsertProperty(cs, id, "AutoSize", p.AutoSize.Value ? "true" : "false");
+        }
 
         // BackColor and Font need an INSERT path as well as a replace path. Without it, setting
         // a colour on a control that has none is accepted by the canvas and silently discarded
@@ -318,6 +384,16 @@ public sealed class Patcher
             {
                 InsertProperty(cs, id, "PasswordChar", $"'{EscapeChar(p.PasswordChar![0])}'");
             }
+
+            if (cs.Properties.TryGetValue("ScrollBars", out var sb))
+            {
+                if (p.ScrollBars is { Length: > 0 } newSb && DesignerDocument.ParseMemberName(sb.Right) != newSb)
+                    Replace(sb.Right.Span, $"System.Windows.Forms.ScrollBars.{newSb}");
+            }
+            else if (p.ScrollBars is { Length: > 0 } freshSb && !cs.Properties.ContainsKey("ScrollBars"))
+            {
+                InsertProperty(cs, id, "ScrollBars", $"System.Windows.Forms.ScrollBars.{freshSb}");
+            }
         }
 
         // Leaf widget values and ranges
@@ -377,9 +453,12 @@ public sealed class Patcher
             return argList.Arguments.Count == 3 ? rgb : null;
         }
 
-        // A named constant: map back only when the target IS a named colour. Otherwise we cannot
-        // express it as a name, so decline and write nothing.
-        if (rhs is MemberAccessExpressionSyntax) return NamedColor(css);
+        if (rhs is MemberAccessExpressionSyntax)
+        {
+            var named = NamedColor(css);
+            if (named is not null) return named;
+            if (rgb is not null) return $"System.Drawing.Color.FromArgb({rgb})";
+        }
 
         return null;
     }
@@ -439,6 +518,8 @@ public sealed class Patcher
         "#FFFFFF" => "Color.White", "#000000" => "Color.Black", "#808080" => "Color.Gray",
         "#C0C0C0" => "Color.Silver", "#FFFF00" => "Color.Yellow", "#FFA500" => "Color.Orange",
         "#008000" => "Color.Green", "#000080" => "Color.Navy", "#008080" => "Color.Teal",
+        "#808000" => "Color.Olive", "#800000" => "Color.Maroon", "#800080" => "Color.Purple",
+        "#00FFFF" => "Color.Cyan", "#FF00FF" => "Color.Magenta",
         _ => null,
     };
 
@@ -658,6 +739,46 @@ public sealed class Patcher
                 if (lit.Token.ValueText != newText) Replace(a.Right.Span, StringLiteral(newText));
                 return;
             }
+    }
+
+    private void PatchFormClientSize(SizeDto newSize)
+    {
+        foreach (var stmt in _doc.InitializeComponent?.Body?.Statements ?? default)
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var name) && name == "ClientSize")
+            {
+                ReplaceCreationArgs(a.Right, $"({newSize.Width.ToString(CultureInfo.InvariantCulture)}, {newSize.Height.ToString(CultureInfo.InvariantCulture)})");
+                return;
+            }
+    }
+
+    private void PatchFormBackColor(string? newColor)
+    {
+        if (string.IsNullOrEmpty(newColor)) return;
+        foreach (var stmt in _doc.InitializeComponent?.Body?.Statements ?? default)
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var name) && name == "BackColor")
+            {
+                if (ColorArgs(a.Right, newColor) is { } args && args != SourceTextFor(a.Right))
+                {
+                    if (InvocationArgs(a.Right)?.Arguments is { } argNodes) Replace(argNodes.Span, args);
+                    else ReplaceCreationArgs(a.Right, args);
+                }
+                return;
+            }
+
+        if (RgbTriplet(newColor) is { } freshArgs)
+        {
+            var stmts = _doc.InitializeComponent?.Body?.Statements;
+            var anchor = stmts?.FirstOrDefault(s => s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var n) && n is "ClientSize" or "Text");
+            if (anchor is not null)
+            {
+                var indent = BodyIndent();
+                var prefix = _doc.UsesThisPrefix ? "this." : "";
+                InsertLineAfter(anchor, $"{indent}{prefix}BackColor = System.Drawing.Color.FromArgb({freshArgs});{_eol}");
+            }
+        }
     }
 
     /// <summary>
@@ -917,9 +1038,13 @@ public sealed class Patcher
     private void InsertBefore(SyntaxNode node, string text) =>
         _changes.Add(new TextChange(new TextSpan(node.SpanStart, 0), text));
 
-    private void InsertLineBefore(SyntaxNode node, string line) =>
-        _changes.Add(new TextChange(new TextSpan(node.SpanStart, 0),
-            IndentOf(_source.ToString(), node.SpanStart) + line + _eol));
+    private void InsertLineBefore(SyntaxNode node, string line)
+    {
+        var text = _source.ToString();
+        int at = LineStartOf(text, node.SpanStart);
+        _changes.Add(new TextChange(new TextSpan(at, 0),
+            IndentOf(text, node.SpanStart) + line + _eol));
+    }
 
     /// <summary>
     /// Same, for a token — a class's closing brace is a token, not a node. Inserts before the

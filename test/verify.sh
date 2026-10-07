@@ -225,6 +225,41 @@ grep -qE "this\.btnSubmit\.Font = new System\.Drawing\.Font\(\"Segoe UI\", 14F, 
 CHANGED=$(diff /tmp/mf-font.cs "$FILE" | grep -c '^<')
 [ "$CHANGED" -eq 1 ] && ok "Font changed exactly one line" || bad "Font changed $CHANGED lines"
 
+sect "[roslyn] form properties: ClientSize and BackColor"
+work simple SimpleDialog
+python_tweak "
+s['form']['clientSize'] = {'width': 350, 'height': 250}
+s['form']['backColor'] = '#800080'
+" >/dev/null
+grep -q "this.ClientSize = new System.Drawing.Size(350, 250);" "$FILE" \
+  && ok "form ClientSize updated" || bad "form ClientSize not updated"
+grep -q "this.BackColor = System.Drawing.Color.FromArgb(128, 0, 128);" "$FILE" \
+  && ok "form BackColor inserted" || bad "form BackColor not inserted"
+
+sect "[roslyn] extended control properties: Checked, ForeColor, TextAlign, BorderStyle, ScrollBars"
+work simple SimpleDialog
+python_tweak "
+for c in s['controls']:
+    if c['id']=='chkAgree':
+        c['properties']['checked'] = True
+        c['properties']['foreColor'] = '#008000'
+    if c['id']=='btnSubmit':
+        c['properties']['textAlign'] = 'MiddleRight'
+    if c['id']=='txtName':
+        c['properties']['scrollBars'] = 'Vertical'
+        c['properties']['borderStyle'] = 'FixedSingle'
+" >/dev/null
+grep -q "this.chkAgree.Checked = true;" "$FILE" \
+  && ok "Checked inserted" || bad "Checked not inserted"
+grep -q "this.chkAgree.ForeColor = System.Drawing.Color.FromArgb(0, 128, 0);" "$FILE" \
+  && ok "ForeColor inserted" || bad "ForeColor not inserted"
+grep -q "this.btnSubmit.TextAlign = System.Drawing.ContentAlignment.MiddleRight;" "$FILE" \
+  && ok "TextAlign inserted" || bad "TextAlign not inserted"
+grep -q "this.txtName.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;" "$FILE" \
+  && ok "ScrollBars inserted" || bad "ScrollBars not inserted"
+grep -q "this.txtName.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;" "$FILE" \
+  && ok "BorderStyle inserted" || bad "BorderStyle not inserted"
+
 # ---------------------------------------------------------------------------
 # Leaf widgets — docs/spec-leaf-widgets.md. Four types, and the risk is not the engine: it is
 # the TWO-LIST RULE. A type in TypeTable but not in the canvas HANDLED list renders as a locked

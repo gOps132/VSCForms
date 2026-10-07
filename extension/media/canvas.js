@@ -24,6 +24,8 @@
     /** The container we have "drilled into" via double-click. When set, only its
      *  children are selectable. Click outside or Escape to exit. */
     let activeContainer = null;
+    /** Filter text for properties in inspector. */
+    let inspectorFilter = '';
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
     // editor share one history. See the keydown handler at the bottom of this file.
 
@@ -353,10 +355,105 @@
 
         canvas.style.width = Math.max(schema.form.clientSize.width, 80) + 'px';
         canvas.style.height = Math.max(schema.form.clientSize.height, 60) + 'px';
+        canvas.style.backgroundColor = schema.form.backColor || '';
         $('form-title-text').textContent = schema.form.name;
         $('form-size').textContent = `${schema.form.clientSize.width} x ${schema.form.clientSize.height}`;
 
+        const title = document.querySelector('.form-title');
+        if (title && !title.__wired) {
+            title.__wired = true;
+            title.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                select(null);
+            });
+        }
+
+        renderFormHandles();
+
         for (const c of schema.controls) renderControl(canvas, c, null);
+    }
+
+    function renderFormHandles() {
+        const frame = frameEl();
+        if (!frame || readOnly) return;
+        for (const old of frame.querySelectorAll('.form-handle')) old.remove();
+        for (const dir of ['e', 's', 'se']) {
+            const h = el('div', 'form-handle ' + dir);
+            h.dataset.dir = dir;
+            h.addEventListener('mousedown', (e) => {
+                if (readOnly) return;
+                e.stopPropagation();
+                beginResizeForm(e, dir);
+            });
+            frame.appendChild(h);
+        }
+    }
+
+    function beginResizeForm(e, dir) {
+        e.preventDefault();
+        const o = { w: schema.form.clientSize.width, h: schema.form.clientSize.height };
+        const origin = { mx: e.clientX, my: e.clientY };
+        const canvas = $('canvas');
+        function move(ev) {
+            const { dx, dy } = formDelta(ev, origin);
+            let w = o.w;
+            let h = o.h;
+            if (dir.includes('e')) w = Math.max(snapTo(o.w + dx), 80);
+            if (dir.includes('s')) h = Math.max(snapTo(o.h + dy), 60);
+            schema.form.clientSize.width = Math.round(w);
+            schema.form.clientSize.height = Math.round(h);
+            if (canvas) {
+                canvas.style.width = schema.form.clientSize.width + 'px';
+                canvas.style.height = schema.form.clientSize.height + 'px';
+            }
+            updateFormInspectorValues();
+        }
+        function up() {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+            commit();
+        }
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+    }
+
+    function updateFormInspectorValues() {
+        const sizeEl = $('form-size');
+        if (sizeEl) sizeEl.textContent = `${schema.form.clientSize.width} x ${schema.form.clientSize.height}`;
+        const ins = $('inspector');
+        if (!ins) return;
+        const inputs = ins.querySelectorAll('input');
+        if (inputs.length >= 3 && selected().length === 0) {
+            inputs[1].value = String(schema.form.clientSize.width);
+            inputs[2].value = String(schema.form.clientSize.height);
+        }
+    }
+
+    function applyTextAlign(captionEl, align) {
+        if (!captionEl || !align) return;
+        const a = String(align).toLowerCase();
+        if (a === 'left') {
+            captionEl.style.justifyContent = 'flex-start';
+        } else if (a === 'center') {
+            captionEl.style.justifyContent = 'center';
+        } else if (a === 'right') {
+            captionEl.style.justifyContent = 'flex-end';
+        } else if (a.startsWith('top')) {
+            captionEl.style.alignItems = 'flex-start';
+            if (a.endsWith('left')) captionEl.style.justifyContent = 'flex-start';
+            else if (a.endsWith('right')) captionEl.style.justifyContent = 'flex-end';
+            else captionEl.style.justifyContent = 'center';
+        } else if (a.startsWith('bottom')) {
+            captionEl.style.alignItems = 'flex-end';
+            if (a.endsWith('left')) captionEl.style.justifyContent = 'flex-start';
+            else if (a.endsWith('right')) captionEl.style.justifyContent = 'flex-end';
+            else captionEl.style.justifyContent = 'center';
+        } else if (a.startsWith('middle')) {
+            captionEl.style.alignItems = 'center';
+            if (a.endsWith('left')) captionEl.style.justifyContent = 'flex-start';
+            else if (a.endsWith('right')) captionEl.style.justifyContent = 'flex-end';
+            else captionEl.style.justifyContent = 'center';
+        }
     }
 
     function renderControl(parent, c, containerNode) {
@@ -374,6 +471,16 @@
         node.style.width = Math.max(c.properties.width, 2) + 'px';
         node.style.height = Math.max(c.properties.height, 2) + 'px';
 
+        if (c.properties.foreColor) node.style.color = c.properties.foreColor;
+        if (c.properties.backColor) node.style.backgroundColor = c.properties.backColor;
+        if (c.properties.font) {
+            if (c.properties.font.size) node.style.fontSize = c.properties.font.size + 'pt';
+            if (c.properties.font.bold) node.style.fontWeight = 'bold';
+            if (c.properties.font.italic) node.style.fontStyle = 'italic';
+        }
+        if (c.properties.checked) node.classList.add('checked');
+        if (c.properties.borderStyle) node.classList.add('border-' + c.properties.borderStyle.toLowerCase());
+
         if (c.locked) {
             node.classList.add('locked');
             node.title = c.lockedReason || 'Not modelled.';
@@ -382,13 +489,16 @@
             // A handled type with empty text is genuinely empty (a TextBox with no value, an
             // unset Label) — showing the type name there would be a lie about the form.
             const caption = c.properties.text || '';
-            addCaption(node, caption);
+            const capNode = addCaption(node, caption);
             if (!caption && emptyShowTypeName(simple)) {
                 node.classList.add('placeholder');
-                node.querySelector('.ctl-caption').textContent = simple;
+                capNode.textContent = simple;
             } else if (['DataGridView', 'ListView', 'TreeView'].includes(simple)) {
                 node.classList.add('t-placeholder-ctl');
-                node.querySelector('.ctl-caption').textContent = `${c.id} (${simple})`;
+                capNode.textContent = `${c.id} (${simple})`;
+            }
+            if (c.properties.textAlign) {
+                applyTextAlign(capNode, c.properties.textAlign);
             }
         }
         if (readOnly) node.classList.add('readonly');
@@ -814,7 +924,8 @@
         box.innerHTML = '';
         const sel = selected();
         if (sel.length === 0) {
-            box.appendChild(el('div', 'empty', 'Select a control to edit its properties.'));
+            renderFormInspector(box);
+            applyInspectorFilter();
             return;
         }
         if (sel.length > 1) {
@@ -825,6 +936,7 @@
             for (const [label, fn] of alignActions()) {
                 box.appendChild(el('button', null, label)).addEventListener('click', fn);
             }
+            applyInspectorFilter();
             return;
         }
         const c = sel[0];
@@ -856,6 +968,11 @@
         box.appendChild(numField('TabIndex', c.properties.tabIndex ?? 0, appearanceBlocked,
             (v) => setProp(c, 'tabIndex', v)));
 
+        if (['Label', 'Button', 'CheckBox', 'RadioButton'].includes(simple)) {
+            box.appendChild(boolField('AutoSize', !!c.properties.autoSize, appearanceBlocked,
+                (v) => setProp(c, 'autoSize', v)));
+        }
+
         // ---------------------------------------------------------------- appearance
         // These are already in the schema and were already parsed by the engine for all of
         // them. Wiring the inspector is what makes them reachable at all
@@ -872,6 +989,29 @@
 
         box.appendChild(colorField('BackColor', c.properties.backColor ?? '',
             appearanceBlocked, (v) => setProp(c, 'backColor', v)));
+        box.appendChild(colorField('ForeColor', c.properties.foreColor ?? '',
+            appearanceBlocked, (v) => setProp(c, 'foreColor', v)));
+
+        if (simple === 'CheckBox' || simple === 'RadioButton') {
+            box.appendChild(boolField('Checked', !!c.properties.checked, appearanceBlocked,
+                (v) => setProp(c, 'checked', v)));
+        }
+
+        if (['Button', 'Label', 'CheckBox', 'RadioButton'].includes(simple)) {
+            box.appendChild(selectField('TextAlign', c.properties.textAlign || 'MiddleLeft',
+                ['TopLeft', 'TopCenter', 'TopRight', 'MiddleLeft', 'MiddleCenter', 'MiddleRight', 'BottomLeft', 'BottomCenter', 'BottomRight'],
+                appearanceBlocked, (v) => setProp(c, 'textAlign', v)));
+        } else if (simple === 'TextBox') {
+            box.appendChild(selectField('TextAlign', c.properties.textAlign || 'Left',
+                ['Left', 'Center', 'Right'],
+                appearanceBlocked, (v) => setProp(c, 'textAlign', v)));
+        }
+
+        if (['Label', 'TextBox', 'Panel', 'PictureBox', 'DataGridView', 'ListView', 'TreeView'].includes(simple)) {
+            box.appendChild(selectField('BorderStyle', c.properties.borderStyle || 'None',
+                ['None', 'FixedSingle', 'Fixed3D'], appearanceBlocked,
+                (v) => setProp(c, 'borderStyle', v)));
+        }
 
         if (HAS_FONT.has(simple)) {
             const f = c.properties.font || { size: 9, bold: false, italic: false };
@@ -943,6 +1083,9 @@
                 (v) => setProp(c, 'maxLength', v)));
             box.appendChild(strField('PasswordChar', c.properties.passwordChar ?? '', appearanceBlocked,
                 (v) => setProp(c, 'passwordChar', v ? v.slice(0, 1) : '')));
+            box.appendChild(selectField('ScrollBars', c.properties.scrollBars || 'None',
+                ['None', 'Horizontal', 'Vertical', 'Both'], appearanceBlocked,
+                (v) => setProp(c, 'scrollBars', v)));
         }
 
         // Leaf widget values and ranges (TrackBar, ProgressBar, NumericUpDown)
@@ -976,6 +1119,36 @@
         if (!c.locked && !readOnly) {
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));
         }
+
+        applyInspectorFilter();
+    }
+
+    function renderFormInspector(box) {
+        if (!schema) return;
+        box.appendChild(el('h3', null, `${schema.form.name} (Form)`));
+        if (readOnly) {
+            const n = el('div', 'field');
+            n.appendChild(el('div', 'note warn',
+                'This form is read-only in VSCForms. Open it as text to edit it.'));
+            box.appendChild(n);
+        }
+        box.appendChild(strField('Title (Text)', schema.form.text || '', readOnly, (v) => {
+            schema.form.text = v;
+            commit();
+        }));
+        box.appendChild(numField('Width', schema.form.clientSize.width, readOnly, (v) => {
+            schema.form.clientSize.width = Math.max(v, 80);
+            commit();
+        }));
+        box.appendChild(numField('Height', schema.form.clientSize.height, readOnly, (v) => {
+            schema.form.clientSize.height = Math.max(v, 60);
+            commit();
+        }));
+        box.appendChild(el('h4', null, 'Appearance'));
+        box.appendChild(colorField('BackColor', schema.form.backColor ?? '', readOnly, (v) => {
+            schema.form.backColor = v;
+            commit();
+        }));
     }
 
     function setProp(c, key, value) { c.properties[key] = value; commit(); }
@@ -1052,17 +1225,64 @@
         f.appendChild(i);
         return f;
     }
+    function selectField(label, value, options, disabled, onChange) {
+        const f = el('div', 'field');
+        const id = 'f' + label.replace(/\s+/g, '');
+        const lab = el('label', null, label);
+        lab.setAttribute('for', id);
+        f.appendChild(lab);
+        const sel = document.createElement('select');
+        sel.id = id;
+        sel.disabled = !!disabled;
+        for (const optVal of options) {
+            const opt = document.createElement('option');
+            opt.value = optVal;
+            opt.textContent = optVal;
+            if (optVal.toLowerCase() === (value || '').toLowerCase()) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => onChange(sel.value));
+        f.appendChild(sel);
+        return f;
+    }
+    function setupInspectorFilter() {
+        const filterInput = $('inspector-filter');
+        if (!filterInput) return;
+        filterInput.addEventListener('input', () => {
+            inspectorFilter = filterInput.value.trim().toLowerCase();
+            applyInspectorFilter();
+        });
+    }
+    function applyInspectorFilter() {
+        const box = $('inspector');
+        if (!box) return;
+        const query = (inspectorFilter || '').trim().toLowerCase();
+        const fields = box.querySelectorAll('.field');
+        for (const f of fields) {
+            if (!query) {
+                f.style.display = '';
+                continue;
+            }
+            const lab = f.querySelector('label');
+            const text = lab ? lab.textContent.toLowerCase() : '';
+            f.style.display = text.includes(query) ? '' : 'none';
+        }
+    }
     function updateInspectorValues() {
         const sel = selected();
-        if (sel.length !== 1) return;
-        const c = sel[0];
-        const ins = $('inspector');
-        const inputs = ins.querySelectorAll('input');
-        if (inputs.length >= 6) {
-            inputs[0].value = String(c.properties.x);
-            inputs[1].value = String(c.properties.y);
-            inputs[2].value = String(c.properties.width);
-            inputs[3].value = String(c.properties.height);
+        if (sel.length === 1) {
+            const c = sel[0];
+            const ins = $('inspector');
+            if (!ins) return;
+            const inputs = ins.querySelectorAll('input');
+            if (inputs.length >= 4) {
+                inputs[0].value = String(c.properties.x);
+                inputs[1].value = String(c.properties.y);
+                inputs[2].value = String(c.properties.width);
+                inputs[3].value = String(c.properties.height);
+            }
+        } else if (sel.length === 0) {
+            updateFormInspectorValues();
         }
     }
 
@@ -1369,6 +1589,7 @@
     setupZoomControls();
     setupStatusBar();
     setupDrop();
+    setupInspectorFilter();
     renderStatus('Waiting for the engine…');
     post('ready');
 
