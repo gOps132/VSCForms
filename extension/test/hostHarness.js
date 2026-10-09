@@ -410,6 +410,62 @@ setTimeout(async () => {
     check('the refusal names the reason',
         /not a reference/.test(String(ids.status.textContent)), String(ids.status.textContent));
 
+    // ---- D2 in-place Text edit: dblclick overlay commits via the Text path
+    send({ type: 'load', data: schema });
+    {
+        const node = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        node.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        const overlay = node.querySelector('.text-edit');
+        check('double-click opens a text overlay on a text-bearing control', !!overlay);
+        check('overlay starts from the current text', !!overlay && overlay.value === 'Submit',
+            overlay ? JSON.stringify(overlay.value) : 'no overlay');
+        // Locked controls never get an overlay.
+        const lockedNode = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'ThirdPartyGauge');
+        lockedNode.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        check('locked control gets no text overlay', !lockedNode.querySelector('.text-edit'));
+        // NO_TEXT types have no Text to edit.
+        const noTextSchema = JSON.parse(JSON.stringify(schema));
+        noTextSchema.controls.push({ id: 'prgLoad', type: 'System.Windows.Forms.ProgressBar', children: [], locked: false,
+            properties: { x: 10, y: 150, width: 140, height: 20 } });
+        send({ type: 'load', data: noTextSchema });
+        const prg = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'prgLoad');
+        prg.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        check('NO_TEXT control gets no text overlay', !prg.querySelector('.text-edit'));
+        // Refused forms are read-only: no overlay.
+        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+        const roNode = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        roNode.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        check('refused form gets no text overlay', !roNode.querySelector('.text-edit'));
+        // Fresh editable model for the commit round trip.
+        send({ type: 'load', data: schema });
+        const ed = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        ed.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        const edOverlay = ed.querySelector('.text-edit');
+        sandbox.__sent.length = 0;
+        edOverlay.value = 'Go';
+        edOverlay.dispatch('keydown', { key: 'Enter', preventDefault() { }, stopPropagation() { } });
+    }
+    await new Promise((r) => setTimeout(r, 350));
+    {
+        const tc = sandbox.__sent.find((m) => m.type === 'commit');
+        check('Enter posts a commit', !!tc);
+        const sent = tc && tc.data.controls.find((c) => c.id === 'btnSubmit');
+        check('commit carries the overlay text', !!sent && sent.properties.text === 'Go',
+            sent ? JSON.stringify(sent.properties) : 'no commit');
+        // Escape cancels with no generate.
+        send({ type: 'load', data: schema });
+        const node2 = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        node2.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        const ov2 = node2.querySelector('.text-edit');
+        sandbox.__sent.length = 0;
+        ov2.value = 'Nope';
+        ov2.dispatch('keydown', { key: 'Escape', preventDefault() { }, stopPropagation() { } });
+        check('Escape removes the overlay', !node2.querySelector('.text-edit'));
+    }
+    await new Promise((r) => setTimeout(r, 350));
+    check('Escape posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+
     // =====================================================================
     // ZOOM / PAN / SELECTION — docs/spec-canvas-qol.md
     //

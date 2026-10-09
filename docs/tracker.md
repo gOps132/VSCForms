@@ -44,7 +44,7 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   zoom bar, Escape deselect, tab-strip activation, drill-down selection for
   nested containers, coverage banner (never hideable), locked boxes with
   reasons, rename field, items list editor, single-selection size/location
-  readout (X/Y + W×H in the status bar, form units).
+  readout (X/Y + W×H in the status bar, form units), dblclick in-place Text edit.
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -92,6 +92,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | # | Gap | Status | Cost | Spec | Note |
 |---|---|---|---|---|---|
 | D1 | Size/location readout (single-selection X/Y + W×H in status bar, form units) | shipped | S | `spec-vs-parity.md` §1–2 | Read-only status text; zero patcher surface, no ADR. Live on drag/resize/nudge. Multi-select keeps count. (#20) |
+| D2 | In-place Text edit (dblclick overlay committing via Text path) | shipped | S | `spec-vs-parity.md` §1–2 | Same setProp/INSERT path as inspector; no ADR. Never for locked/refused, containers (drill-down), or NO_TEXT. Escape cancels with no generate. (#21) |
 
 Further P0 candidates in `spec-vs-parity.md` §3 (in-place Text edit, Make Same Size /
 Center / Equal Spacing, Ctrl+arrow jump, Shift+arrow resize, snapline

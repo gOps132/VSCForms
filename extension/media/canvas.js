@@ -547,6 +547,7 @@
                 renderStatus('Entered ' + c.id + ' — double-click outside or press Escape to exit', 'ok');
             } else {
                 select(c.id);
+                beginTextEdit(c, node);
             }
         });
         node.addEventListener('keydown', (e) => {
@@ -624,6 +625,48 @@
             });
             node.appendChild(h);
         }
+    }
+
+    /**
+     * In-place Text edit: a dblclick overlay committing through the same setProp('text')
+     * path (and INSERT path) the inspector uses. No new patcher surface, no ADR.
+     *
+     * The gates mirror the inspector's Text field exactly: locked/refused never gets an
+     * overlay (a write we promised never to make), containers keep dblclick for drill-down,
+     * and NO_TEXT types have no Text to edit. Escape cancels with no generate; Enter commits
+     * only when the value actually changed, so a no-op edit never dirties the file.
+     * Keydown/mousedown stop here — without that, arrow keys would nudge the control and
+     * Delete would delete it mid-edit.
+     */
+    function beginTextEdit(c, node) {
+        const simple = simpleName(c.type);
+        if (c.locked || readOnly) return;
+        if (containerTypes().has(simple) || NO_TEXT.has(simple)) return;
+        if (node.querySelector('.text-edit')) return;
+        select(c.id);
+        const input = el('input', 'text-edit');
+        input.type = 'text';
+        input.value = c.properties.text ?? '';
+        input.setAttribute('aria-label', 'Edit text for ' + c.id);
+        let done = false;
+        const finish = (commitIt) => {
+            if (done) return;
+            done = true;
+            const v = input.value;
+            input.remove();
+            if (commitIt && v !== (c.properties.text ?? '')) setProp(c, 'text', v);
+        };
+        input.addEventListener('mousedown', (e) => e.stopPropagation());
+        input.addEventListener('dblclick', (e) => e.stopPropagation());
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') finish(true);
+            else if (e.key === 'Escape') finish(false);
+        });
+        input.addEventListener('blur', () => finish(true));
+        node.appendChild(input);
+        input.focus();
+        if (typeof input.select === 'function') input.select();
     }
 
     // ------------------------------------------------------------- selection
