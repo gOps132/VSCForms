@@ -145,6 +145,12 @@ Two tiers carry the most weight, and they are not the same kind of test:
 - **Every feature change updates `docs/tracker.md` in the same change.** If the user asks to
   implement a feature, add or refresh its tracker row (status, scope, spec link) alongside the
   code — never ship an untracked capability or leave a shipped row reading as missing.
+- **State lives in `docs/tracker.md`, progress lives in GitHub issues.** The tracker is the
+  source of truth for what is shipped vs missing vs refused; issues (#1 map, #2+ children) are
+  the work queue (discussion, assignment, triage, done). The loop is: claim an issue →
+  implement → flip the tracker row in the same commit → close the issue. If they disagree,
+  the tracker wins on state — then sync the issue. New sessions: read `docs/tracker.md` first,
+  then `gh issue list` for live progress.
 
 ## Agent skills
 
