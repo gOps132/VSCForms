@@ -54,8 +54,9 @@ type RefusalReason = 'localizable' | 'dock-anchor' | 'unparsable' | 'no-initiali
 
 `refuses` is an **allowlist of known blockers only**. Unknown/odd code that we do not
 understand but that is safe to leave alone is a *warning*, not a refusal — the conservative
-"refuse anything unfamiliar" stance was rejected: 47.90% per-form coverage already means most
-forms are partly unfamiliar, so refusing on unfamiliarity would refuse nearly everything.
+"refuse anything unfamiliar" stance was rejected: measured per-form coverage (47.9% at 10
+types — stale, see `docs/tracker.md` §4) already means most forms are partly unfamiliar, so
+refusing on unfamiliarity would refuse nearly everything.
 
 ## Controls
 
@@ -249,20 +250,27 @@ Step 6 is the safety invariant. If the diff logic is ever unsure, it emits nothi
 
 Fully modelled — real widgets, editable properties:
 
-**14 control types**, plus `Form` itself:
+**19 control types**, plus `Form` itself:
 
 `Button`, `Label`, `TextBox`, `CheckBox`, `RadioButton`, `ComboBox`, `ListBox`,
 `PictureBox`, `Panel`, `GroupBox`, `TrackBar`, `ProgressBar`, `NumericUpDown`,
-`DateTimePicker`, and `Form`
+`DateTimePicker`, `TabControl`, `TabPage`, `DataGridView`, `ListView`, `TreeView`,
+and `Form`
 
 `Form` is listed here but is NOT in `TypeTable.Handled` — it is resolved separately, because a
-form is the document rather than a control inside it. So "14 types" means 14 rows in
-`Handled`, and 15 names on this list. The two must not be conflated; the count in
+form is the document rather than a control inside it. So "19 types" means 19 rows in
+`Handled`, and 20 names on this list. The two must not be conflated; the count in
 `CONTEXT.md` is the `Handled` count.
 
-The four leaf widgets are **geometry-only**: none renders text, so the canvas disables the
-`Text` field for them, and none has `Minimum`/`Maximum`/`Value` modelled, so the canvas shows
-no value. Both are deliberate — see `docs/spec-leaf-widgets.md` §3.
+Containers modelled: `Panel`, `GroupBox`, `TabControl`, `TabPage` (two-level:
+`tabControl.Controls.Add(page)`, `page.Controls.Add(...)`). `DataGridView`, `ListView`,
+`TreeView` are read-only placeholders — labelled boxes with no interior, display-only by
+design.
+
+The four leaf widgets render no text, so the canvas disables the `Text` field for them —
+see `docs/spec-leaf-widgets.md` §3. `Minimum`/`Maximum`/`Value` are modelled for
+`TrackBar`, `ProgressBar` and `NumericUpDown`; `DateTimePicker` shows no value by decision
+(`docs/spec-leaf-widgets.md` §6, tracker B7).
 
 Everything else (~33 distinct types measured across a 154-file corpus) renders as a locked
 grey placeholder box labelled with its type name. This is intentional and documented, not a

@@ -134,7 +134,7 @@ Two tiers carry the most weight, and they are not the same kind of test:
 - Measured limits, not guesses: **41.6%** of real forms use `ApplyResources`, **40.9%** use
   `Dock`/`Anchor`. Those drive the refusals.
 - **The 47.9% per-form coverage ceiling is STALE.** It was measured at 10 handled types; there
-  are now 14 (`docs/spec-leaf-widgets.md`). Do not quote it as a current figure and do not infer
+  are now 19 (leaf 4 + Tab 2 + placeholders 3). Do not quote it as a current figure and do not infer
   that adding types moves coverage much — §1 of `docs/spec-features.md` shows it does not,
   because most forms that need a new type are refused anyway. Re-measuring needs a fresh
   corpus, which is deliberately not committed (`fixtures/README.md`).

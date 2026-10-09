@@ -195,9 +195,9 @@ VSCForms is faithful to the WinForms **design-time serializer**. It does not rep
 | **No `.resx` reading** | 41.6% of real forms store geometry/text in resources | Refused — half-reading is worse |
 | **No pixel-perfect rendering** | Cannot call `OnPaint` on real controls | Canvas is structural, not visual |
 | **No event scaffolding** | `btnSubmit_Click` generation out of scope for v1 | Planned post-v1 |
-| **14 handled types only** | Chosen from 154-file corpus measurement | 4 leaf widgets geometry-only |
+| **19 handled types only** | Chosen from 154-file corpus measurement | Containers Panel/GroupBox/TabControl/TabPage; DataGridView/ListView/TreeView placeholders display-only |
 
-> **Measured coverage**: 47.9% per-form ceiling at 10 types (predates 4 leaf widgets). A well-structured real-world form reaches **91.4%**. Corpus not committed — re-measure before quoting.
+> **Measured coverage**: 47.9% per-form ceiling was measured at 10 types and is stale (predates leaf 4 + Tab 2 + placeholders 3 — now 19). Do not quote as current; re-measure needs a fresh corpus (corpus not committed). A well-structured real-world form reaches **91.4%**.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

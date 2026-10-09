@@ -9,12 +9,14 @@ still painful to use.
 
 ## 0. Facts this rests on (verified, not assumed)
 
-- **14 handled types** (`engine/src/TypeTable.cs`) plus `Form`, which is resolved separately:
+- **19 handled types** (`engine/src/TypeTable.cs`) plus `Form`, which is resolved separately:
   Button, Label, TextBox, CheckBox, RadioButton, ComboBox, ListBox, PictureBox, Panel,
-  GroupBox, and now TrackBar, ProgressBar, NumericUpDown, DateTimePicker.
-  **Containers: Panel and GroupBox only** — the leaf widgets are handled but hold no children.
-- Measured over a 154-file corpus: **47.9% per-form coverage ceiling**, **16.2%** of forms fully
-  representable, **41.6%** use `resources.ApplyResources`, **40.9%** use `Dock`/`Anchor`.
+  GroupBox, TrackBar, ProgressBar, NumericUpDown, DateTimePicker, TabControl, TabPage,
+  DataGridView, ListView, TreeView.
+  **Containers: Panel, GroupBox, TabControl, TabPage** — leaf widgets and placeholders hold no children.
+- Measured over a 154-file corpus: **47.9% per-form coverage ceiling (measured at 10 types —
+  stale, do not quote as current)**, **16.2%** of forms fully representable, **41.6%** use
+  `resources.ApplyResources`, **40.9%** use `Dock`/`Anchor`.
 - The two refusals dominate everything: a form using either is read-only regardless of which
   types we support. **This is the single most important fact in this document** — see §1.
 - Modelled properties are geometry (`x/y/width/height`), `text`, `tabIndex`. BackColor, Font,
@@ -36,7 +38,8 @@ to do, and doing it first is a mistake worth naming.
   └─ ~17.5% neither                        ─┴─ the editable population
 ```
 
-Within that ~17.5%, the 47.9% coverage ceiling then applies. So:
+Within that ~17.5%, the 47.9% coverage ceiling (measured at 10 types — stale, see §2)
+then applies. So:
 
 - **Doubling the type table from 11 to ~22 types** moves the editable population very little,
   because the forms that need those types skew toward `Dock`/`Anchor` and `.resx` — a `TrackBar`
@@ -76,7 +79,7 @@ Implemented; see `spec-leaf-widgets.md` for the executable detail. `TrackBar`, `
 
 **The measured 47.9% ceiling is now stale.** It was taken at 10 handled types. The corpus is
 deliberately not committed, so re-measuring needs a fresh one — noted in CHANGELOG, README and
-CONTEXT rather than quietly left as a claim about 14 types.
+CONTEXT rather than quietly left as a claim about 19 types.
 
 Ordered by how often they appear in the editable population:
 
@@ -218,6 +221,10 @@ not the form. That is the bug a flat renderer would have.
    from the other four. It stays the obvious next property.
 
 ## 8b. Implementation scope for this pass
+
+> Historical scope boundary, not a todo list — `docs/tracker.md` is the todo list. The
+> "not implemented" list below is what was true when this pass shipped; `Items`, leaf
+> widgets, `TabControl`, and placeholders have all since shipped (see CHANGELOG Unreleased).
 
 Implemented now: §8 decision 6 **minus `Items`** — `Enabled`, `Visible`, `BackColor`, `Font`.
 Plus the QOL work in `spec-canvas-qol.md`, without which these are unusable at zoom.

@@ -59,10 +59,11 @@ _Avoid_: style, formatting, flavour (a dialect determines what we *emit*, not ho
 "style" invites the assumption that one is canonical)
 
 **Handled Types**:
-The 14 control types with modelled rendering and editable appearance, enumerated in
+The 19 control types with modelled rendering and editable appearance, enumerated in
 `SCHEMA.md`. Chosen from measurement over a corpus of 154 real Designer Files — but note the
-**47.9% figure predates the four leaf widgets** and has not been re-measured, because the
-corpus is deliberately not committed (see `fixtures/README.md`). Re-measure before quoting it.
+**47.9% figure was measured at 10 types** (predates leaf 4 + Tab 2 + placeholders 3) and has
+not been re-measured, because the corpus is deliberately not committed (see
+`fixtures/README.md`). Re-measure before quoting it.
 _Avoid_: v1 types (v1 is a version, these are a set)
 
 ## Deliberate non-goals

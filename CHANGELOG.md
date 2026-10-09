@@ -52,10 +52,11 @@ versioning follows [SemVer](https://semver.org/).
   fixture used for this had the property already present. Both now have an insert path.
 
 - **The 47.9% per-form coverage ceiling predates the leaf widgets and has NOT been re-measured.**
-  It was measured at 10 handled types; it is now 14. The measurement corpus is deliberately not
-  committed (GPL-3.0 or unlicensed — see `fixtures/README.md`), so re-measuring needs a fresh
-  one. `AGENTS.md` says to re-measure before changing the type table; that was not possible
-  here, and the limitation is recorded rather than hidden behind an unchanged number.
+  It was measured at 10 handled types; it is now 19 (leaf 4 + Tab 2 + placeholders 3). The
+  measurement corpus is deliberately not committed (GPL-3.0 or unlicensed — see
+  `fixtures/README.md`), so re-measuring needs a fresh one. `AGENTS.md` says to re-measure
+  before changing the type table; that was not possible here, and the limitation is recorded
+  rather than hidden behind an unchanged number.
 
 ## [0.1.0] — 2026-10-05
 

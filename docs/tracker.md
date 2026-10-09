@@ -12,8 +12,8 @@ change, not in the docs.
 Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19,
 one per gap row). Triage per `docs/agents/triage-labels.md` before claiming.
 
-Last verified: `e05ef66` (form resizing/styling, property filtering, extended
-control properties). Re-verify by reading `engine/src/TypeTable.cs`,
+Last verified: `c47e209` (doc-drift sweep #19: 19 handled types; 47.9% flagged stale;
+`spec-features.md` §8b marked historical). Re-verify by reading `engine/src/TypeTable.cs`,
 `extension/media/canvas.js` (`HANDLED`), `engine/src/Schema.cs`,
 `engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
 
@@ -98,11 +98,10 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 
 ## 4. Doc drift (known-stale, fix the doc not the code)
 
-| Claim | Reality | Action |
-|---|---|---|
-| `SCHEMA.md` "14 control types" + `README.md` "14 handled types only" | 19 rows in `TypeTable.Handled` (leaf 4 + Tab 2 + placeholders 3 shipped since) | Update `SCHEMA.md` v1 type table + README row when touching either file; keep `Form`-vs-`Handled` count distinction (`SCHEMA.md` already states it). |
-| "47.9% per-form coverage ceiling" | Measured at 10 types; corpus deliberately not committed (`fixtures/README.md`) | Do not quote as current. Re-measure needs a fresh corpus. `CONTEXT.md`/`AGENTS.md` already flag it stale. |
-| `spec-features.md` §8b "Not implemented: leaf widgets, TabControl, placeholders, Items, TextBox/leaf props" | All shipped (CHANGELOG Unreleased, commits `bca9dea`, `2a8f17e`, `001a6ea`) | §8b is a historical scope boundary. Do not read it as a todo list — this tracker is the todo list. |
+No known drift — swept at `c47e209` (#19 closed):
+`SCHEMA.md` v1 type table + `README.md` row read 19, `CONTEXT.md`/`AGENTS.md`/`CHANGELOG`
+flag the 47.9% ceiling as measured-at-10-types stale, and `spec-features.md` §8b is marked
+historical (tracker is the todo list).
 
 ## 5. How to use this file
 
