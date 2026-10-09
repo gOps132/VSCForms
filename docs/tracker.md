@@ -12,8 +12,8 @@ change, not in the docs.
 Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19,
 one per gap row). Triage per `docs/agents/triage-labels.md` before claiming.
 
-Last verified: `c47e209` (doc-drift sweep #19: 19 handled types; 47.9% flagged stale;
-`spec-features.md` §8b marked historical). Re-verify by reading `engine/src/TypeTable.cs`,
+Last verified: `fa12d31` (doc-drift sweep #19) + D1 readout pilot (canvas harness green).
+Re-verify by reading `engine/src/TypeTable.cs`,
 `extension/media/canvas.js` (`HANDLED`), `engine/src/Schema.cs`,
 `engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
 
@@ -43,7 +43,8 @@ Last verified: `c47e209` (doc-drift sweep #19: 19 handled types; 47.9% flagged s
   (`Cmd/Ctrl`+wheel, `+/-`/`0`, Fit, 0.25–4.0), space/middle-drag pan, rulers,
   zoom bar, Escape deselect, tab-strip activation, drill-down selection for
   nested containers, coverage banner (never hideable), locked boxes with
-  reasons, rename field, items list editor.
+  reasons, rename field, items list editor, single-selection size/location
+  readout (X/Y + W×H in the status bar, form units).
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -85,6 +86,18 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | C1 | `RightToLeft` mirroring | `spec-example-compatibility.md` B2 | Preserved-but-invisible; canvas shows LTR. Needs at minimum a warning. |
 | C2 | `TableLayoutPanel` children with default `Dock`/`Anchor` shown flat | `spec-example-compatibility.md` B2 | Flat rendering contradicts layout semantics. Feeds the B2 refusal decision. |
 | C3 | Preserved-but-invisible form props: `AutoScaleMode/Dimensions`, `AutoSize`, `Margin/Padding`, `ClientSize` vs `Size` | `spec-example-compatibility.md` B2 | Survive round trips; invisible in canvas. Any surfacing must not imply editing that isn't wired. |
+
+### D. Canvas QoL (from `spec-vs-parity.md` — PROPOSED reasoning, this file is state)
+
+| # | Gap | Status | Cost | Spec | Note |
+|---|---|---|---|---|---|
+| D1 | Size/location readout (single-selection X/Y + W×H in status bar, form units) | shipped | S | `spec-vs-parity.md` §1–2 | Read-only status text; zero patcher surface, no ADR. Live on drag/resize/nudge. Multi-select keeps count. (#20) |
+
+Further P0 candidates in `spec-vs-parity.md` §3 (in-place Text edit, Make Same Size /
+Center / Equal Spacing, Ctrl+arrow jump, Shift+arrow resize, snapline
+baselines + Alt-suppress, grid-size setting, toolbox, Document Outline, smart tags, modal
+type editors) are unfiled — add as D2+ rows with issues when claimed. RTL warning and
+invisible-props surfacing already map to C1 (#16) / C3 (#18).
 
 ## 3. Deliberately not planned (do not re-propose without an ADR)
 

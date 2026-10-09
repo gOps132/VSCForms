@@ -327,6 +327,11 @@ btn.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX
 const inspectorHtml = JSON.stringify(ids.inspector.children.map((c) => c._text || c._class));
 check('inspector shows the selected control', /btnSubmit/.test(inspectorHtml), inspectorHtml.slice(0, 90));
 
+// D1: single-selection size/location readout in the status bar, in form units.
+check('status shows single-selection geometry readout',
+    String(ids.status.textContent) === '1 control selected — btnSubmit · X 96, Y 154 · 84 × 27',
+    JSON.stringify(ids.status.textContent));
+
 sandbox.__sent.length = 0;
 // mutate the model through the inspector field inputs (Text is the 5th input)
 const inputs = ids.inspector.querySelectorAll('input');

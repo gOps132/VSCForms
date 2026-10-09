@@ -659,7 +659,18 @@
         const n = selection.size;
         if (n === 0) return;
         const el = $('status');
-        if (el) el.textContent = `${n} control${n > 1 ? 's' : ''} selected.`;
+        if (!el) return;
+        if (n === 1) {
+            // Read-only readout in FORM units straight from the schema (never screen
+            // pixels), so it holds at any zoom. Geometry is modelled for every control,
+            // locked or not — a locked single-selection reads the same way.
+            const c = selected()[0];
+            const p = c.properties;
+            el.textContent =
+                `1 control selected — ${c.id} · X ${p.x}, Y ${p.y} · ${p.width} × ${p.height}`;
+            return;
+        }
+        el.textContent = `${n} controls selected.`;
     }
 
     // ---------------------------------------------------------------- editing
@@ -677,6 +688,7 @@
     function nudge(c, dx, dy) {
         c.properties.x += dx;
         c.properties.y += dy;
+        renderStatusForSelection();
         commit();
     }
 
@@ -846,6 +858,7 @@
             }
             showGuides(c, parentBox);
             updateInspectorValues();
+            renderStatusForSelection();
         }
         function up() {
             window.removeEventListener('mousemove', move);
@@ -873,12 +886,11 @@
             c.properties.width = Math.round(w); c.properties.height = Math.round(h);
             const live = nodeFor(c.id);
             if (live) {
-                live.style.left = c.properties.x + 'px';
-                live.style.top = c.properties.y + 'px';
                 live.style.width = Math.max(c.properties.width, 2) + 'px';
                 live.style.height = Math.max(c.properties.height, 2) + 'px';
             }
             updateInspectorValues();
+            renderStatusForSelection();
         }
         function up() {
             window.removeEventListener('mousemove', move);
