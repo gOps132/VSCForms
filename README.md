@@ -255,6 +255,7 @@ Two open plans, both drafts, both sequenced. Read them before starting work — 
 | Document | Purpose |
 |----------|---------|
 | [`AGENTS.md`](AGENTS.md) | Invariants a change must not break, and how to verify |
+| [`docs/tracker.md`](docs/tracker.md) | Living feature & compatibility tracker — update it in the same change |
 | [`SCHEMA.md`](SCHEMA.md) | Engine ↔ host ↔ canvas contract (authoritative) |
 | [`CONTEXT.md`](CONTEXT.md) | Glossary and deliberate non-goals |
 | [`docs/architecture.md`](docs/architecture.md) | How the three processes fit together |

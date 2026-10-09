@@ -142,6 +142,9 @@ Two tiers carry the most weight, and they are not the same kind of test:
   recognise is locked, not an error.
 - Adding a type to `engine/src/TypeTable.cs` requires a row in the canvas `HANDLED` list too,
   or it renders as a locked box with no way to tell why.
+- **Every feature change updates `docs/tracker.md` in the same change.** If the user asks to
+  implement a feature, add or refresh its tracker row (status, scope, spec link) alongside the
+  code — never ship an untracked capability or leave a shipped row reading as missing.
 
 ## Agent skills
 
