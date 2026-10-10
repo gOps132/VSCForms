@@ -22,7 +22,6 @@ namespace FixtureSimple
             this.chkAgree = new System.Windows.Forms.CheckBox();
             this.btnSubmit = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
-            ((System.ComponentModel.ISupportInitialize)(this.txtName)).BeginInit();
             this.SuspendLayout();
             //
             // txtName
