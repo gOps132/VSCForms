@@ -85,7 +85,7 @@ jobs:
       # Use pwsh, not bash: dotnet is on PATH in PowerShell but not in Git Bash on Windows CI.
       - name: compare the schema against real WinForms runtime bounds
         shell: pwsh
-        run: ./scripts/run-windows-layout.sh fixtures/simple
+        run: & bash ./scripts/run-windows-layout.sh fixtures/simple
       # Every checked-in fixture, so a dialect regression cannot pass unnoticed just because
       # `simple` happens to parse.
       - name: verify every fixture against the runtime
@@ -96,7 +96,7 @@ jobs:
       - name: fail if the canary skipped instead of verifying
         shell: pwsh
         run: |
-          $out = ./scripts/run-windows-layout.sh fixtures/simple 2>&1
+          $out = & bash ./scripts/run-windows-layout.sh fixtures/simple 2>&1
           Write-Host $out
           if ($out -match 'SKIP') { throw "layout verification skipped: $out" }
 

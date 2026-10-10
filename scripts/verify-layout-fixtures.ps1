@@ -24,7 +24,7 @@ foreach ($f in $fixtures) {
     $label = "$dir/$($f.Name)"
     Write-Host "=== $label"
 
-    $out = & ./scripts/run-windows-layout.sh "fixtures/$dir" 2>&1 | Out-String
+    $out = & bash ./scripts/run-windows-layout.sh "fixtures/$dir" 2>&1
     Write-Host $out
 
     if ($out -match 'SKIP') {
