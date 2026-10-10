@@ -57,6 +57,7 @@ if [ -n "${TEMP:-}" ]; then
 else
   WORK="${TMPDIR:-/tmp}/vscforms-layout"
 fi
+echo "DEBUG: WORK=$WORK TEMP=${TEMP:-unset} TMPDIR=${TMPDIR:-unset}"
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
 
