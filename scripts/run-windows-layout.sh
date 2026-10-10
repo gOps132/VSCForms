@@ -47,7 +47,8 @@ fi
 
 # Use 'dotnet <dll>' everywhere - works for self-contained and framework-dependent,
 # and is reliable on Windows (self-contained .exe can be finicky).
-ENGINE="dotnet \"$ENGINE_DLL\""
+# Array for proper argument handling in bash
+ENGINE=(dotnet "$ENGINE_DLL")
 
 WORK="${TMPDIR:-/tmp}/vscforms-layout"
 
@@ -141,7 +142,7 @@ DESIGNER_OUT="$WORK/schema.json"
 # Capture engine stderr to a temp file for debugging
 ENGINE_ERR="$WORK/engine.err"
 printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$WORK/src/$(basename "$DESIGNER")" \
-  | $ENGINE 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
+  | "${ENGINE[@]}" 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
 ENGINE_EXIT=$?
 if [ $ENGINE_EXIT -ne 0 ]; then
   echo "ENGINE CRASH (exit $ENGINE_EXIT):"
