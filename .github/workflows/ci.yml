@@ -48,6 +48,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: build engine (Debug for e2e)
+        run: dotnet build engine -c Debug -v q --nologo
       - run: npm --prefix extension ci
       - run: npm --prefix extension run compile
       - name: canvas DOM harness
