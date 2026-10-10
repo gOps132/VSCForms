@@ -45,7 +45,7 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   nested containers, coverage banner (never hideable), locked boxes with
   reasons, rename field, items list editor, single-selection size/location
   readout (X/Y + W×H in the status bar, form units), dblclick in-place Text edit,
-  same-size / center-in-form arrange ops.
+  same-size / center-in-form arrange ops, keyboard jump + resize.
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -95,6 +95,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D1 | Size/location readout (single-selection X/Y + W×H in status bar, form units) | shipped | S | `spec-vs-parity.md` §1–2 | Read-only status text; zero patcher surface, no ADR. Live on drag/resize/nudge. Multi-select keeps count. (#20) |
 | D2 | In-place Text edit (dblclick overlay committing via Text path) | shipped | S | `spec-vs-parity.md` §1–2 | Same setProp/INSERT path as inspector; no ADR. Never for locked/refused, containers (drill-down), or NO_TEXT. Escape cancels with no generate. (#21) |
 | D3 | Make Same Size / Center in Form (pure-geometry arrange ops) | shipped | S | `spec-vs-parity.md` §1–2 | Same-size copies schema-order-first extents, position kept; center is per-control within immediate parent frame. One commit per op; no ADR. Equal Spacing already covered by Distribute (raw gaps). (#22) |
+| D4 | Keyboard jump + resize (Ctrl+arrow move, Shift+arrow resize) | shipped | S | `spec-vs-parity.md` §1–2 | Ctrl/Cmd jumps GRID*5 (one ruler tick); Shift resizes east/south edges, top-left anchored, min 2; Ctrl+Shift resizes by jump. Same TextChanges as drag/resize; no ADR. Shift changes meaning from 2x-nudge (VS parity). (#23) |
 
 Further P0 candidates in `spec-vs-parity.md` §3 (in-place Text edit, Make Same Size /
 Center / Equal Spacing, Ctrl+arrow jump, Shift+arrow resize, snapline

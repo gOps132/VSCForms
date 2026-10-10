@@ -688,6 +688,43 @@ setTimeout(async () => {
             parseFloat(ctlNode('btnIn').style.left) === 60, String(ctlNode('btnIn').style.left));
     }
 
+    // ---- D4 keyboard jump + resize (same TextChanges as drag / resize-handle)
+    send({ type: 'load', data: schema });
+    sandbox.__sent.length = 0;
+    {
+        const keyNode = (id) => canvasEl.querySelectorAll('.ctl').find((n) => n.dataset.id === id);
+        // Ctrl+arrow jumps one ruler-major-tick (GRID*5 = 40).
+        const x0 = leftOf('btnSubmit'), y0 = topOf('btnSubmit');
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', ctrlKey: true, preventDefault() { } });
+        check('ctrl+arrow jumps by the major tick', leftOf('btnSubmit') - x0 === 40 && topOf('btnSubmit') === y0,
+            `moved ${leftOf('btnSubmit') - x0},${topOf('btnSubmit') - y0}`);
+        // Shift+arrow resizes east/south edges, top-left anchored.
+        const w0 = parseFloat(keyNode('btnSubmit').style.width);
+        const h0 = parseFloat(keyNode('btnSubmit').style.height);
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', shiftKey: true, preventDefault() { } });
+        check('shift+arrow grows width, keeps position',
+            parseFloat(keyNode('btnSubmit').style.width) === w0 + 8 && leftOf('btnSubmit') === x0 + 40,
+            `w=${keyNode('btnSubmit').style.width} x=${leftOf('btnSubmit')}`);
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowDown', shiftKey: true, ctrlKey: true, preventDefault() { } });
+        check('ctrl+shift+arrow resizes by the jump size',
+            parseFloat(keyNode('btnSubmit').style.height) === h0 + 40,
+            `h=${keyNode('btnSubmit').style.height}`);
+        await settled();
+        const kc = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('keyboard gestures debounce to one commit', kc.length === 1, String(kc.length));
+        const ksent = kc.length && kc[0].data.controls.find((c) => c.id === 'btnSubmit');
+        check('commit carries jumped position and resized size',
+            !!ksent && ksent.properties.x === x0 + 40 && ksent.properties.width === w0 + 8 && ksent.properties.height === h0 + 40,
+            ksent ? JSON.stringify(ksent.properties) : 'no commit');
+        // Locked controls ignore arrows entirely.
+        const lx0 = parseFloat(keyNode('ThirdPartyGauge').style.left);
+        keyNode('ThirdPartyGauge').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        keyNode('ThirdPartyGauge').dispatch('keydown', { key: 'ArrowRight', shiftKey: true, preventDefault() { } });
+        check('locked control ignores move and resize keys',
+            parseFloat(keyNode('ThirdPartyGauge').style.left) === lx0,
+            String(keyNode('ThirdPartyGauge').style.left));
+    }
+
     // ---- duplicate
     send({ type: 'load', data: schema });
     ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });

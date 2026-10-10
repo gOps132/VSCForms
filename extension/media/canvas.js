@@ -554,7 +554,9 @@
             if (c.locked || readOnly) return;
             // GRID is FORM units. A nudge must never be "8 screen pixels" — at 50% zoom that
             // would be a 16px move, and the control would drift off its grid.
-            const step = e.shiftKey ? GRID * 2 : GRID;
+            // Ctrl/Cmd jumps one ruler-major-tick (GRID*5); Shift resizes instead of moving
+            // (VS parity — Shift used to mean 2x nudge).
+            const step = (e.ctrlKey || e.metaKey) ? GRID * 5 : GRID;
             const many = selected();
             const nudgeTarget = many.length > 1 && many.some((m) => m.id === c.id) ? many : [c];
             if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -562,10 +564,11 @@
                 for (const t of nudgeTarget) deleteControl(t.id);
                 return;
             }
-            const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+            const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
             if (!d) return;
             e.preventDefault();
-            for (const t of nudgeTarget) nudge(t, d[0], d[1]);
+            if (e.shiftKey) for (const t of nudgeTarget) keyResize(t, d[0] * step, d[1] * step);
+            else for (const t of nudgeTarget) nudge(t, d[0] * step, d[1] * step);
         });
 
         parent.appendChild(node);
@@ -731,6 +734,18 @@
     function nudge(c, dx, dy) {
         c.properties.x += dx;
         c.properties.y += dy;
+        renderStatusForSelection();
+        commit();
+    }
+
+    /**
+     * Keyboard resize (Shift+arrows): the east/south edges move with the top-left corner
+     * anchored — the same TextChanges a resize-handle drag emits (Size args only, never
+     * Location). Minimum extent 2, matching beginResize.
+     */
+    function keyResize(c, dx, dy) {
+        c.properties.width = Math.max(Math.round(c.properties.width + dx), 2);
+        c.properties.height = Math.max(Math.round(c.properties.height + dy), 2);
         renderStatusForSelection();
         commit();
     }
