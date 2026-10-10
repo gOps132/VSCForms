@@ -156,8 +156,10 @@ echo "parsing the Designer file with the VSCForms engine…"
 DESIGNER_OUT="$WORK/schema.json"
 # Capture engine stderr to a temp file for debugging
 ENGINE_ERR="$WORK/engine.err"
-# Pass Windows-style path to the engine (it runs on Windows)
-printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$ENGINE_WORK/src/$(basename "$DESIGNER")" \
+# Pass Windows-style path to the engine (it runs on Windows).
+# Must JSON-escape the Windows path (backslashes -> double backslashes).
+ENGINE_PATH_JSON=$(python3 -c "import json,sys; print(json.dumps('$ENGINE_WORK/src/$(basename "$DESIGNER")'))")
+printf '{"id":1,"cmd":"parse","path":%s}\n' "$ENGINE_PATH_JSON" \
   | "${ENGINE[@]}" 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
 ENGINE_EXIT=$?
 if [ $ENGINE_EXIT -ne 0 ]; then
@@ -201,8 +203,10 @@ dotnet build "$WORK/src/Check.csproj" -c Release -v q --nologo
 
 echo "running the runtime comparison…"
 set +e
-# Check.exe is a Windows executable, needs Windows path
-"$ENGINE_WORK/src/bin/Release/net10.0-windows/Check.exe" "$ENGINE_WORK/schema.json"
+# Check.exe is a Windows executable, needs Windows path.
+# Must JSON-escape the Windows path for the argument.
+CHECK_SCHEMA_JSON=$(python3 -c "import json,sys; print(json.dumps('$ENGINE_WORK/schema.json'))")
+"$ENGINE_WORK/src/bin/Release/net10.0-windows/Check.exe" "$CHECK_SCHEMA_JSON"
 RESULT=$?
 set -e
 
