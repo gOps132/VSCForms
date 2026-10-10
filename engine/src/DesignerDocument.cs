@@ -327,6 +327,32 @@ public sealed class DesignerDocument
             r.Warnings.Add($"This form uses Dock or Anchor on {docked.Count} control(s). VSCForms does not simulate layout, so it is shown read-only.");
         }
 
+        // RightToLeft: non-default on any control, or on the form itself. Mirroring is not
+        // simulated — the canvas shows left-to-right — so this is a warning, never a refusal.
+        // Anything other than RightToLeft.No counts: Inherit follows the parent, which the
+        // canvas cannot resolve without simulating the layout it refuses to simulate.
+        var mirrored = new List<string>();
+        foreach (var kv in index)
+        {
+            var cs = kv.Value;
+            if (cs.Properties.TryGetValue("RightToLeft", out var rtl) && !IsDefaultValue(rtl.Right, "RightToLeft.No"))
+                mirrored.Add(kv.Key);
+        }
+        foreach (var stmt in ic.Body?.Statements ?? default)
+        {
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var formProp)
+                && formProp is "RightToLeft")
+            {
+                if (!IsDefaultValue(a.Right, "RightToLeft.No") && !mirrored.Contains("form"))
+                    mirrored.Add("form");
+            }
+        }
+        if (mirrored.Count > 0)
+        {
+            r.Warnings.Add($"This form sets RightToLeft on {mirrored.Count} control(s). VSCForms shows the form left-to-right and does not mirror layout.");
+        }
+
         if (index.Count > 0 && index.Values.All(c => !TypeTable.IsHandled(c.Type)))
             r.Warnings.Add("No controls in this form are of a type VSCForms models.");
 

@@ -74,8 +74,18 @@ assert g['locked'] is True and 'GaugeControl' in g['type']
 assert a['coveragePercent']==75.0, a" \
   && ok "ApplyResources refuses; third-party control locked" || bad "localizable refusal"
 
+sect "[roslyn] RightToLeft warns but stays editable"
+work rtl RtlForm
+send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys; d=json.load(sys.stdin)['schema']; a=d['analysis']
+assert a['refuses']==[], a['refuses']
+assert a['coveragePercent']==100, a
+assert a['modelledCount']==2, a
+assert any('RightToLeft' in w for w in a['warnings']), a['warnings']" \
+  && ok "RightToLeft warns without refusing" || bad "RightToLeft warning"
+
 sect "[roslyn] byte-identical round trip (untouched)"
-for fx in "simple SimpleDialog" "docked DockedForm" "localizable LocalizableForm"; do
+for fx in "simple SimpleDialog" "docked DockedForm" "localizable LocalizableForm" "rtl RtlForm"; do
   set -- $fx; work "$1" "$2"
   cp "$FILE" /tmp/mf-orig.cs
   python_tweak "pass" >/dev/null

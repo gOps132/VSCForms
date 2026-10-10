@@ -84,7 +84,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 
 | # | Gap | Spec | Note |
 |---|---|---|---|
-| C1 | `RightToLeft` mirroring | `spec-example-compatibility.md` B2 | Preserved-but-invisible; canvas shows LTR. Needs at minimum a warning. |
+| C1 | `RightToLeft` mirroring | `spec-example-compatibility.md` B2 | Warns via `analysis.warnings` (banner); form stays editable, shown LTR. No mirroring simulation. (#16) |
 | C2 | `TableLayoutPanel` children with default `Dock`/`Anchor` shown flat | `spec-example-compatibility.md` B2 | Flat rendering contradicts layout semantics. Feeds the B2 refusal decision. |
 | C3 | Preserved-but-invisible form props: `AutoScaleMode/Dimensions`, `AutoSize`, `Margin/Padding`, `ClientSize` vs `Size` | `spec-example-compatibility.md` B2 | Survive round trips; invisible in canvas. Any surfacing must not imply editing that isn't wired. |
 
