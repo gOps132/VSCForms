@@ -20,7 +20,7 @@ $failed = @()
 $ran = 0
 
 foreach ($f in $fixtures) {
-    $dir = Split-Path (Split-Path $f.FullName -Parent) -Parent | Split-Path -Leaf
+    $dir = Split-Path $f.FullName -Parent | Split-Path -Leaf
     $label = "$dir/$($f.Name)"
     Write-Host "=== $label"
 
