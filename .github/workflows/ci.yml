@@ -85,7 +85,7 @@ jobs:
       # Use pwsh, not bash: dotnet is on PATH in PowerShell but not in Git Bash on Windows CI.
       - name: compare the schema against real WinForms runtime bounds
         shell: pwsh
-        run: & bash ./scripts/run-windows-layout.sh fixtures/simple
+        run: "& bash ./scripts/run-windows-layout.sh fixtures/simple"
       # Every checked-in fixture, so a dialect regression cannot pass unnoticed just because
       # `simple` happens to parse.
       - name: verify every fixture against the runtime
