@@ -86,7 +86,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 |---|---|---|---|
 | C1 | `RightToLeft` mirroring | `spec-example-compatibility.md` B2 | Warns via `analysis.warnings` (banner); form stays editable, shown LTR. No mirroring simulation. (#16) |
 | C2 | `TableLayoutPanel` children with default `Dock`/`Anchor` shown flat | `spec-example-compatibility.md` B2 | Flat rendering contradicts layout semantics. Feeds the B2 refusal decision. |
-| C3 | Preserved-but-invisible form props: `AutoScaleMode/Dimensions`, `AutoSize`, `Margin/Padding`, `ClientSize` vs `Size` | `spec-example-compatibility.md` B2 | Survive round trips; invisible in canvas. Any surfacing must not imply editing that isn't wired. |
+| C3 | Preserved-but-invisible form props: `AutoScaleMode/Dimensions`, `AutoSize`, `Margin/Padding`, `ClientSize` vs `Size` | `spec-example-compatibility.md` B2 | Warns on surprises only (explicit Margin/Padding, AutoSize where unmodelled, non-Font AutoScaleMode, Size-without-ClientSize); standard files stay quiet. Read-only disclosure, no editing. (#18) |
 
 ### D. Canvas QoL (from `spec-vs-parity.md` — PROPOSED reasoning, this file is state)
 

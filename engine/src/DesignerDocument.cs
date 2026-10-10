@@ -335,7 +335,7 @@ public sealed class DesignerDocument
         foreach (var kv in index)
         {
             var cs = kv.Value;
-            if (cs.Properties.TryGetValue("RightToLeft", out var rtl) && !IsDefaultValue(rtl.Right, "RightToLeft.No"))
+            if (cs.Properties.TryGetValue("RightToLeft", out var rtl) && !IsDefaultValue(rtl.Right, "RightToLeft.No", "System.Windows.Forms.RightToLeft.No"))
                 mirrored.Add(kv.Key);
         }
         foreach (var stmt in ic.Body?.Statements ?? default)
@@ -344,13 +344,73 @@ public sealed class DesignerDocument
                 && TryGetFormProperty(a.Left, out var formProp)
                 && formProp is "RightToLeft")
             {
-                if (!IsDefaultValue(a.Right, "RightToLeft.No") && !mirrored.Contains("form"))
+                if (!IsDefaultValue(a.Right, "RightToLeft.No", "System.Windows.Forms.RightToLeft.No") && !mirrored.Contains("form"))
                     mirrored.Add("form");
             }
         }
         if (mirrored.Count > 0)
         {
             r.Warnings.Add($"This form sets RightToLeft on {mirrored.Count} control(s). VSCForms shows the form left-to-right and does not mirror layout.");
+        }
+
+        // Preserved-but-invisible design-time props (C3): warn only on surprises, never on
+        // standard files. VS omits default Margin/Padding, writes AutoScaleMode.Font, and
+        // always emits ClientSize — so presence (or a non-Font mode, or Size without
+        // ClientSize) is the signal. Read-only disclosure; editing any of them is separate.
+        var spaced = new List<string>();
+        var autosized = new List<string>();
+        foreach (var kv in index)
+        {
+            var cs = kv.Value;
+            if (cs.Properties.ContainsKey("Margin") || cs.Properties.ContainsKey("Padding"))
+                spaced.Add(kv.Key);
+            // AutoSize is modelled only for Label, Button, CheckBox and RadioButton (the
+            // inspector's set); elsewhere the canvas shows the designed size while the
+            // runtime may resize. Literal `true` only — anything else is refused as a guess.
+            if (cs.Properties.TryGetValue("AutoSize", out var asz)
+                && asz.Right is LiteralExpressionSyntax { Token.Value: true }
+                && TypeTable.SimpleName(cs.Type) is not ("Label" or "Button" or "CheckBox" or "RadioButton"))
+                autosized.Add(kv.Key);
+        }
+        var scalesOddly = false;
+        var hasFormSize = false;
+        var hasFormClientSize = false;
+        foreach (var stmt in ic.Body?.Statements ?? default)
+        {
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var formProp))
+            {
+                if (formProp is "Margin" or "Padding")
+                {
+                    if (!spaced.Contains("form")) spaced.Add("form");
+                }
+                else if (formProp is "AutoSize" && a.Right is LiteralExpressionSyntax { Token.Value: true })
+                {
+                    if (!autosized.Contains("form")) autosized.Add("form");
+                }
+                else if (formProp is "AutoScaleMode" && !IsDefaultValue(a.Right, "AutoScaleMode.Font", "System.Windows.Forms.AutoScaleMode.Font"))
+                    scalesOddly = true;
+                else if (formProp is "Size")
+                    hasFormSize = true;
+                else if (formProp is "ClientSize")
+                    hasFormClientSize = true;
+            }
+        }
+        if (spaced.Count > 0)
+        {
+            r.Warnings.Add($"This form sets Margin or Padding on {spaced.Count} control(s). Spacing is preserved in the file but not shown on the canvas.");
+        }
+        if (autosized.Count > 0)
+        {
+            r.Warnings.Add($"This form sets AutoSize on {autosized.Count} control(s) whose size is not modelled. VSCForms shows the designed size.");
+        }
+        if (scalesOddly)
+        {
+            r.Warnings.Add("This form uses a non-Font AutoScaleMode. VSCForms shows design-time geometry and does not rescale.");
+        }
+        if (hasFormSize && !hasFormClientSize)
+        {
+            r.Warnings.Add("This form sets Size without ClientSize. VSCForms frames the form from ClientSize.");
         }
 
         if (index.Count > 0 && index.Values.All(c => !TypeTable.IsHandled(c.Type)))

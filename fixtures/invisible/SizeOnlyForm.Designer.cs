@@ -7,9 +7,9 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace FixtureRtl
+namespace FixtureInvisible
 {
-    partial class RtlForm
+    partial class SizeOnlyForm
     {
         /// <summary>
         /// Required method for designer support - do not modify
@@ -17,39 +17,26 @@ namespace FixtureRtl
         /// </summary>
         private void InitializeComponent()
         {
-            this.lblName = new System.Windows.Forms.Label();
-            this.btnSubmit = new System.Windows.Forms.Button();
+            this.btnOk = new System.Windows.Forms.Button();
             this.SuspendLayout();
             //
-            // lblName
+            // btnOk
             //
-            this.lblName.Location = new System.Drawing.Point(12, 16);
-            this.lblName.Name = "lblName";
-            this.lblName.RightToLeft = System.Windows.Forms.RightToLeft.Yes;
-            this.lblName.Size = new System.Drawing.Size(120, 23);
-            this.lblName.TabIndex = 0;
-            this.lblName.Text = "Name";
+            this.btnOk.Location = new System.Drawing.Point(12, 12);
+            this.btnOk.Name = "btnOk";
+            this.btnOk.Size = new System.Drawing.Size(96, 27);
+            this.btnOk.TabIndex = 0;
+            this.btnOk.Text = "OK";
+            this.btnOk.UseVisualStyleBackColor = true;
             //
-            // btnSubmit
-            //
-            this.btnSubmit.Location = new System.Drawing.Point(12, 48);
-            this.btnSubmit.Name = "btnSubmit";
-            this.btnSubmit.RightToLeft = System.Windows.Forms.RightToLeft.No;
-            this.btnSubmit.Size = new System.Drawing.Size(96, 27);
-            this.btnSubmit.TabIndex = 1;
-            this.btnSubmit.Text = "Submit";
-            this.btnSubmit.UseVisualStyleBackColor = true;
-            //
-            // RtlForm
+            // SizeOnlyForm
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(292, 120);
-            this.Controls.Add(this.btnSubmit);
-            this.Controls.Add(this.lblName);
-            this.Name = "RtlForm";
-            this.RightToLeft = System.Windows.Forms.RightToLeft.Yes;
-            this.Text = "RTL form";
+            this.Controls.Add(this.btnOk);
+            this.Name = "SizeOnlyForm";
+            this.Size = new System.Drawing.Size(300, 140);
+            this.Text = "Size without ClientSize";
             this.ResumeLayout(false);
 
         }
@@ -74,8 +61,7 @@ namespace FixtureRtl
         }
 
         private System.ComponentModel.IContainer components = null;
-        private System.Windows.Forms.Label lblName;
-        private System.Windows.Forms.Button btnSubmit;
+        private System.Windows.Forms.Button btnOk;
 
         #endregion
     }

@@ -84,8 +84,34 @@ assert a['modelledCount']==2, a
 assert any('RightToLeft' in w for w in a['warnings']), a['warnings']" \
   && ok "RightToLeft warns without refusing" || bad "RightToLeft warning"
 
+sect "[roslyn] preserved-but-invisible props warn (read-only disclosure)"
+work invisible InvisibleForm
+send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys; d=json.load(sys.stdin)['schema']; a=d['analysis']
+assert a['refuses']==[], a['refuses']
+assert a['coveragePercent']==100, a
+assert any('Margin or Padding' in w for w in a['warnings']), a['warnings']
+assert any('AutoSize' in w for w in a['warnings']), a['warnings']
+assert any('non-Font AutoScaleMode' in w for w in a['warnings']), a['warnings']" \
+  && ok "Margin/Padding, AutoSize and AutoScaleMode warn without refusing" || bad "invisible-props warnings"
+work invisible SizeOnlyForm
+send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys; d=json.load(sys.stdin)['schema']; a=d['analysis']
+assert a['refuses']==[], a['refuses']
+assert any('without ClientSize' in w for w in a['warnings']), a['warnings']
+assert not any('AutoScaleMode' in w for w in a['warnings']), a['warnings']" \
+  && ok "Size-without-ClientSize warns; Font-mode stays quiet" || bad "Size warning"
+# Standard fixtures stay quiet on the new warnings.
+for fx in "simple SimpleDialog" "docked DockedForm" "localizable LocalizableForm"; do
+  set -- $fx; work "$1" "$2"
+  send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys; a=json.load(sys.stdin)['schema']['analysis']
+assert not any(k in w for w in a['warnings'] for k in ['Margin','Padding','AutoSize','AutoScaleMode','ClientSize']), a['warnings']" \
+    && ok "$2 has no surprise warnings" || bad "$2 surprise warning"
+done
+
 sect "[roslyn] byte-identical round trip (untouched)"
-for fx in "simple SimpleDialog" "docked DockedForm" "localizable LocalizableForm" "rtl RtlForm"; do
+for fx in "simple SimpleDialog" "docked DockedForm" "localizable LocalizableForm" "rtl RtlForm" "invisible InvisibleForm" "invisible SizeOnlyForm"; do
   set -- $fx; work "$1" "$2"
   cp "$FILE" /tmp/mf-orig.cs
   python_tweak "pass" >/dev/null
