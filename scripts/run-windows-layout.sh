@@ -40,6 +40,21 @@ for cfg in Release Debug; do
     [ -f "$p" ] && ENGINE="$p"
   done
 done
+# Debug: show what we're looking for
+echo "DEBUG: engine search paths checked:"
+for exe in vscforms-engine vscforms-engine.exe; do
+  for p in \
+    "./engine/bin/Release/net10.0/win-x64/publish/$exe" \
+    "./engine/bin/Release/net10.0/win-x64/$exe" \
+    "./engine/bin/Release/net10.0/$exe" \
+    "./engine/bin/Debug/net10.0/$exe"; do
+    if [ -f "$p" ]; then
+      echo "  FOUND: $p"
+    else
+      echo "  MISS:  $p"
+    fi
+  done
+done
 if [ -z "$ENGINE" ]; then
   echo "ERROR engine not built. Run: dotnet publish engine -c Release -r win-x64 --self-contained true" >&2
   exit 1
