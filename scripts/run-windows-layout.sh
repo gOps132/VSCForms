@@ -50,7 +50,13 @@ fi
 # Array for proper argument handling in bash
 ENGINE=(dotnet "$ENGINE_DLL")
 
-WORK="${TMPDIR:-/tmp}/vscforms-layout"
+# Determine temp directory: on Windows (Git Bash), TMPDIR may not be set or may be Unix-style.
+# Use $TEMP (Windows env) if available, else fall back to /tmp.
+if [ -n "${TEMP:-}" ]; then
+  WORK="${TEMP}/vscforms-layout"
+else
+  WORK="${TMPDIR:-/tmp}/vscforms-layout"
+fi
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
 
