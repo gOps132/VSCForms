@@ -178,10 +178,10 @@ if [ ! -s "$DESIGNER_OUT" ]; then
 fi
 
 if ! python3 -c "
-import json,sys
-d=json.load(open('$DESIGNER_OUT'))
+import json, sys
+d = json.load(open(sys.argv[1]))
 assert d.get('ok'), d
-" 2>/dev/null; then
+" "$DESIGNER_OUT" 2>/dev/null; then
   echo "DEBUG: Python validation failed"
   cat "$DESIGNER_OUT"
   echo "FAIL  the engine could not parse the file (is the engine built?)"
@@ -194,13 +194,13 @@ fi
 echo "DEBUG: Parse validation passed"
 
 python3 -c "
-import json
-d=json.load(open('$DESIGNER_OUT'))['schema']
-a=d['analysis']
+import json, sys
+d = json.load(open(sys.argv[1]))['schema']
+a = d['analysis']
 print(f\"  coverage {a['coveragePercent']}%  modelled {a['modelledCount']}  unmodelled {a['unmodelledCount']}  refuses {a['refuses']}\")
 if a['refuses']:
     print('  note: this form refuses; geometry is not editable, so only presence is checked')
-"
+" "$DESIGNER_OUT"
 
 # Staging stubs for references outside the copied file (handlers in Form1.cs,
 # third-party control types). The Designer copy stays verbatim; Stubs.cs supplies
