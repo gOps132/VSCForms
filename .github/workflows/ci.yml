@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: build engine (Release)
+        run: dotnet build engine -c Release -v q --nologo
       - name: roslyn invariants
         run: ./test/verify.sh
       - name: non-classic dialects and declared style
@@ -35,6 +37,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: build engine (Release)
+        run: dotnet build engine -c Release -v q --nologo
       - name: compile tier
         run: ./test/verify.sh
 
@@ -117,6 +121,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - run: npm --prefix extension ci
 
       - name: publish the engine for this RID
         run: dotnet publish engine -c Release -r ${{ matrix.rid }} --self-contained true
