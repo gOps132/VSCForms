@@ -23,12 +23,17 @@ PROJECT="${1:-example}"
 # framework-dependent build paths. Loud error on purpose: a missing engine used to
 # print SKIP and exit 0, which in CI is indistinguishable from having verified everything.
 ENGINE=""
-# 1) Self-contained publish output (what CI layout job does)
+# 1) Self-contained publish output (what CI layout job does) - includes publish/ subdir
+for exe in vscforms-engine vscforms-engine.exe; do
+  p="./engine/bin/Release/net10.0/win-x64/publish/$exe"
+  [ -f "$p" ] && ENGINE="$p"
+done
+# 2) Self-contained publish output (no publish/ subdir, legacy)
 for exe in vscforms-engine vscforms-engine.exe; do
   p="./engine/bin/Release/net10.0/win-x64/$exe"
   [ -f "$p" ] && ENGINE="$p"
 done
-# 2) Framework-dependent build output (local dev)
+# 3) Framework-dependent build output (local dev)
 for cfg in Release Debug; do
   for exe in vscforms-engine vscforms-engine.exe; do
     p="./engine/bin/$cfg/net10.0/$exe"
