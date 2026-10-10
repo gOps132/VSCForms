@@ -78,8 +78,10 @@ jobs:
           dotnet-version: '10.0.x'
       # Release, because run-windows-layout.sh reads the Release path — the two must agree or the
       # job silently finds no engine and reports SKIP, which looks identical to success.
-      - name: build the engine
-        run: dotnet build engine -c Release -v q --nologo
+      # Publish self-contained so the script can invoke the native exe directly (framework-dependent
+      # build only yields a DLL that must run via 'dotnet').
+      - name: publish the engine (self-contained, win-x64)
+        run: dotnet publish engine -c Release -r win-x64 --self-contained true -v q --nologo
       # Bash, not the default pwsh: pwsh cannot run a Bash script, so without this
       # the harness below would never really execute.
       - name: compare the schema against real WinForms runtime bounds

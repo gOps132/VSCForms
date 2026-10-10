@@ -18,10 +18,17 @@ cd "$(dirname "$0")/.."
 
 PROJECT="${1:-example}"
 
-# The engine must be built before this runs. Both configurations are accepted, and the error is
-# loud on purpose: a missing engine used to print SKIP and exit 0, which in CI is
-# indistinguishable from having verified everything.
+# The engine must be published (self-contained) before this runs. The script checks the
+# publish output directory first (win-x64 RID on Windows CI), then falls back to the
+# framework-dependent build paths. Loud error on purpose: a missing engine used to
+# print SKIP and exit 0, which in CI is indistinguishable from having verified everything.
 ENGINE=""
+# 1) Self-contained publish output (what CI layout job does)
+for exe in vscforms-engine vscforms-engine.exe; do
+  p="./engine/bin/Release/net10.0/win-x64/$exe"
+  [ -f "$p" ] && ENGINE="$p"
+done
+# 2) Framework-dependent build output (local dev)
 for cfg in Release Debug; do
   for exe in vscforms-engine vscforms-engine.exe; do
     p="./engine/bin/$cfg/net10.0/$exe"
@@ -29,7 +36,7 @@ for cfg in Release Debug; do
   done
 done
 if [ -z "$ENGINE" ]; then
-  echo "ERROR engine not built. Run: dotnet build engine -c Release" >&2
+  echo "ERROR engine not built. Run: dotnet publish engine -c Release -r win-x64 --self-contained true" >&2
   exit 1
 fi
 
