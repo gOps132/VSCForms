@@ -22,43 +22,32 @@ PROJECT="${1:-example}"
 # publish output directory first (win-x64 RID on Windows CI), then falls back to the
 # framework-dependent build paths. Loud error on purpose: a missing engine used to
 # print SKIP and exit 0, which in CI is indistinguishable from having verified everything.
-ENGINE=""
+ENGINE_DLL=""
 # 1) Self-contained publish output (what CI layout job does) - includes publish/ subdir
-for exe in vscforms-engine vscforms-engine.exe; do
-  p="./engine/bin/Release/net10.0/win-x64/publish/$exe"
-  [ -f "$p" ] && ENGINE="$p"
+for dll in vscforms-engine.dll; do
+  p="./engine/bin/Release/net10.0/win-x64/publish/$dll"
+  [ -f "$p" ] && ENGINE_DLL="$p"
 done
 # 2) Self-contained publish output (no publish/ subdir, legacy)
-for exe in vscforms-engine vscforms-engine.exe; do
-  p="./engine/bin/Release/net10.0/win-x64/$exe"
-  [ -f "$p" ] && ENGINE="$p"
+for dll in vscforms-engine.dll; do
+  p="./engine/bin/Release/net10.0/win-x64/$dll"
+  [ -f "$p" ] && ENGINE_DLL="$p"
 done
 # 3) Framework-dependent build output (local dev)
 for cfg in Release Debug; do
-  for exe in vscforms-engine vscforms-engine.exe; do
-    p="./engine/bin/$cfg/net10.0/$exe"
-    [ -f "$p" ] && ENGINE="$p"
+  for dll in vscforms-engine.dll; do
+    p="./engine/bin/$cfg/net10.0/$dll"
+    [ -f "$p" ] && ENGINE_DLL="$p"
   done
 done
-# Debug: show what we're looking for
-echo "DEBUG: engine search paths checked:"
-for exe in vscforms-engine vscforms-engine.exe; do
-  for p in \
-    "./engine/bin/Release/net10.0/win-x64/publish/$exe" \
-    "./engine/bin/Release/net10.0/win-x64/$exe" \
-    "./engine/bin/Release/net10.0/$exe" \
-    "./engine/bin/Debug/net10.0/$exe"; do
-    if [ -f "$p" ]; then
-      echo "  FOUND: $p"
-    else
-      echo "  MISS:  $p"
-    fi
-  done
-done
-if [ -z "$ENGINE" ]; then
+if [ -z "$ENGINE_DLL" ]; then
   echo "ERROR engine not built. Run: dotnet publish engine -c Release -r win-x64 --self-contained true" >&2
   exit 1
 fi
+
+# Use 'dotnet <dll>' everywhere - works for self-contained and framework-dependent,
+# and is reliable on Windows (self-contained .exe can be finicky).
+ENGINE="dotnet \"$ENGINE_DLL\""
 
 WORK="${TMPDIR:-/tmp}/vscforms-layout"
 
