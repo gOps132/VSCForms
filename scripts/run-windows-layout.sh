@@ -138,8 +138,15 @@ EOF
 
 echo "parsing the Designer file with the VSCForms engine…"
 DESIGNER_OUT="$WORK/schema.json"
+# Capture engine stderr to a temp file for debugging
+ENGINE_ERR="$WORK/engine.err"
 printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$WORK/src/$(basename "$DESIGNER")" \
-  | "$ENGINE" 2>/dev/null > "$DESIGNER_OUT"
+  | $ENGINE 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
+ENGINE_EXIT=$?
+if [ $ENGINE_EXIT -ne 0 ]; then
+  echo "ENGINE CRASH (exit $ENGINE_EXIT):"
+  cat "$ENGINE_ERR" >&2
+fi
 
 if ! python3 -c "
 import json,sys
@@ -147,6 +154,10 @@ d=json.load(open('$DESIGNER_OUT'))
 assert d.get('ok'), d
 " 2>/dev/null; then
   echo "FAIL  the engine could not parse the file (is the engine built?)"
+  echo "Engine output:"
+  cat "$DESIGNER_OUT"
+  echo "Engine stderr:"
+  cat "$ENGINE_ERR"
   exit 1
 fi
 
