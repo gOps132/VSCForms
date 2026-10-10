@@ -27,7 +27,6 @@ partial class LeafForm
         this.numQuantity = new System.Windows.Forms.NumericUpDown();
         this.dtpDue = new System.Windows.Forms.DateTimePicker();
         ((System.ComponentModel.ISupportInitialize)(this.numQuantity)).BeginInit();
-        ((System.ComponentModel.ISupportInitialize)(this.dtpDue)).BeginInit();
         this.SuspendLayout();
         //
         // trackVolume
@@ -66,7 +65,6 @@ partial class LeafForm
         this.dtpDue.CustomFormat = "yyyy-MM-dd";
         //
         ((System.ComponentModel.ISupportInitialize)(this.numQuantity)).EndInit();
-        ((System.ComponentModel.ISupportInitialize)(this.dtpDue)).EndInit();
         this.ResumeLayout(false);
         //
     }
