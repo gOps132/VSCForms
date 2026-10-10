@@ -165,9 +165,16 @@ print(json.dumps({'id': 1, 'cmd': 'parse', 'path': path}))
 " "$ENGINE_WORK/src/$(basename "$DESIGNER")" \
   | "${ENGINE[@]}" 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
 ENGINE_EXIT=$?
+echo "DEBUG: ENGINE_EXIT=$ENGINE_EXIT"
 if [ $ENGINE_EXIT -ne 0 ]; then
   echo "ENGINE CRASH (exit $ENGINE_EXIT):"
   cat "$ENGINE_ERR" >&2
+fi
+
+# Check if DESIGNER_OUT has content
+if [ ! -s "$DESIGNER_OUT" ]; then
+  echo "DEBUG: DESIGNER_OUT is empty"
+  exit 1
 fi
 
 if ! python3 -c "
@@ -175,6 +182,8 @@ import json,sys
 d=json.load(open('$DESIGNER_OUT'))
 assert d.get('ok'), d
 " 2>/dev/null; then
+  echo "DEBUG: Python validation failed"
+  cat "$DESIGNER_OUT"
   echo "FAIL  the engine could not parse the file (is the engine built?)"
   echo "Engine output:"
   cat "$DESIGNER_OUT"
@@ -182,6 +191,7 @@ assert d.get('ok'), d
   cat "$ENGINE_ERR"
   exit 1
 fi
+echo "DEBUG: Parse validation passed"
 
 python3 -c "
 import json
