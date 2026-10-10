@@ -50,14 +50,17 @@ fi
 # Array for proper argument handling in bash
 ENGINE=(dotnet "$ENGINE_DLL")
 
-# Determine temp directory: on Windows (Git Bash), TMPDIR may not be set or may be Unix-style.
-# Use $TEMP (Windows env) if available, else fall back to /tmp.
-if [ -n "${TEMP:-}" ]; then
-  WORK="${TEMP}/vscforms-layout"
+# Determine temp directory: on Windows (Git Bash), TMPDIR/TEMP may be Unix-style.
+# GitHub Actions provides RUNNER_TEMP as a proper Windows path.
+# Fallback: try cygpath to convert, else /tmp.
+if [ -n "${RUNNER_TEMP:-}" ]; then
+  WORK="${RUNNER_TEMP}/vscforms-layout"
+elif [ -n "${TEMP:-}" ] && command -v cygpath >/dev/null 2>&1; then
+  WORK="$(cygpath -w "$TEMP")/vscforms-layout"
 else
   WORK="${TMPDIR:-/tmp}/vscforms-layout"
 fi
-echo "DEBUG: WORK=$WORK TEMP=${TEMP:-unset} TMPDIR=${TMPDIR:-unset}"
+echo "DEBUG: WORK=$WORK RUNNER_TEMP=${RUNNER_TEMP:-unset} TEMP=${TEMP:-unset}"
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
 
