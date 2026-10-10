@@ -743,7 +743,38 @@
      */
     function align(kind) {
         const s = selected();
-        if (s.length < 2 || !selectionEditable()) return;
+        if (!selectionEditable()) return;
+
+        // Center in Form works on any non-empty editable selection, including a single
+        // control. Each control centres within its immediate parent frame — the form's
+        // clientSize at top level, else the parent's modelled width/height. Container
+        // chrome is ignored: an approximation stated here, not simulated layout.
+        if (kind === 'center-form-h' || kind === 'center-form-v') {
+            for (const c of s) {
+                const p = c.properties;
+                const frame = parentFrame(c);
+                if (kind === 'center-form-h') p.x = Math.round((frame.w - p.width) / 2);
+                else p.y = Math.round((frame.h - p.height) / 2);
+            }
+            commit();
+            renderCanvas();
+            return;
+        }
+
+        if (s.length < 2) return;
+
+        // Make Same Size copies the schema-order-first (dominant) control's extents.
+        // Position is untouched: resizing keeps the top-left corner, like VS.
+        if (kind === 'same-w' || kind === 'same-h' || kind === 'same-both') {
+            const ref = s[0].properties;
+            for (const c of s) {
+                if (kind === 'same-w' || kind === 'same-both') c.properties.width = ref.width;
+                if (kind === 'same-h' || kind === 'same-both') c.properties.height = ref.height;
+            }
+            commit();
+            renderCanvas();
+            return;
+        }
 
         // Distribute evens the GAPS between the extremes, which is what every designer means
         // by it. Distributing the control centres would be a different, rarer operation.
@@ -777,6 +808,26 @@
         }
         commit();
         renderCanvas();
+    }
+
+    /** Immediate parent frame for Center in Form: form clientSize at top level, else the
+     * parent control's modelled width/height. */
+    function parentFrame(c) {
+        const parent = parentOf(c.id);
+        if (!parent) return { w: schema.form.clientSize.width, h: schema.form.clientSize.height };
+        return { w: parent.properties.width, h: parent.properties.height };
+    }
+
+    function parentOf(id) {
+        const walk = (nodes, parent) => {
+            for (const n of nodes || []) {
+                if (n.id === id) return parent;
+                const found = walk(n.children, n);
+                if (found !== null && found !== undefined) return found;
+            }
+            return null;
+        };
+        return walk(schema ? schema.controls : [], null);
     }
 
     /**
@@ -815,6 +866,11 @@
             ['Align Bottom', () => align('bottom')],
             ['Distribute Horizontally', () => align('dist-h')],
             ['Distribute Vertically', () => align('dist-v')],
+            ['Same Width', () => align('same-w')],
+            ['Same Height', () => align('same-h')],
+            ['Same Size', () => align('same-both')],
+            ['Center in Form Horizontally', () => align('center-form-h')],
+            ['Center in Form Vertically', () => align('center-form-v')],
         ];
     }
 
@@ -1170,6 +1226,16 @@
             });
         }
         box.appendChild(nameField);
+
+        // Center in Form also applies to a single control; same-size needs two, so it lives
+        // in the multi-selection box (alignActions) only.
+        if (!c.locked && !readOnly) {
+            box.appendChild(el('h4', null, 'Arrange'));
+            box.appendChild(el('button', null, 'Center in Form Horizontally'))
+                .addEventListener('click', () => align('center-form-h'));
+            box.appendChild(el('button', null, 'Center in Form Vertically'))
+                .addEventListener('click', () => align('center-form-v'));
+        }
 
         if (!c.locked && !readOnly) {
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));

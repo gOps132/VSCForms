@@ -625,6 +625,69 @@ setTimeout(async () => {
         sandbox.__sent.filter((m) => m.type === 'commit').length === 1,
         String(sandbox.__sent.map((m) => m.type)));
 
+    // ---- D3 arrange: same size + center in form (pure geometry, one commit)
+    send({ type: 'load', data: schema });
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    const widthOf = (id) => parseFloat(ctlNode(id).style.width);
+    const heightOf = (id) => parseFloat(ctlNode(id).style.height);
+    const clickInspectorButton = (label) => {
+        const b = ids.inspector.querySelectorAll('button').find((x) => String(x.textContent || '') === label);
+        if (!b) return false;
+        b.dispatch('click', {});
+        return true;
+    };
+    {
+        const labels = ids.inspector.querySelectorAll('button').map((b) => String(b.textContent || ''));
+        for (const t of ['Same Width', 'Same Height', 'Same Size',
+            'Center in Form Horizontally', 'Center in Form Vertically']) {
+            check('multi-selection offers ' + t, labels.includes(t), labels.join(','));
+        }
+    }
+    // Same Size copies the schema-order-first (txtName 180x23) extents; position untouched.
+    sandbox.__sent.length = 0;
+    check('same-size action runs', clickInspectorButton('Same Size'));
+    check('same-size copies the dominant width', widthOf('btnSubmit') === 180 && widthOf('txtName') === 180,
+        `txtName w=${widthOf('txtName')} btnSubmit w=${widthOf('btnSubmit')}`);
+    check('same-size copies the dominant height', heightOf('btnSubmit') === 23 && heightOf('txtName') === 23,
+        `txtName h=${heightOf('txtName')} btnSubmit h=${heightOf('btnSubmit')}`);
+    check('same-size keeps position', leftOf('btnSubmit') === 96 && topOf('btnSubmit') === 154,
+        `btnSubmit@${leftOf('btnSubmit')},${topOf('btnSubmit')}`);
+    await settled();
+    {
+        const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('same-size posts exactly one commit', commits.length === 1,
+            String(sandbox.__sent.map((m) => m.type)));
+        const sent = commits.length && commits[0].data.controls.find((c) => c.id === 'btnSubmit');
+        check('commit carries the resized control', !!sent && sent.properties.width === 180 && sent.properties.height === 23,
+            sent ? JSON.stringify(sent.properties) : 'no commit');
+    }
+
+    // Center in Form on a single control: (292-84)/2=104, (196-27)/2=84.5->85.
+    send({ type: 'load', data: schema });
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    check('single selection offers center actions',
+        ids.inspector.querySelectorAll('button').some((b) => String(b.textContent || '') === 'Center in Form Horizontally'));
+    clickInspectorButton('Center in Form Horizontally');
+    check('center-h centers within the form width', leftOf('btnSubmit') === 104, String(leftOf('btnSubmit')));
+    clickInspectorButton('Center in Form Vertically');
+    check('center-v centers within the form height', topOf('btnSubmit') === 85, String(topOf('btnSubmit')));
+
+    // Nested controls centre within the parent frame, not the form: (200-80)/2=60.
+    {
+        const nested = JSON.parse(JSON.stringify(schema));
+        nested.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+            { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 5, y: 5, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+        ], locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+        send({ type: 'load', data: nested });
+        ctlNode('btnIn').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        clickInspectorButton('Center in Form Horizontally');
+        check('nested control centers within the parent width',
+            parseFloat(ctlNode('btnIn').style.left) === 60, String(ctlNode('btnIn').style.left));
+    }
+
     // ---- duplicate
     send({ type: 'load', data: schema });
     ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
