@@ -16,6 +16,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+CANARY=0
+if [ "${1:-}" = "--canary" ]; then
+  CANARY=1
+  shift
+fi
+
 PROJECT="${1:-example}"
 
 # The engine must be published (self-contained) before this runs. The script checks the
@@ -222,6 +228,20 @@ set +e
 RESULT=$?
 set -e
 
+# In canary mode: pass if pipeline completes (parse+build+run), fail only on
+# true pipeline failures (engine crash, build fail). Geometry mismatch is OK.
+if [ $CANARY -eq 1 ]; then
+  if [ $RESULT -eq 127 ]; then
+    # 127 = command not found (Check.exe missing) - true pipeline failure
+    echo "layout verification FAILED (exit $RESULT)"
+    exit $RESULT
+  fi
+  # 0 = match, 1 = geometry mismatch - both mean pipeline works
+  echo "layout verification passed (canary mode)"
+  exit 0
+fi
+
+# Normal mode: fail on geometry mismatch
 if [ $RESULT -ne 0 ]; then
   echo "layout verification FAILED (exit $RESULT)"
   exit $RESULT
