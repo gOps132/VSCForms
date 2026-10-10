@@ -210,6 +210,15 @@ body { display: flex; flex-direction: column; }
   position: absolute; inset: 0; z-index: 6; width: 100%; height: 100%;
   box-sizing: border-box; font: inherit; color: inherit;
 }
+/* Tab-order badge: the TabIndex corner tab. Pointer-events none like captions, so the
+   assignment click lands on the node rather than the badge. */
+.ctl > .tab-badge {
+  position: absolute; top: 0; left: 0; z-index: 7; pointer-events: none;
+  min-width: 18px; height: 18px; line-height: 18px; text-align: center;
+  font-size: 11px; font-weight: bold; color: #fff;
+  background: var(--vscode-button-background, #0e639c);
+  border-radius: 0 0 4px 0;
+}
 
 /* Approximate WinForms look. NOT pixel parity — see CONTEXT.md. */
 .ctl.t-button  { background: linear-gradient(180deg,#3a3d41,#2e3134); border-radius: 2px; }

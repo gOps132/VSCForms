@@ -24,6 +24,10 @@
     /** The container we have "drilled into" via double-click. When set, only its
      *  children are selectable. Click outside or Escape to exit. */
     let activeContainer = null;
+    /** Tab-order mode: badges show each control's TabIndex and mousedown assigns the next
+     *  one in click order, instead of selecting/dragging. Escape or the toggle exits. */
+    let tabOrderMode = false;
+    let tabOrderNext = 0;
     /** Filter text for properties in inspector. */
     let inspectorFilter = '';
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
@@ -531,12 +535,18 @@
             if (c.locked) { select(c.id); return; }
             if (readOnly) return;
 
+            // Tab-order mode: assign the next TabIndex instead of selecting or dragging.
+            // Locked and refused never reach here (guarded above).
+            if (tabOrderMode) { setProp(c, 'tabIndex', tabOrderNext++); return; }
+
             const extend = e.shiftKey;
             if (extend) select(c.id, true); else if (!selection.has(c.id) || selection.size > 1) select(c.id);
             beginDrag(e, c, node, containerNode);
         });
         node.addEventListener('dblclick', (e) => {
             if (c.locked || readOnly) return;
+            // In tab-order mode clicks assign; dblclick neither drills in nor edits text.
+            if (tabOrderMode) return;
             const simple = simpleName(c.type);
             if (containerTypes().has(simple)) {
                 // Enter container: double-click a GroupBox, Panel, TabControl, TabPage
@@ -610,10 +620,23 @@
                         }
                     }
                 }
+                appendTabBadge(node, c);
                 return;
             }
             for (const child of c.children || []) renderControl(node, child, node);
         }
+        appendTabBadge(node, c);
+    }
+
+    /**
+     * Tab-order badge: the control's current TabIndex, shown only in tab-order mode and
+     * only where a click could assign one (unlocked, editable). Pointer-events none, like
+     * captions, so the assignment click lands on the node. '?' marks an unset TabIndex,
+     * which the first click fills in through the normal INSERT path.
+     */
+    function appendTabBadge(node, c) {
+        if (!tabOrderMode || c.locked || readOnly) return;
+        node.appendChild(el('div', 'tab-badge', String(c.properties.tabIndex ?? '?')));
     }
 
     function renderHandles(node) {
@@ -1629,6 +1652,29 @@
             toggle.textContent = view.snap ? 'Snap: on' : 'Snap: off';
         });
         s.appendChild(toggle);
+        const tabBtn = el('button', 'tab-order-toggle', 'Tab order: off');
+        tabBtn.title = 'Tab order mode: badge each control with its TabIndex, click to reassign in order, Esc to exit';
+        tabBtn.addEventListener('click', () => setTabOrderMode(!tabOrderMode));
+        s.appendChild(tabBtn);
+    }
+
+    /**
+     * Tab-order mode switch. Refused forms stay out (read-only when refused); a document
+     * load resets silently so the fresh 'Ready' message survives.
+     */
+    function setTabOrderMode(on, announce = true) {
+        if (readOnly) on = false;
+        tabOrderMode = on;
+        if (on) tabOrderNext = 0;
+        const btn = $('status-tools') && $('status-tools').querySelector('.tab-order-toggle');
+        if (btn) btn.textContent = on ? 'Tab order: on' : 'Tab order: off';
+        renderCanvas();
+        renderInspector();
+        if (announce) {
+            renderStatus(on
+                ? 'Tab order mode — click controls in tab order, Esc to exit.'
+                : 'Tab order mode off.', 'ok');
+        }
     }
 
     function setupDrop() {
@@ -1680,6 +1726,9 @@
                 if (msg.type === 'load') bannerDismissed = false;
                 readOnly = schema.analysis.refuses.length > 0;
                 selection = new Set();
+                // A new document means fresh view state; reset silently so the
+                // 'Ready' / 'changed on disk' message below survives.
+                setTabOrderMode(false, false);
                 renderAll();
                 renderStatus(
                     msg.type === 'externalChange'
@@ -1754,6 +1803,7 @@
             // Escape clears the selection and cancels any in-progress gesture. Its absence is
             // felt: without it there is no way out of a selection short of clicking again.
             if (e.key === 'Escape') {
+                if (tabOrderMode) setTabOrderMode(false);
                 if (activeContainer) {
                     activeContainer = null;
                     selection = new Set();

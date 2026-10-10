@@ -45,7 +45,7 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   nested containers, coverage banner (never hideable), locked boxes with
   reasons, rename field, items list editor, single-selection size/location
   readout (X/Y + W×H in the status bar, form units), dblclick in-place Text edit,
-  same-size / center-in-form arrange ops, keyboard jump + resize.
+  same-size / center-in-form arrange ops, keyboard jump + resize, tab-order mode.
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -63,7 +63,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | A1 | Z-order (Bring to Front / Send to Back) | deferred+ADR | M + protocol | `spec-features.md` §4, `spec-canvas-qol.md` §4 | `generate` diffs by `id`; reorder is unrepresentable. Delete+insert would destroy unmodelled props. Needs patcher move + ADR. |
 | A2 | Clipboard copy/paste | missing | S–M | `spec-canvas-qol.md` §8 decision 5 | `Cmd/Ctrl+D` duplicate shipped and is the 80%. Clipboard needs webview permissions + async round-trip. Follow-up only if duplicate proves insufficient. |
 | A3 | Event scaffolding (`btn_Click` generation) | missing | M | `spec-features.md` §4 | Deliberately absent v1. Bigger claim on hand-written `Form1.cs` than rename; ADR 0008 is the bounding precedent. |
-| A4 | Tab-order editing UI | missing | S | `spec-features.md` §4 | `TabIndex` is in schema + canvas; the *ordering* UI does not exist. |
+| A4 | Tab-order editing UI | shipped | S | `spec-features.md` §4 | Mode toggle in status bar: badges show TabIndex, mousedown assigns next in click order (existing setProp/INSERT path). Esc exits; refused forms stay out; dblclick suppressed in mode. TabStop not modelled. (#5) |
 | A5 | `ComboBox`/`ListBox` follow-ups: `SelectedIndex`/`SelectedItem`, `DropDownStyle`, drag-reorder | missing | S–M | `spec-items.md` §0, §7 | Explicitly out of the `Items` pass. Each is a separate change. |
 | A6 | Resource/image editing (`PictureBox` images) | missing | L | `spec-features.md` §4 | Needs image serialisation. Out of scope. |
 | A7 | `UserControl` composition | missing | L | `spec-features.md` §4 | A nested designer — genuinely a different product. |

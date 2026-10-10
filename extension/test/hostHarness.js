@@ -725,6 +725,50 @@ setTimeout(async () => {
             String(keyNode('ThirdPartyGauge').style.left));
     }
 
+    // ---- A4 tab-order mode: badges + click-to-assign, Esc exits
+    send({ type: 'load', data: schema });
+    {
+        const tools = ids['status-tools'];
+        const tabBtn = () => tools.querySelector('.tab-order-toggle');
+        const badges = () => canvasEl.querySelectorAll('.tab-badge');
+        const badgeFor = (id) => {
+            const n = canvasEl.querySelectorAll('.ctl').find((x) => x.dataset.id === id);
+            const b = n && n.querySelector('.tab-badge');
+            return b ? String(b.textContent) : null;
+        };
+        const clickCtl = (id) => canvasEl.querySelectorAll('.ctl').find((x) => x.dataset.id === id)
+            .dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        check('status bar offers the tab-order toggle', !!tabBtn() && /off/.test(String(tabBtn().textContent)));
+        tabBtn().dispatch('click', {});
+        check('toggle enters tab-order mode', /on/.test(String(tabBtn().textContent)));
+        check('badges appear on modelled controls only', badges().length === 2, String(badges().length));
+        check('badge shows the current TabIndex', badgeFor('btnSubmit') === '3', String(badgeFor('btnSubmit')));
+        // Click-to-assign: btnSubmit first, txtName second.
+        sandbox.__sent.length = 0;
+        clickCtl('btnSubmit');
+        clickCtl('txtName');
+        check('clicks reassign TabIndex in click order',
+            badgeFor('btnSubmit') === '0' && badgeFor('txtName') === '1',
+            `${badgeFor('btnSubmit')},${badgeFor('txtName')}`);
+        await settled();
+        const tb = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('assignments debounce to one commit', tb.length === 1, String(tb.length));
+        const tcontrols = tb.length && tb[0].data.controls;
+        check('commit carries the new tab order',
+            !!tcontrols && tcontrols.find((c) => c.id === 'btnSubmit').properties.tabIndex === 0
+            && tcontrols.find((c) => c.id === 'txtName').properties.tabIndex === 1,
+            tcontrols ? JSON.stringify(tcontrols.map((c) => [c.id, c.properties.tabIndex])) : 'no commit');
+        // Escape exits the mode.
+        sandbox.document.querySelector('.stage').dispatch('keydown', { key: 'Escape', preventDefault() { } });
+        check('Escape exits tab-order mode', /off/.test(String(tabBtn().textContent)));
+        check('badges are gone after exit', badges().length === 0, String(badges().length));
+        // Refused forms stay out of the mode.
+        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+        tabBtn().dispatch('click', {});
+        check('refused form refuses the mode', /off/.test(String(tabBtn().textContent)));
+        check('refused form shows no badges', badges().length === 0, String(badges().length));
+    }
+
     // ---- duplicate
     send({ type: 'load', data: schema });
     ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
