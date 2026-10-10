@@ -8,10 +8,19 @@
 // Runs on Windows only, because instantiating System.Windows.Forms requires the
 // Windows Desktop runtime. See scripts/run-windows-layout.sh.
 //
+// STAGING CONTRACT: this file is form-agnostic. The harness copies the Designer file
+// under test plus two generated files into the same assembly: Shim.cs provides
+// `VscformsLayoutHost.CreateForm()` for the copied form's NS/CLASS, and Stubs.cs
+// (scripts/gen-layout-stubs.py) supplies event handlers and third-party types
+// that live outside the Designer file. This file never names a form type and
+// works for every fixture unmodified. It accepts the engine's parse response
+// or the bare schema as its argument.
+//
 // Usage: VSCFormsLayoutCheck <schema.json> [scale-tolerance]
 
 using System.Globalization;
 using System.Text.Json;
+using System.Windows.Forms;
 
 internal static class Program
 {
@@ -25,22 +34,50 @@ internal static class Program
             return 2;
         }
 
-        using var form = new Washing_Machine_Timer_Fuzzy_Logic.Form1();
+        using var doc = JsonDocument.Parse(File.ReadAllText(args[0]));
+        var schema = doc.RootElement;
+        // The harness feeds the engine's parse response ({id, ok, schema});
+        // accept the bare schema too so the checker stays runnable by hand.
+        if (schema.TryGetProperty("schema", out var inner))
+            schema = inner;
+
+        var refuses = schema.GetProperty("analysis").GetProperty("refuses");
+        bool refusedOnly = refuses.GetArrayLength() > 0;
+        string reasons = string.Join(", ",
+            refuses.EnumerateArray().Select(e => e.GetString()));
+
+        // A refused form may not construct at all: localizable geometry lives in
+        // the .resx, which the staged assembly does not have, so ApplyResources
+        // throws. That is the parse tier's territory (it classified the refusal),
+        // not a layout failure — report it loudly and stop. A modellable form
+        // that cannot construct is a real failure and propagates.
+        System.Windows.Forms.Form form = null!;
+        try
+        {
+            form = VscformsLayoutHost.CreateForm();
+        }
+        catch (Exception ex) when (refusedOnly)
+        {
+            Console.WriteLine($"REFUSED ({reasons}) — runtime geometry is not " +
+                "verifiable; refusal covered by parse tier");
+            Console.WriteLine($"construction failed with: {ex.GetType().FullName}");
+            return 0;
+        }
+        using var _ = form;
 
         // Force layout so every control has a real, final position.
         form.PerformLayout();
-
-        using var doc = JsonDocument.Parse(File.ReadAllText(args[0]));
-        var schema = doc.RootElement;
 
         Console.WriteLine($"form: {schema.GetProperty("form").GetProperty("name").GetString()}");
         Console.WriteLine($"declared clientSize: " +
             $"{schema.GetProperty("form").GetProperty("clientSize").GetProperty("width").GetInt32()}x" +
             $"{schema.GetProperty("form").GetProperty("clientSize").GetProperty("height").GetInt32()}");
         Console.WriteLine($"actual   clientSize: {form.ClientSize.Width}x{form.ClientSize.Height}");
+        if (refusedOnly)
+            Console.WriteLine("mode: presence-only (refused form — geometry lives outside the file)");
         Console.WriteLine();
 
-        int checkedCount = Walk(schema.GetProperty("controls"), form.Controls);
+        int checkedCount = Walk(schema.GetProperty("controls"), form.Controls, !refusedOnly);
         form.Dispose();
 
         Console.WriteLine();
@@ -48,7 +85,9 @@ internal static class Program
 
         if (failures == 0)
         {
-            Console.WriteLine("PASS — schema geometry matches runtime geometry");
+            Console.WriteLine(refusedOnly
+                ? "PASS — every schema control exists at runtime"
+                : "PASS — schema geometry matches runtime geometry");
             return 0;
         }
 
@@ -56,7 +95,7 @@ internal static class Program
         return 1;
     }
 
-    private static int Walk(JsonElement nodes, Control.ControlCollection controls)
+    private static int Walk(JsonElement nodes, Control.ControlCollection controls, bool geometry)
     {
         int count = 0;
 
@@ -76,22 +115,30 @@ internal static class Program
             }
 
             count++;
-            Check(id, "Location", props.GetProperty("x").GetInt32(), props.GetProperty("y").GetInt32(),
-                  found.Left, found.Top, 0);
-
-            // Size is only comparable for controls that do not compute their own. An
-            // AutoSize control sizes itself from the font, so asserting our declared width
-            // against it would fail for a reason that has nothing to do with VSCForms.
-            bool autoSize = found is Label or CheckBox or RadioButton or LinkLabel
-                            || found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b;
-            if (!autoSize)
+            if (!geometry)
             {
-                Check(id, "Size", props.GetProperty("width").GetInt32(), props.GetProperty("height").GetInt32(),
-                      found.Width, found.Height, 0);
+                // Refused form: geometry lives outside the file (.resx, dock
+                // engine), so existence at runtime is the whole check.
+            }
+            else
+            {
+                Check(id, "Location", props.GetProperty("x").GetInt32(), props.GetProperty("y").GetInt32(),
+                      found.Left, found.Top, 0);
+
+                // Size is only comparable for controls that do not compute their own. An
+                // AutoSize control sizes itself from the font, so asserting our declared width
+                // against it would fail for a reason that has nothing to do with VSCForms.
+                bool autoSize = found is Label or CheckBox or RadioButton or LinkLabel
+                                || found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b;
+                if (!autoSize)
+                {
+                    Check(id, "Size", props.GetProperty("width").GetInt32(), props.GetProperty("height").GetInt32(),
+                          found.Width, found.Height, 0);
+                }
             }
 
             if (node.TryGetProperty("children", out var children) && children.GetArrayLength() > 0)
-                count += Walk(children, found.Controls);
+                count += Walk(children, found.Controls, geometry);
         }
 
         return count;

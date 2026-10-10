@@ -80,19 +80,26 @@ jobs:
       # job silently finds no engine and reports SKIP, which looks identical to success.
       - name: build the engine
         run: dotnet build engine -c Release -v q --nologo
+      # Bash, not the default pwsh: pwsh cannot run a Bash script, so without this
+      # the harness below would never really execute.
       - name: compare the schema against real WinForms runtime bounds
+        shell: bash
         run: ./scripts/run-windows-layout.sh fixtures/simple
       # Every checked-in fixture, so a dialect regression cannot pass unnoticed just because
       # `simple` happens to parse.
       - name: verify every fixture against the runtime
-        run: ./test/verify-layout-fixtures.ps1
+        run: ./scripts/verify-layout-fixtures.ps1
       # A job that skips everything must not report success. `simple` above is the canary; if it
       # skipped, something is wrong with the harness and the fixture sweep below proves nothing.
       - name: fail if the canary skipped instead of verifying
+        shell: bash
         run: |
-          $out = ./scripts/run-windows-layout.sh fixtures/simple 2>&1 | Out-String
-          if ($out -match 'SKIP') { throw "layout verification skipped: $out" }
-          Write-Host $out
+          out=$(./scripts/run-windows-layout.sh fixtures/simple 2>&1)
+          echo "$out"
+          if echo "$out" | grep -q 'SKIP'; then
+            echo "layout verification skipped" >&2
+            exit 1
+          fi
 
   # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built
   # HERE on Linux, not on windows-latest, because packaging from Windows loses the POSIX

@@ -91,4 +91,5 @@ These are decisions, not omissions. Each has an ADR.
 | `test/verify-rename.sh` | rename, including the code-behind — the one operation that leaves the Designer File |
 | `extension/test/hostHarness.js` | the canvas DOM: rendering, locked boxes, coverage banner, debounced commits |
 | `test/e2e.js` | canvas → host → engine → file through the real message contract |
+| `scripts/run-windows-layout.sh` | schema geometry vs real WinForms runtime `Bounds` (Windows CI only — Wine cannot substitute; agents drive it via `scripts/layout-ci.sh`) |
 | `test/run-integration.js` | VS Code's own semantics: editor selection, dirty marker, undo continuations |

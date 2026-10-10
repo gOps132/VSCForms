@@ -64,12 +64,44 @@ CLASS=$(grep -m1 -oE 'partial class [A-Za-z0-9_]+' "$WORK/src/$(basename "$DESIG
 echo "namespace=$NS class=$CLASS"
 
 cat > "$WORK/src/Shim.cs" <<EOF
-// Minimal host for the copied Designer file. Mirrors what test/verify.sh does locally.
+// Generated host for the copied Designer file.
+//
+// The Designer file's half of the partial declares no base class and no
+// constructor (those live in the hand-written Form1.cs, which is deliberately
+// NOT copied — the point is to check VSCForms against the file Visual Studio
+// produced). This half supplies both, in the file's own namespace so the two
+// halves merge: a global-namespace shim is a different class and the build
+// fails with CS0115. Same pattern as test/verify.sh's compile gate.
+//
+// The factory keeps verify/windows-layout/Program.cs form-agnostic: that file
+// is static C# and never mentions NS/CLASS.
+EOF
+if [ -n "$NS" ]; then
+  cat >> "$WORK/src/Shim.cs" <<EOF
+namespace $NS
+{
+    public partial class $CLASS : System.Windows.Forms.Form
+    {
+        public $CLASS() { InitializeComponent(); }
+    }
+}
+static class VscformsLayoutHost
+{
+    public static System.Windows.Forms.Form CreateForm() => new $NS.$CLASS();
+}
+EOF
+else
+  cat >> "$WORK/src/Shim.cs" <<EOF
 public partial class $CLASS : System.Windows.Forms.Form
 {
     public $CLASS() { InitializeComponent(); }
 }
+static class VscformsLayoutHost
+{
+    public static System.Windows.Forms.Form CreateForm() => new $CLASS();
+}
 EOF
+fi
 
 # net10.0-windows so the harness runs on the CI runner's installed SDK regardless of the
 # project's own TFM. We deliberately do NOT modify the project under test.
@@ -87,9 +119,6 @@ cat > "$WORK/src/Check.csproj" <<'EOF'
   </PropertyGroup>
 </Project>
 EOF
-
-echo "building harness…"
-dotnet build "$WORK/src/Check.csproj" -c Release -v q --nologo
 
 echo "parsing the Designer file with the VSCForms engine…"
 DESIGNER_OUT="$WORK/schema.json"
@@ -113,6 +142,18 @@ print(f\"  coverage {a['coveragePercent']}%  modelled {a['modelledCount']}  unmo
 if a['refuses']:
     print('  note: this form refuses; geometry is not editable, so only presence is checked')
 "
+
+# Staging stubs for references outside the copied file (handlers in Form1.cs,
+# third-party control types). The Designer copy stays verbatim; Stubs.cs supplies
+# the missing halves the way Shim.cs supplies the Form base. Needs the schema,
+# so this runs after parsing and before building. Anything unshaped is left out
+# so the build fails loudly instead of testing a guess.
+python3 scripts/gen-layout-stubs.py \
+  "$WORK/src/$(basename "$DESIGNER")" "$DESIGNER_OUT" "$NS" "$CLASS" \
+  "$WORK/src/Stubs.cs"
+
+echo "building harness…"
+dotnet build "$WORK/src/Check.csproj" -c Release -v q --nologo
 
 echo "running the runtime comparison…"
 set +e
