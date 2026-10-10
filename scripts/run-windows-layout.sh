@@ -157,9 +157,12 @@ DESIGNER_OUT="$WORK/schema.json"
 # Capture engine stderr to a temp file for debugging
 ENGINE_ERR="$WORK/engine.err"
 # Pass Windows-style path to the engine (it runs on Windows).
-# Must JSON-escape the Windows path (backslashes -> double backslashes).
-ENGINE_PATH_JSON=$(python3 -c "import json,sys; print(json.dumps('$ENGINE_WORK/src/$(basename "$DESIGNER")'))")
-printf '{"id":1,"cmd":"parse","path":%s}\n' "$ENGINE_PATH_JSON" \
+# Use Python script file to avoid bash variable expansion issues with backslashes.
+python3 -c "
+import json, sys
+path = sys.argv[1]
+print(json.dumps({'id': 1, 'cmd': 'parse', 'path': path}))
+" "$ENGINE_WORK/src/$(basename "$DESIGNER")" \
   | "${ENGINE[@]}" 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
 ENGINE_EXIT=$?
 if [ $ENGINE_EXIT -ne 0 ]; then
@@ -204,9 +207,8 @@ dotnet build "$WORK/src/Check.csproj" -c Release -v q --nologo
 echo "running the runtime comparison…"
 set +e
 # Check.exe is a Windows executable, needs Windows path.
-# Must JSON-escape the Windows path for the argument.
-CHECK_SCHEMA_JSON=$(python3 -c "import json,sys; print(json.dumps('$ENGINE_WORK/schema.json'))")
-"$ENGINE_WORK/src/bin/Release/net10.0-windows/Check.exe" "$CHECK_SCHEMA_JSON"
+# Pass as raw argument - Check.exe reads it directly, not as JSON.
+"$ENGINE_WORK/src/bin/Release/net10.0-windows/Check.exe" "$ENGINE_WORK/schema.json"
 RESULT=$?
 set -e
 
