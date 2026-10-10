@@ -50,17 +50,22 @@ fi
 # Array for proper argument handling in bash
 ENGINE=(dotnet "$ENGINE_DLL")
 
-# Determine temp directory: on Windows (Git Bash), TMPDIR/TEMP may be Unix-style.
-# GitHub Actions provides RUNNER_TEMP as a proper Windows path.
-# Fallback: try cygpath to convert, else /tmp.
+# Determine temp directory: on Windows (Git Bash), use RUNNER_TEMP (Windows path)
+# and convert to Unix path for bash operations. The engine runs on Windows and
+# accepts Windows paths, but bash mkdir/cp need Unix paths.
 if [ -n "${RUNNER_TEMP:-}" ]; then
-  WORK="${RUNNER_TEMP}/vscforms-layout"
+  # Convert Windows path to Unix path for bash (e.g., D:\a\_temp -> /d/a/_temp)
+  WORK="$(cygpath -u "$RUNNER_TEMP")/vscforms-layout"
+  # Also keep Windows path for engine invocation
+  ENGINE_WORK="$(cygpath -w "$WORK")"
 elif [ -n "${TEMP:-}" ] && command -v cygpath >/dev/null 2>&1; then
-  WORK="$(cygpath -w "$TEMP")/vscforms-layout"
+  WORK="$(cygpath -u "$TEMP")/vscforms-layout"
+  ENGINE_WORK="$(cygpath -w "$WORK")"
 else
   WORK="${TMPDIR:-/tmp}/vscforms-layout"
+  ENGINE_WORK="$WORK"
 fi
-echo "DEBUG: WORK=$WORK RUNNER_TEMP=${RUNNER_TEMP:-unset} TEMP=${TEMP:-unset}"
+echo "DEBUG: WORK=$WORK ENGINE_WORK=$ENGINE_WORK"
 
 command -v dotnet >/dev/null || { echo "SKIP  dotnet not on PATH"; exit 0; }
 
@@ -151,7 +156,8 @@ echo "parsing the Designer file with the VSCForms engine…"
 DESIGNER_OUT="$WORK/schema.json"
 # Capture engine stderr to a temp file for debugging
 ENGINE_ERR="$WORK/engine.err"
-printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$WORK/src/$(basename "$DESIGNER")" \
+# Pass Windows-style path to the engine (it runs on Windows)
+printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$ENGINE_WORK/src/$(basename "$DESIGNER")" \
   | "${ENGINE[@]}" 2>"$ENGINE_ERR" > "$DESIGNER_OUT"
 ENGINE_EXIT=$?
 if [ $ENGINE_EXIT -ne 0 ]; then
@@ -195,7 +201,8 @@ dotnet build "$WORK/src/Check.csproj" -c Release -v q --nologo
 
 echo "running the runtime comparison…"
 set +e
-"$WORK/src/bin/Release/net10.0-windows/Check.exe" "$DESIGNER_OUT"
+# Check.exe is a Windows executable, needs Windows path
+"$ENGINE_WORK/src/bin/Release/net10.0-windows/Check.exe" "$ENGINE_WORK/schema.json"
 RESULT=$?
 set -e
 
