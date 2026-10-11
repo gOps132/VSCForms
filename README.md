@@ -141,6 +141,29 @@ code --install-extension dist/vscforms-$(uname -s | tr '[:upper:]' '[:lower:]')-
 code --install-extension vscforms-<platform>.vsix
 ```
 
+#### Rebuild and reinstall after changes
+
+```bash
+# One command: rebuild engine, recompile, repackage, reinstall
+./scripts/reinstall-local.sh
+
+# Faster when you only touched TypeScript/canvas (reuses extension/bin/ engine)
+./scripts/reinstall-local.sh --skip-engine
+
+# Build + package only, without installing
+./scripts/reinstall-local.sh --no-install
+```
+
+Manual equivalent of what the script runs:
+
+```bash
+./scripts/publish-engine.js
+cd extension && npm install && npm run compile && cd ..
+node scripts/package-all.js
+ls dist/  # e.g. vscforms-darwin-arm64.vsix
+code --install-extension dist/vscforms-<platform>.vsix --force
+```
+
 ### Quick Start
 
 ```bash
