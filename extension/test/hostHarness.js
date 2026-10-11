@@ -1153,6 +1153,53 @@ setTimeout(async () => {
     const btnItemsInputs = btnItemsEditor ? btnItemsEditor.querySelectorAll('input') : [];
     check('Items editor does NOT appear for Button', !btnItemsEditor || btnItemsInputs.length === 0, 'got ' + btnItemsInputs.length + ' inputs in items-editor');
 
+    // ---- A5: SelectedIndex + DropDownStyle inspector rows (ComboBox/ListBox only)
+    const selTestSchema = {
+        ...schema,
+        controls: [
+            { id: 'cboSel', type: 'System.Windows.Forms.ComboBox', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 120, height: 23, text: '', tabIndex: 0, items: ['A', 'B'], selectedIndex: 1, dropDownStyle: 'DropDownList' } },
+            { id: 'lstSel', type: 'System.Windows.Forms.ListBox', children: [], locked: false,
+              properties: { x: 10, y: 50, width: 120, height: 60, text: '', tabIndex: 1, items: ['X'], selectedIndex: 0 } },
+        ],
+        analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        form: { name: 'TestForm', text: 'Test', clientSize: { width: 200, height: 200 }, className: 'TestForm' },
+    };
+    send({ type: 'load', data: selTestSchema });
+    await settled();
+    ctlNode('cboSel').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    check('ComboBox inspector offers SelectedIndex', insInputs().some((i) => i.id === 'fSelectedIndex'));
+    check('ComboBox inspector offers SelectedItem', insInputs().some((i) => i.id === 'fSelectedItem'));
+    check('ComboBox inspector offers DropDownStyle',
+        ids.inspector.querySelectorAll('select').some((s) => s.id === 'fDropDownStyle'));
+    sandbox.__sent.length = 0;
+    const siInput = insInputs().find((i) => i.id === 'fSelectedIndex');
+    siInput.value = '0';
+    siInput.dispatch('change', {});
+    await settled();
+    const siCommit = sandbox.__sent.find((m) => m.type === 'commit');
+    const siCbo = siCommit && siCommit.data.controls.find((c) => c.id === 'cboSel');
+    check('editing SelectedIndex posts selectedIndex as a NUMBER, not a string',
+        siCbo && siCbo.properties.selectedIndex === 0 && typeof siCbo.properties.selectedIndex === 'number',
+        siCbo ? JSON.stringify(siCbo.properties.selectedIndex) : 'no commit');
+    sandbox.__sent.length = 0;
+    const ddSel = ids.inspector.querySelectorAll('select').find((s) => s.id === 'fDropDownStyle');
+    ddSel.value = 'DropDown';
+    ddSel.dispatch('change', {});
+    await settled();
+    const ddCommit = sandbox.__sent.find((m) => m.type === 'commit');
+    const ddCbo = ddCommit && ddCommit.data.controls.find((c) => c.id === 'cboSel');
+    check('editing DropDownStyle posts the new style name',
+        ddCbo && ddCbo.properties.dropDownStyle === 'DropDown',
+        ddCbo ? JSON.stringify(ddCbo.properties.dropDownStyle) : 'no commit');
+    // ListBox gets selection rows but no DropDownStyle.
+    ctlNode('lstSel').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    check('ListBox inspector offers SelectedIndex', insInputs().some((i) => i.id === 'fSelectedIndex'));
+    check('ListBox inspector does NOT offer DropDownStyle',
+        !ids.inspector.querySelectorAll('select').some((s) => s.id === 'fDropDownStyle'));
+
     // ---- Phase C: Placeholders (DataGridView, ListView, TreeView)
     const PLACEHOLDERS = [
         ['DataGridView', 'dgv', 240, 150],

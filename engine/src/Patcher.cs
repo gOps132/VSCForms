@@ -339,6 +339,54 @@ public sealed class Patcher
             }
         }
 
+        // SelectedIndex / SelectedItem — ComboBox and ListBox only, each with an INSERT
+        // path: a replace-only property is silently discarded when the control does not have
+        // it yet (the BackColor/Font lesson). An unparsable current shape is never rewritten.
+        if (simpleType == "ComboBox" || simpleType == "ListBox")
+        {
+            if (cs.Properties.TryGetValue("SelectedIndex", out var selIdx))
+            {
+                if (p.SelectedIndex is int newSel
+                    && DesignerDocument.ParseSelectedIndex(selIdx.Right) is int curSel
+                    && curSel != newSel)
+                    Replace(selIdx.Right.Span, newSel.ToString(CultureInfo.InvariantCulture));
+            }
+            else if (p.SelectedIndex is int freshSel && !cs.Properties.ContainsKey("SelectedIndex"))
+            {
+                InsertProperty(cs, id, "SelectedIndex", freshSel.ToString(CultureInfo.InvariantCulture));
+            }
+
+            if (cs.Properties.TryGetValue("SelectedItem", out var selItem)
+                && selItem.Right is LiteralExpressionSyntax)
+            {
+                var cur = CurrentText(selItem);
+                if (cur != p.SelectedItem && p.SelectedItem is not null)
+                    Replace(selItem.Right.Span, StringLiteral(p.SelectedItem));
+            }
+            else if (p.SelectedItem is { Length: > 0 } freshItem && !cs.Properties.ContainsKey("SelectedItem"))
+            {
+                InsertProperty(cs, id, "SelectedItem", StringLiteral(freshItem));
+            }
+        }
+
+        // DropDownStyle — ComboBox only. Whole-RHS replace like the other enums (TextAlign,
+        // BorderStyle): there is no argument list to preserve, only a member name. Unknown
+        // incoming values are declined, never written.
+        if (simpleType == "ComboBox")
+        {
+            if (cs.Properties.TryGetValue("DropDownStyle", out var dds))
+            {
+                if (p.DropDownStyle is { Length: > 0 } newStyle && IsDropDownStyle(newStyle)
+                    && DesignerDocument.ParseMemberName(dds.Right) != newStyle)
+                    Replace(dds.Right.Span, $"System.Windows.Forms.ComboBoxStyle.{newStyle}");
+            }
+            else if (p.DropDownStyle is { Length: > 0 } freshStyle
+                && IsDropDownStyle(freshStyle) && !cs.Properties.ContainsKey("DropDownStyle"))
+            {
+                InsertProperty(cs, id, "DropDownStyle", $"System.Windows.Forms.ComboBoxStyle.{freshStyle}");
+            }
+        }
+
         // TextBox properties
         if (simpleType == "TextBox")
         {
@@ -522,6 +570,13 @@ public sealed class Patcher
         "#00FFFF" => "Color.Cyan", "#FF00FF" => "Color.Magenta",
         _ => null,
     };
+
+    /// <summary>
+    /// The only `ComboBoxStyle` values the designer emits. Anything else in an incoming
+    /// schema is declined, never written — guessing at an enum member is a build error.
+    /// </summary>
+    private static bool IsDropDownStyle(string s) =>
+        s is "Simple" or "DropDown" or "DropDownList";
 
     /// <summary>
     /// The TextChanges for a `new Font(family, size, style)`, one per argument that actually

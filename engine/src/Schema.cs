@@ -60,6 +60,9 @@ public sealed class ControlProperties
     [JsonPropertyName("enabled")] public bool? Enabled { get; set; }
     [JsonPropertyName("font")] public FontDto? Font { get; set; }
     [JsonPropertyName("items")] public string[]? Items { get; set; }
+    [JsonPropertyName("selectedIndex")] public int? SelectedIndex { get; set; }
+    [JsonPropertyName("selectedItem")] public string? SelectedItem { get; set; }
+    [JsonPropertyName("dropDownStyle")] public string? DropDownStyle { get; set; }
     [JsonPropertyName("multiline")] public bool? Multiline { get; set; }
     [JsonPropertyName("readOnly")] public bool? ReadOnly { get; set; }
     [JsonPropertyName("maxLength")] public int? MaxLength { get; set; }

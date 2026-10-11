@@ -1254,6 +1254,17 @@
 
             renderItems();
             box.appendChild(itemsContainer);
+
+            // A5 follow-ups: selection + drop-down style, same commit path as Items.
+            box.appendChild(numField('SelectedIndex', c.properties.selectedIndex ?? -1, appearanceBlocked,
+                (v) => setProp(c, 'selectedIndex', v)));
+            box.appendChild(strField('SelectedItem', c.properties.selectedItem ?? '', appearanceBlocked,
+                (v) => setProp(c, 'selectedItem', v)));
+            if (simple === 'ComboBox') {
+                box.appendChild(selectField('DropDownStyle', c.properties.dropDownStyle || 'DropDown',
+                    ['Simple', 'DropDown', 'DropDownList'], appearanceBlocked,
+                    (v) => setProp(c, 'dropDownStyle', v)));
+            }
         }
 
         // TextBox-specific properties

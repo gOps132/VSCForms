@@ -654,6 +654,28 @@ public sealed class DesignerDocument
             p.Items = items.ToArray();
         }
 
+        // Selection — ComboBox and ListBox only. SelectedIndex is an int literal (-1 = none,
+        // so the unary-minus shape must be accepted too); SelectedItem is a plain string
+        // literal. Anything else (a call, a non-string) leaves the field omitted, and the
+        // patcher then never rewrites it — refuse-rather-than-guess, as for Items.
+        if (simpleType == "ComboBox" || simpleType == "ListBox")
+        {
+            if (cs.Properties.TryGetValue("SelectedIndex", out var selIdx)
+                && ParseSelectedIndex(selIdx.Right) is int siv)
+                p.SelectedIndex = siv;
+
+            if (cs.Properties.TryGetValue("SelectedItem", out var selItem)
+                && selItem.Right is LiteralExpressionSyntax selLit
+                && selLit.IsKind(SyntaxKind.StringLiteralExpression))
+                p.SelectedItem = selLit.Token.ValueText;
+        }
+
+        // DropDownStyle — ComboBox only. A member access; the trailing name is the value.
+        if (simpleType == "ComboBox"
+            && cs.Properties.TryGetValue("DropDownStyle", out var dds)
+            && ParseMemberName(dds.Right) is { Length: > 0 } style)
+            p.DropDownStyle = style;
+
         // TextBox-specific properties
         if (simpleType == "TextBox")
         {
@@ -1038,6 +1060,19 @@ public sealed class DesignerDocument
     {
         MemberAccessExpressionSyntax m => m.Name.Identifier.Text,
         IdentifierNameSyntax id => id.Identifier.Text,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Parses `SelectedIndex = 1` and `SelectedIndex = -1`. The negative form is a
+    /// unary-minus node around a positive literal, not a literal — matching only literals
+    /// would silently drop the commonest "nothing selected" value.
+    /// </summary>
+    internal static int? ParseSelectedIndex(ExpressionSyntax e) => e switch
+    {
+        LiteralExpressionSyntax { Token.Value: int i } => i,
+        PrefixUnaryExpressionSyntax { OperatorToken.RawKind: (int)SyntaxKind.MinusToken,
+            Operand: LiteralExpressionSyntax { Token.Value: int n } } => -n,
         _ => null,
     };
 }

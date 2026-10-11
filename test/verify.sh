@@ -642,6 +642,111 @@ else
   echo "$CNT_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
 fi
 
+echo
+# ---------------------------------------------------------------------------
+# ComboBox/ListBox follow-ups (A5): SelectedIndex/SelectedItem + DropDownStyle.
+# ---------------------------------------------------------------------------
+sect "[roslyn] selected: parse reads SelectedIndex, SelectedItem and DropDownStyle"
+work selected SelectForm
+OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")
+echo "$OUT" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['schema']
+a=d['analysis']
+assert a['coveragePercent']==100, a
+assert a['modelledCount']==5, a
+byid={c['id']:c for c in d['controls']}
+assert byid['cboMode']['properties']['selectedIndex']==1, byid['cboMode']['properties']
+assert byid['cboMode']['properties']['dropDownStyle']=='DropDownList', byid['cboMode']['properties']
+assert byid['lstPick']['properties']['selectedIndex']==0, byid['lstPick']['properties']
+assert byid['lstPick']['properties']['selectedItem']=='red', byid['lstPick']['properties']
+assert 'selectedIndex' not in byid['cboPlain']['properties'], byid['cboPlain']['properties']
+assert 'selectedItem' not in byid['cboPlain']['properties'], byid['cboPlain']['properties']
+assert 'dropDownStyle' not in byid['cboPlain']['properties'], byid['cboPlain']['properties']
+assert 'selectedIndex' not in byid['cboOdd']['properties'], byid['cboOdd']['properties']
+assert 'selectedIndex' not in byid['btnGo']['properties'], byid['btnGo']['properties']
+assert 'dropDownStyle' not in byid['btnGo']['properties'], byid['btnGo']['properties']
+" && ok "selection parses; unmodelled shapes omitted" || bad "selection parse"
+
+sect "[roslyn] selected: no-op generate is byte-identical"
+work selected SelectForm
+cp "$FILE" /tmp/mf-sel-orig.cs
+python_tweak "pass" >/dev/null
+if diff -q /tmp/mf-sel-orig.cs "$FILE" >/dev/null; then ok "untouched select form round-trips byte-identical"
+else bad "no-op generate rewrote the select form"; fi
+
+sect "[roslyn] selected: replace rewrites only the touched lines"
+work selected SelectForm
+cp "$FILE" /tmp/mf-sel-orig.cs
+python_tweak "
+for c in s['controls']:
+    if c['id']=='cboMode':
+        c['properties']['selectedIndex']=2
+        c['properties']['dropDownStyle']='DropDown'
+    if c['id']=='lstPick':
+        c['properties']['selectedItem']='green'" >/dev/null
+grep -qF 'this.cboMode.SelectedIndex = 2;' "$FILE" \
+  && ok "SelectedIndex replaced" || bad "SelectedIndex not replaced"
+grep -qF 'this.cboMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDown;' "$FILE" \
+  && ok "DropDownStyle replaced" || bad "DropDownStyle not replaced"
+grep -qF 'this.lstPick.SelectedItem = "green";' "$FILE" \
+  && ok "SelectedItem replaced" || bad "SelectedItem not replaced"
+CHANGED=$(diff /tmp/mf-sel-orig.cs "$FILE" | grep -c '^[<>]')
+[ "$CHANGED" -eq 6 ] && ok "replace touched exactly 3 lines" || bad "replace touched $CHANGED diff lines (expected 6)"
+
+sect "[roslyn] selected: insert adds all three to a control that has none"
+work selected SelectForm
+python_tweak "
+for c in s['controls']:
+    if c['id']=='cboPlain':
+        c['properties']['selectedIndex']=0
+        c['properties']['dropDownStyle']='Simple'
+        c['properties']['selectedItem']='one'" >/dev/null
+grep -qF 'this.cboPlain.SelectedIndex = 0;' "$FILE" \
+  && ok "SelectedIndex inserted" || bad "SelectedIndex not inserted"
+grep -qF 'this.cboPlain.DropDownStyle = System.Windows.Forms.ComboBoxStyle.Simple;' "$FILE" \
+  && ok "DropDownStyle inserted fully qualified" || bad "DropDownStyle not inserted"
+grep -qF 'this.cboPlain.SelectedItem = "one";' "$FILE" \
+  && ok "SelectedItem inserted" || bad "SelectedItem not inserted"
+
+sect "[roslyn] selected: an unmodelled SelectedIndex is never rewritten"
+work selected SelectForm
+cp "$FILE" /tmp/mf-sel-orig.cs
+python_tweak "
+for c in s['controls']:
+    if c['id']=='cboOdd':
+        c['properties']['items']=['Uno','Dos']" >/dev/null
+grep -qF 'this.cboOdd.SelectedIndex = System.Math.Max(0, 1);' "$FILE" \
+  && ok "unmodelled SelectedIndex survives an items edit" || bad "unmodelled SelectedIndex disturbed"
+
+sect "[roslyn] selected: fixture compiles as a real WinForms project"
+SEL_SRC=$(mktemp -d)/sel/src
+mkdir -p "$SEL_SRC"
+cp fixtures/selected/SelectForm.Designer.cs "$SEL_SRC/"
+{ echo "using System;"; echo "using System.Windows.Forms;"; echo "namespace FixtureSelected {"
+  echo "  public partial class SelectForm : Form {"
+  echo "    public SelectForm() { InitializeComponent(); }"
+  echo "  }"; echo "}"; } > "$SEL_SRC/Form.cs"
+cat > "$SEL_SRC/S.csproj" <<'CSPROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+CSPROJ
+SEL_BUILD=$(cd "$SEL_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$SEL_BUILD" | grep -q "Build succeeded"; then
+  ok "the selection fixture compiles as real WinForms controls"
+else
+  bad "selection fixture FAILED to compile"
+  echo "$SEL_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
 # --------------------------------------------------------------- compile tier

@@ -102,6 +102,9 @@ interface ControlProperties {
   enabled?: boolean
   font?: { size: number; bold: boolean; italic: boolean; family?: string }
   items?: string[]             // ComboBox and ListBox items
+  selectedIndex?: number       // ComboBox and ListBox: SelectedIndex (-1 = none)
+  selectedItem?: string        // ComboBox and ListBox: SelectedItem, plain string literal only
+  dropDownStyle?: string       // ComboBox only: 'Simple' | 'DropDown' | 'DropDownList'
   multiline?: boolean          // TextBox only
   readOnly?: boolean           // TextBox only
   maxLength?: number           // TextBox only
