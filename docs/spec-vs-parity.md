@@ -53,7 +53,7 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 | Snaplines (edges) + grid | partial | shipped toggleable (`canvas.js:36-61,1683-1687`); no baselines, no Margin/Padding encoding, no Alt-suppress, off-in-TLP |
 | Size/location readout | shipped | D1 #20 — read-only single-selection X/Y + W×H in form units, multi keeps count (`canvas.js:741-757`) |
 | In-place Text edit | shipped | D2 #21 — dblclick overlay via Text setProp/INSERT path (`canvas.js:553-575,681-710`); never for locked/refused, containers, or NO_TEXT |
-| Copy/paste (clipboard) | missing | A2 #3 — `Cmd+D` duplicate is the shipped 80% |
+| Copy/paste (clipboard) | shipped | A2 #3 — `copy`/`requestPaste`/`paste` host round-trip; `Cmd+D` duplicate remains the in-form kernel |
 | Delete | shipped | `canvas.js:586-589,1542` |
 | Draw-to-create / drag-from-toolbox w/ live snaplines | partial | Controls toolbox with drag-to-add shipped (`canvas.js:330-353,1484,1715-1730`); draw-to-create and live snaplines still missing |
 | Container containment + drill-down | shipped | nested containers, ring highlight (`canvas.js:510,553-575`) |
@@ -65,15 +65,15 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 
 | VS feature | VSCForms | Note |
 |---|---|---|
-| Toolbox (Ctrl+Alt+X, search, Choose Items, custom controls) | partial | canvas Controls toolbox shipped (`canvas.js:330-353`); VS search / Choose Items / custom controls / Ctrl+Alt+X still missing — upgrade scoped as D5 #33 |
+| Toolbox (Ctrl+Alt+X, search, Choose Items, custom controls) | partial | canvas Controls toolbox + search/filter + Ctrl/Cmd+Alt+X shipped (D5 #33); Choose Items / custom controls parked (need engine type discovery) |
 | Double-click populate containers | missing, no row | dblclick is drill-down / text-edit, not populate |
-| Document Outline (Ctrl+Alt+T, F2 rename) | missing | D6 #34 — drill-down + rename field only; drag-reparent gated on A1 |
+| Document Outline (Ctrl+Alt+T, F2 rename) | shipped | D6 #34 — read-only hierarchy + F2 rename; drill-down + rename field underneath; drag-reparent gated on A1 |
 | Properties inspector (single-select, INSERT paths) | partial | no multi-select common-props, no Margin/Padding/Font expanders |
 | Collection editors (… dialogs) | partial | items list editor only (`canvas.js:1210-1256`) |
 | Events lightning-bolt + double-click default stub + bulk stubs | missing | A3 #4 — deliberately absent v1 |
 | Visual Dock/Anchor editors | refused-by-ADR | ADR 0003 |
-| Smart tags / action lists | missing | D7 #35 — TabControl add/remove, TLP columns, SplitContainer orientation, ListView columns, Dock-in-Parent |
-| Modal type editors | missing | D8 #36 — Font dialog etc. |
+| Smart tags / action lists | shipped | D7 #35 — handled-type tags reusing existing paths; TLP columns, SplitContainer orientation, Dock-in-Parent parked behind ADRs |
+| Modal type editors | shipped | D8 #36 — Font modal through existing path; colors already have native pickers |
 | Data Sources window | missing, no row | .NET Framework-only per docs; out of scope |
 
 ### Layout
@@ -172,9 +172,9 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 
 ## 3. Proposed phasing
 
-- **P0 — small, no ADR:** clipboard (#3), grid-size setting, snapline
-  baselines + Alt-suppress. Shipped and removed from this list by #29:
-  tab-order UI (#5), in-place text (D2 #21), size/location readout (D1 #20),
+- **P0 — small, no ADR:** grid-size setting, snapline
+  baselines + Alt-suppress. Shipped and removed from this list:
+  clipboard (A2 #3), tab-order UI (#5), in-place text (D2 #21), size/location readout (D1 #20),
   Make Same Size / Center / Equal Spacing (D3 #22), Ctrl+arrow jump +
   Shift+arrow resize (D4 #23), RTL warning (#16, display-only),
   invisible-props read-only surfacing (#18). The remaining unscoped candidates

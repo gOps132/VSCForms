@@ -14,7 +14,9 @@ named as "basic editing".
 **In scope:** `Items` on `ComboBox` and `ListBox`, in the classic and templated dialects.
 
 **Out of scope:** `CheckedListBox`, `DomainUpDown`, `ListView` (different collection shapes);
-reordering by drag; `SelectedIndex`/`SelectedItem`; `DropDownStyle`. Each is a separate change.
+reordering by drag (still open). `SelectedIndex`/`SelectedItem` and `DropDownStyle`
+shipped later via A5 #6 (schema + per-argument patch + INSERT paths + fixtures);
+each was a separate change, as predicted.
 
 ## 1. Why this is harder than it looks
 

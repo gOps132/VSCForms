@@ -61,10 +61,10 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | # | Gap | Status | Cost | Spec | Note |
 |---|---|---|---|---|---|
 | A1 | Z-order (Bring to Front / Send to Back) | deferred+ADR | M + protocol | `spec-features.md` §4, `spec-canvas-qol.md` §4 | `generate` diffs by `id`; reorder is unrepresentable. Delete+insert would destroy unmodelled props. Needs patcher move + ADR. |
-| A2 | Clipboard copy/paste | missing | S–M | `spec-canvas-qol.md` §8 decision 5 | `Cmd/Ctrl+D` duplicate shipped and is the 80%. Clipboard needs webview permissions + async round-trip. Follow-up only if duplicate proves insufficient. |
+| A2 | Clipboard copy/paste | shipped | S–M | `spec-canvas-qol.md` §8 decision 5 | `copy`/`requestPaste`/`paste` host round-trip via system clipboard (`vscforms-controls-v1:` wire format); Ctrl/Cmd+C/V. Reuses duplicate kernel; locked filtered, refused guarded, unhandled paste lands locked. (#3) |
 | A3 | Event scaffolding (`btn_Click` generation) | missing | M | `spec-features.md` §4 | Deliberately absent v1. Bigger claim on hand-written `Form1.cs` than rename; ADR 0008 is the bounding precedent. |
 | A4 | Tab-order editing UI | shipped | S | `spec-features.md` §4 | Mode toggle in status bar: badges show TabIndex, mousedown assigns next in click order (existing setProp/INSERT path). Esc exits; refused forms stay out; dblclick suppressed in mode. TabStop not modelled. (#5) |
-| A5 | `ComboBox`/`ListBox` follow-ups: `SelectedIndex`/`SelectedItem`, `DropDownStyle`, drag-reorder | missing | S–M | `spec-items.md` §0, §7 | Explicitly out of the `Items` pass. Each is a separate change. |
+| A5 | `ComboBox`/`ListBox` follow-ups: `SelectedIndex`/`SelectedItem`, `DropDownStyle`, drag-reorder | shipped (drag-reorder parked) | S–M | `spec-items.md` §0, §7 | `SelectedIndex` (incl. `-1`), `SelectedItem`, `DropDownStyle` end-to-end with INSERT paths + fixtures. Drag-reorder is a separate change, still open. (#6) |
 | A6 | Resource/image editing (`PictureBox` images) | missing | L | `spec-features.md` §4 | Needs image serialisation. Out of scope. |
 | A7 | `UserControl` composition | missing | L | `spec-features.md` §4 | A nested designer — genuinely a different product. |
 
@@ -96,11 +96,11 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D2 | In-place Text edit (dblclick overlay committing via Text path) | shipped | S | `spec-vs-parity.md` §1–2 | Same setProp/INSERT path as inspector; no ADR. Never for locked/refused, containers (drill-down), or NO_TEXT. Escape cancels with no generate. (#21) |
 | D3 | Make Same Size / Center in Form (pure-geometry arrange ops) | shipped | S | `spec-vs-parity.md` §1–2 | Same-size copies schema-order-first extents, position kept; center is per-control within immediate parent frame. One commit per op; no ADR. Equal Spacing already covered by Distribute (raw gaps). (#22) |
 | D4 | Keyboard jump + resize (Ctrl+arrow move, Shift+arrow resize) | shipped | S | `spec-vs-parity.md` §1–2 | Ctrl/Cmd jumps GRID*5 (one ruler tick); Shift resizes east/south edges, top-left anchored, min 2; Ctrl+Shift resizes by jump. Same TextChanges as drag/resize; no ADR. Shift changes meaning from 2x-nudge (VS parity). (#23) |
-| D5 | Toolbox upgrade (search, Choose Items, custom controls, Ctrl+Alt+X) | missing | M | `spec-vs-parity.md` §1 | Canvas toolbox + drag-to-add shipped; VS search / Choose Items / custom controls still missing. (#33) |
-| D6 | Document Outline (hierarchy + F2 rename) | missing | M | `spec-vs-parity.md` §1 | Read-only outline + rename unblocked; drag-reparent / Z-order gated on A1 patcher move. (#34) |
-| D7 | Smart tags / action lists | missing | M | `spec-vs-parity.md` §1 | Handled-type actions only; SplitContainer/TLP actions parked behind B1/B2 ADRs. (#35) |
-| D8 | Modal type editors (Font dialog etc.) | missing | M | `spec-vs-parity.md` §1 | Alternative input over modelled properties only; unmodelled state stays out (C3). (#36) |
-| D9 | Object selector dropdown (jump to hidden/buried control) | missing | S | `spec-property-tabs.md` §7 | Selection only; no generate path. (#37) |
+| D5 | Toolbox upgrade (search, Choose Items, custom controls, Ctrl+Alt+X) | shipped (Choose Items parked) | M | `spec-vs-parity.md` §1 | Search/filter + Ctrl/Cmd+Alt+X focus through existing addControl; drag-to-add unchanged. Choose Items / custom controls need engine type discovery (ADR-sized). (#33) |
+| D6 | Document Outline (hierarchy + F2 rename) | shipped | M | `spec-vs-parity.md` §1 | Read-only hierarchy (locked annotated, refused read-only) + F2 through rename path. Drag-reparent / Z-order gated on A1 patcher move. (#34) |
+| D7 | Smart tags / action lists | shipped | M | `spec-vs-parity.md` §1 | Handled-type tags reusing existing paths (duplicate/delete/center/toggles/items/add-page). SplitContainer/TLP/strip/Dock/Z-order/events parked. Locked/refused get no glyph. (#35) |
+| D8 | Modal type editors (Font dialog etc.) | shipped | M | `spec-vs-parity.md` §1 | Font modal through existing setProp/INSERT path (no-op emits nothing, `Regular` kept). Colors already have native pickers; Margin/Padding stays out (C3). (#36) |
+| D9 | Object selector dropdown (jump to hidden/buried control) | shipped | S | `spec-property-tabs.md` §7 | Pathed flat list over all controls; change → select() only, no commit; locked select-readable alone. (#37) |
 | D10 | Inspector Categorized + Alphabetical views | missing | S | `spec-property-tabs.md` §§1–2 | Presentational sort/group toggle over flat rows; hardcoded category table (engine cannot load attributes). Numbering per #29; triage to flip ready-for-agent. (#32) |
 
 P0 after #29 is clipboard (#3), grid-size setting, snapline baselines +
