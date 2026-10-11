@@ -490,3 +490,33 @@ body { display: flex; flex-direction: column; }
 }
 .field button:hover:not([disabled]) { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
 .field button[disabled], .field input[disabled] { opacity: .5; }
+
+/* ------------------------------------------------------------- smart tags (D7)
+   Disclosure glyph + flyout on handled controls. Locked/refused controls never get the
+   glyph (see renderSmartTag), so there is no locked/refused styling to define. */
+.smart-tag-toggle {
+  position: absolute; top: 0; right: 0; z-index: 8;
+  width: 16px; height: 16px; line-height: 16px; text-align: center;
+  font-size: 10px; cursor: pointer; user-select: none;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  border-radius: 0 0 0 3px;
+}
+.smart-tag-toggle:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); color: var(--fg); }
+/* The flyout overflows the control box, which .ctl clips — an open tag lifts that. */
+.ctl.tag-open { overflow: visible; }
+.smart-tag-flyout {
+  position: absolute; top: 16px; right: 0; z-index: 9;
+  min-width: 150px; padding: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+.smart-tag-action {
+  display: block; width: 100%; text-align: left;
+  padding: 3px 8px; margin: 1px 0; cursor: pointer; font-size: 11px;
+  background: transparent; color: var(--fg);
+  border: 1px solid transparent; border-radius: 3px; font-family: inherit;
+}
+.smart-tag-action:hover { background: var(--vscode-list-hoverBackground); border-color: var(--border); }
