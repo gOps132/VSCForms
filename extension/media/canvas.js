@@ -526,6 +526,13 @@
 
         node.addEventListener('mousedown', (e) => {
             if (e.target.classList.contains('handle')) return;
+            // A mousedown on a nested control bubbles to every ancestor container's
+            // node. Without this guard the ancestor collapses the selection to itself
+            // and starts a SECOND drag, so one gesture drives two drags and the child
+            // moves twice, or the container steals a drag meant for the child.
+            const originNode = e.target && typeof e.target.closest === 'function'
+                ? e.target.closest('.ctl') : null;
+            if (originNode && originNode !== node) return;
             // Shift+click extends rather than replaces; a plain click always collapses, so the
             // selection can never contain a control the user cannot see selected.
             // A Locked Control must never enter the selection. Not merely because it cannot be
@@ -544,6 +551,12 @@
             beginDrag(e, c, node, containerNode);
         });
         node.addEventListener('dblclick', (e) => {
+            // Same bubbling as mousedown: a dblclick on a nested control reaches the
+            // ancestor's listener, which would drill into the container instead of
+            // editing the child's text.
+            const dblOrigin = e.target && typeof e.target.closest === 'function'
+                ? e.target.closest('.ctl') : null;
+            if (dblOrigin && dblOrigin !== node) return;
             if (c.locked || readOnly) return;
             // In tab-order mode clicks assign; dblclick neither drills in nor edits text.
             if (tabOrderMode) return;
@@ -568,7 +581,8 @@
             // (VS parity — Shift used to mean 2x nudge).
             const step = (e.ctrlKey || e.metaKey) ? GRID * 5 : GRID;
             const many = selected();
-            const nudgeTarget = many.length > 1 && many.some((m) => m.id === c.id) ? many : [c];
+            // dragRoots, like a drag: nudging a container already carries its children.
+            const nudgeTarget = dragRoots(many.length > 1 && many.some((m) => m.id === c.id) ? many : [c]);
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 e.preventDefault();
                 for (const t of nudgeTarget) deleteControl(t.id);
@@ -868,6 +882,25 @@
         return walk(schema ? schema.controls : [], null);
     }
 
+    /** True when `id` is nested inside `ancestorId` at any depth. */
+    function isDescendantOf(id, ancestorId) {
+        let p = parentOf(id);
+        while (p) {
+            if (p.id === ancestorId) return true;
+            p = parentOf(p.id);
+        }
+        return false;
+    }
+
+    /**
+     * Drag/nudge roots: members of `group` that are not nested inside another member.
+     * A child rides along when its container moves (its coordinates are
+     * parent-relative), so moving it again by the same delta would displace it twice.
+     */
+    function dragRoots(group) {
+        return group.filter((g) => !group.some((o) => o !== g && isDescendantOf(g.id, o.id)));
+    }
+
     /**
      * Even out the gaps between the extremes along one axis. The two outermost controls stay
      * put; everything between them is repositioned so each gap is the same size.
@@ -974,8 +1007,10 @@
             : $('canvas').getBoundingClientRect();
 
         // Dragging any member of a multi-selection moves the WHOLE selection by one delta,
-        // which is what makes group positioning possible at all.
-        const group = selection.size > 1 ? selected() : [c];
+        // which is what makes group positioning possible at all. dragRoots drops members
+        // nested inside another member: a child rides along with its container, so moving
+        // it again would displace it twice.
+        const group = dragRoots(selection.size > 1 ? selected() : [c]);
         const groupStart = group.map((g) => ({ g, x: g.properties.x, y: g.properties.y }));
 
         function move(ev) {

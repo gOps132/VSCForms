@@ -87,6 +87,16 @@ class El {
         return out;
     }
     querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+    closest(sel) {
+        // Faithful DOM API the canvas relies on to tell a bubbled ancestor event from a
+        // direct one. `matches` is a hoisted function declaration, so it is available here.
+        let n = this;
+        while (n) {
+            if (matches(n, sel)) return n;
+            n = n.parentNode;
+        }
+        return null;
+    }
     // Mirrors the browser's behaviour for a transformed element: getBoundingClientRect
     // returns SCALED pixels. The canvas divides every pointer delta out of this, and a stand-in
     // that ignored the transform would let a zoom bug pass this harness.
@@ -686,6 +696,99 @@ setTimeout(async () => {
         clickInspectorButton('Center in Form Horizontally');
         check('nested control centers within the parent width',
             parseFloat(ctlNode('btnIn').style.left) === 60, String(ctlNode('btnIn').style.left));
+    }
+
+    // ---- nested drag: a container drag carries its children exactly once.
+    // Two cooperating fixes. Mousedown/dblclick on a child BUBBLES to every ancestor
+    // container's node, so the ancestor must ignore events whose target is a nested
+    // control — otherwise one gesture drives two drags. And a selection holding both a
+    // container and its child must move the child only via its parent (its coordinates
+    // are parent-relative), never twice.
+    {
+        const nestedDrag = JSON.parse(JSON.stringify(schema));
+        nestedDrag.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+            { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 5, y: 5, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+        ], locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+        const nestWrap = () => ctlNode('pnlWrap');
+        const nestInner = () => ctlNode('btnIn');
+        const nestPos = (id) => {
+            const n = ctlNode(id);
+            return `${parseFloat(n.style.left)},${parseFloat(n.style.top)}`;
+        };
+        const down = (n, ev) => n.dispatch('mousedown',
+            Object.assign({ preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 }, ev || {}));
+
+        // A mousedown that STARTED on the child reaches the container with the child as
+        // its target (that is what bubbling delivers). The container must ignore it: no
+        // reselect, no second drag.
+        send({ type: 'load', data: nestedDrag });
+        down(nestInner());
+        nestWrap().dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10, target: nestInner() });
+        check('a bubbled child mousedown does not reselect the container',
+            canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(',') === 'btnIn',
+            canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(','));
+        sandbox.window.dispatch('mousemove', { clientX: 50, clientY: 50 });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+        check('a bubbled child mousedown starts no container drag',
+            nestPos('pnlWrap') === '10,10', nestPos('pnlWrap'));
+        check('only the child drag ran, exactly once',
+            nestPos('btnIn') === '45,45', nestPos('btnIn'));
+
+        // Dragging the container background moves the container; the child rides along
+        // visually, so its parent-relative coordinates stay put.
+        send({ type: 'load', data: nestedDrag });
+        nestWrap().dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 140, clientY: 140 });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+        check('dragging a container moves the container',
+            nestPos('pnlWrap') === '50,50', nestPos('pnlWrap'));
+        check('the child rides along: its relative coordinates are untouched',
+            nestPos('btnIn') === '5,5', nestPos('btnIn'));
+
+        // Multi-selecting container AND child, then dragging, must not double-move the child.
+        send({ type: 'load', data: nestedDrag });
+        down(nestWrap());
+        down(nestInner(), { shiftKey: true, clientX: 20, clientY: 20 });
+        sandbox.window.dispatch('mousemove', { clientX: 60, clientY: 20 });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+        check('group drag moves the container once',
+            nestPos('pnlWrap') === '50,10', nestPos('pnlWrap'));
+        check('group drag does not double-move a nested member',
+            nestPos('btnIn') === '5,5', nestPos('btnIn'));
+
+        // Keyboard nudge with container+child selected: same single-move rule.
+        send({ type: 'load', data: nestedDrag });
+        down(nestWrap());
+        down(nestInner(), { shiftKey: true });
+        nestInner().dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        mirrorScale();
+        check('nudge moves the container by one grid unit',
+            nestPos('pnlWrap') === '18,10', nestPos('pnlWrap'));
+        check('nudge does not double-move a nested member',
+            nestPos('btnIn') === '5,5', nestPos('btnIn'));
+        sandbox.window.dispatch('mouseup', {});
+
+        // A dblclick that started on a child must not drill into the container.
+        send({ type: 'load', data: nestedDrag });
+        nestWrap().dispatch('dblclick',
+            { preventDefault() { }, stopPropagation() { }, target: nestInner() });
+        check('a bubbled child dblclick does not drill into the container',
+            !/Entered/.test(String(ids.status.textContent)), String(ids.status.textContent));
+        nestWrap().dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        check('double-clicking the container background still drills in',
+            /Entered pnlWrap/.test(String(ids.status.textContent)), String(ids.status.textContent));
+        stage.dispatch('keydown', { key: 'Escape', preventDefault() { } });
+        check('Escape exits the container again',
+            !/Entered/.test(String(ids.status.textContent)), String(ids.status.textContent));
+
+        await settled();
+        sandbox.__sent.length = 0;
     }
 
     // ---- D4 keyboard jump + resize (same TextChanges as drag / resize-handle)

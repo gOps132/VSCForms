@@ -404,6 +404,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
   <div id="banner" class="banner hidden"></div>
   <div class="workbench">
     <aside id="toolbox" class="toolbox"></aside>
+    <div class="stage-wrap">
     <main id="stage" class="stage">
       <div class="ruler-corner"></div>
       <div class="ruler ruler-h" id="ruler-h"></div>
@@ -412,13 +413,14 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
         <div class="form-title"><span id="form-title-text"></span><span id="form-size" class="form-size"></span></div>
         <div id="canvas" class="canvas"></div>
       </div>
-      <div class="zoombar">
-        <button id="zoom-out" title="Zoom out (Cmd/Ctrl -)">−</button>
-        <span id="zoom-label">100%</span>
-        <button id="zoom-in" title="Zoom in (Cmd/Ctrl +)">+</button>
-        <button id="zoom-fit" title="Fit to window (Cmd/Ctrl 0)">Fit</button>
-      </div>
     </main>
+    <div class="zoombar">
+      <button id="zoom-out" title="Zoom out (Cmd/Ctrl -)">−</button>
+      <span id="zoom-label">100%</span>
+      <button id="zoom-in" title="Zoom in (Cmd/Ctrl +)">+</button>
+      <button id="zoom-fit" title="Fit to window (Cmd/Ctrl 0)">Fit</button>
+    </div>
+    </div>
     <aside class="inspector">
       <div class="inspector-search-wrap">
         <input id="inspector-filter" class="inspector-search" type="text" placeholder="Filter properties..." />

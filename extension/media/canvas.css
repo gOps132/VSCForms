@@ -74,12 +74,19 @@ body { display: flex; flex-direction: column; }
 
 .stage {
   position: relative;
-  flex: 1 1 auto; overflow: auto; display: grid;
+  flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; display: grid;
   grid-template-columns: 14px auto;
-  grid-template-rows: 14px auto auto;
+  grid-template-rows: 14px auto;
   padding: 0;
   background:
     repeating-conic-gradient(rgba(128,128,128,.06) 0% 25%, transparent 0% 50%) 50%/16px 16px;
+}
+/* The zoom bar floats over the stage's bottom-left, OUTSIDE the scrolling grid: as a
+   grid item with sticky positioning it scrolled away with its row when panning. The wrap
+   takes the workbench slot; the stage scrolls inside it; the bar is pinned to the wrap. */
+.stage-wrap {
+  position: relative;
+  flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column;
 }
 /* Space-to-pan. `grab`/`grabbing` on the cursor is the only feedback that a mode is armed,
    which is why the blur reset in canvas.js matters so much. */
@@ -114,12 +121,11 @@ body { display: flex; flex-direction: column; }
 }
 
 /* ------------------------------------------------------------------- zoom bar */
+/* Pinned to the stage wrap, not the scrolling stage: it never pans or zooms away. */
 .zoombar {
-  grid-column: 2; grid-row: 3;
-  position: sticky; bottom: 12px; left: 24px;
-  justify-self: start; align-self: end;
+  position: absolute; bottom: 12px; left: 24px;
   display: flex; align-items: center; gap: 2px; padding: 4px 8px;
-  z-index: 4; margin: 16px;
+  z-index: 4; margin: 0;
   background: var(--vscode-editor-background, #1e1e1e);
   border: 1px solid var(--border); border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0,0,0,.35);
