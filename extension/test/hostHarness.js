@@ -212,6 +212,7 @@ const sandbox = {
         },
         querySelectorAll: () => [],
         addEventListener() { },
+        activeElement: null,
     },
     window: winStub,
     acquireVsCodeApi: () => ({ postMessage: (m) => sandbox.__sent.push(m), getState() { return {}; }, setState() { } }),
@@ -221,6 +222,10 @@ sandbox.window.document = sandbox.document;
 sandbox.globalThis = sandbox;
 sandbox.__sent = [];
 sandbox.__ids = ids;
+
+// Focus tracking: the stand-in's focus() was a no-op, so "the shortcut focuses the
+// search box" was unassertable. Record the focused element like document.activeElement.
+El.prototype.focus = function () { sandbox.document.activeElement = this; };
 
 // ------------------------------------------------------------------- run it
 
@@ -1431,6 +1436,96 @@ setTimeout(async () => {
         check('selecting a locked entry posts no commit',
             !sandbox.__sent.some((m) => m.type === 'commit'),
             JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    }
+    // ---- D5 toolbox upgrade: search/filter + Ctrl+Alt+X; drag-to-add unchanged
+    // All adds still travel the existing drop -> addControl -> commit path: no new
+    // generate surface. Filtering is view state, so it must survive a re-render.
+    send({ type: 'load', data: schema });
+    await settled();
+    {
+        const search = () => ids.toolbox.querySelector('.toolbox-search');
+        const tools = () => ids.toolbox.querySelectorAll('.tool');
+        const visibleNames = () => tools()
+            .filter((t) => t.style.display !== 'none')
+            .map((t) => t.dataset.simple);
+        const typeFilter = (v) => { search().value = v; search().dispatch('input', {}); };
+
+        check('toolbox offers a search input', !!search());
+        check('search input names its keyboard shortcut',
+            /Ctrl\+Alt\+X/.test(String(search() && search().title)),
+            search() ? String(search().title) : 'no search box');
+        check('search input has an accessible label',
+            !!(search() && search().getAttribute('aria-label')));
+        check('empty filter shows every tool',
+            visibleNames().length === tools().length,
+            `${visibleNames().length}/${tools().length}`);
+
+        typeFilter('but');
+        check('filter narrows to matching types',
+            visibleNames().join(',') === 'Button,RadioButton',
+            visibleNames().join(','));
+        typeFilter('TAB');
+        check('filter is case-insensitive',
+            visibleNames().join(',') === 'TabControl,TabPage',
+            visibleNames().join(','));
+        typeFilter('zzz-no-match');
+        check('a filter with no matches shows nothing', visibleNames().length === 0);
+        typeFilter('');
+        check('clearing the filter restores every tool',
+            visibleNames().length === tools().length);
+
+        // Filter survives a re-render (renderToolbox runs on every renderAll, i.e. after
+        // every commit — rebuilding the input there would drop focus mid-typing).
+        typeFilter('combo');
+        send({ type: 'load', data: schema });
+        await settled();
+        check('filter text survives a document reload',
+            String(search().value) === 'combo', String(search().value));
+        check('filtered list survives a document reload',
+            visibleNames().join(',') === 'ComboBox', visibleNames().join(','));
+        typeFilter('');
+
+        // Ctrl+Alt+X focuses the search box, from anywhere (bound on window).
+        sandbox.document.activeElement = null;
+        sandbox.window.dispatch('keydown', { key: 'x', ctrlKey: true, altKey: true, preventDefault() { } });
+        check('ctrl+alt+X focuses the toolbox search',
+            sandbox.document.activeElement === search());
+        sandbox.document.activeElement = null;
+        sandbox.window.dispatch('keydown', { key: 'X', metaKey: true, altKey: true, preventDefault() { } });
+        check('cmd+alt+X (macOS variant) focuses the toolbox search',
+            sandbox.document.activeElement === search());
+        // A plain x (or ctrl+x without alt) must not steal focus.
+        sandbox.document.activeElement = null;
+        sandbox.window.dispatch('keydown', { key: 'x', preventDefault() { } });
+        check('a bare x does not move focus', sandbox.document.activeElement === null);
+
+        // Keys typed in the search box never reach the canvas: without stopPropagation,
+        // Delete would delete the selection and arrows would nudge it mid-search.
+        let stopped = false;
+        search().dispatch('keydown', { key: 'Delete', stopPropagation() { stopped = true; }, preventDefault() { } });
+        check('search-box keys stop before the canvas handlers', stopped);
+
+        // Drag-to-add through an active filter still uses the drop -> addControl path:
+        // one commit, no rename message, designer-style name.
+        typeFilter('button');
+        sandbox.__sent.length = 0;
+        {
+            const box = canvasEl.getBoundingClientRect();
+            stage.dispatch('drop', {
+                clientX: box.left + 40, clientY: box.top + 40,
+                dataTransfer: { getData: (k) => (k === 'text/vscforms-control' ? 'Button' : '') },
+                preventDefault() { },
+            });
+        }
+        await settled();
+        const d5commits = sandbox.__sent.filter((m) => m.type === 'commit');
+        const d5added = d5commits.length && d5commits[0].data.controls.find((x) => x.id !== 'btnSubmit' && x.type.endsWith('.Button'));
+        check('dropping a filtered tool still adds through addControl',
+            !!d5added && d5added.id.startsWith('btn'), d5added ? d5added.id : 'not added');
+        check('the add posts a schema commit and nothing else',
+            sandbox.__sent.every((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        typeFilter('');
     }
 
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));

@@ -30,6 +30,8 @@
     let tabOrderNext = 0;
     /** Filter text for properties in inspector. */
     let inspectorFilter = '';
+    /** Filter text for the Controls toolbox. View state: never committed, never undoable. */
+    let toolboxFilter = '';
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
     // editor share one history. See the keydown handler at the bottom of this file.
 
@@ -329,7 +331,40 @@
     // ---------------------------------------------------------------- render
     function renderToolbox() {
         const box = $('toolbox');
-        box.innerHTML = '<h3>Controls</h3>';
+        // The header (title + search) is built ONCE and kept across renders: renderToolbox
+        // runs on every renderAll (i.e. after every commit), and rebuilding the input each
+        // time would drop focus mid-typing and lose the filter. Only the list is rebuilt.
+        let search = box.querySelector('.toolbox-search');
+        let list = box.querySelector('.toolbox-list');
+        if (!search || !list) {
+            box.innerHTML = '';
+            box.appendChild(el('h3', null, 'Controls'));
+            search = document.createElement('input');
+            search.type = 'search';
+            search.className = 'toolbox-search';
+            search.placeholder = 'Filter controls…';
+            search.setAttribute('aria-label', 'Filter toolbox controls');
+            search.title = 'Filter controls (Ctrl+Alt+X)';
+            search.style.cssText = 'width:100%;box-sizing:border-box;margin:2px 0 6px;padding:4px 6px;font-size:12px;';
+            search.addEventListener('input', () => {
+                toolboxFilter = search.value;
+                applyToolboxFilter();
+            });
+            // Typing in the toolbox must not drive the canvas: without this, Delete would
+            // delete the selection and arrows would nudge it mid-search.
+            search.addEventListener('keydown', (e) => e.stopPropagation());
+            box.appendChild(search);
+            list = el('div', 'toolbox-list');
+            box.appendChild(list);
+            const note = el('div');
+            note.style.cssText = 'font-size:10px;color:var(--muted);padding:6px 4px;line-height:1.4;';
+            note.textContent = 'Other control types appear as locked boxes. Their code is never touched.';
+            box.appendChild(note);
+        }
+        // A render triggered by something else (e.g. a commit) must not clobber typing in
+        // progress. The value only differs after a fresh document load resets the filter.
+        if (search.value !== toolboxFilter) search.value = toolboxFilter;
+        list.innerHTML = '';
         for (const [name, cls, colour] of HANDLED) {
             const t = el('div', 'tool');
             t.title = `Add a ${name}`;
@@ -344,13 +379,43 @@
                 e.dataTransfer.setData('text/vscforms-control', name);
                 e.dataTransfer.effectAllowed = 'copy';
             });
-            box.appendChild(t);
+            list.appendChild(t);
         }
-        const note = el('div');
-        note.style.cssText = 'font-size:10px;color:var(--muted);padding:6px 4px;line-height:1.4;';
-        note.textContent = 'Other control types appear as locked boxes. Their code is never touched.';
-        box.appendChild(note);
+        applyToolboxFilter();
     }
+
+    /** Show only the toolbox entries matching the filter. Filtering is view state: the
+     *  hidden entries keep their dragstart data, so drag-to-add is untouched. */
+    function applyToolboxFilter() {
+        const box = $('toolbox');
+        if (!box) return;
+        const q = (toolboxFilter || '').trim().toLowerCase();
+        for (const t of box.querySelectorAll('.tool')) {
+            const name = String(t.dataset.simple || '').toLowerCase();
+            t.style.display = (!q || name.includes(q)) ? '' : 'none';
+        }
+    }
+
+    /** Focus the toolbox search, creating the toolbox DOM first if needed. */
+    function focusToolboxSearch() {
+        const box = $('toolbox');
+        if (!box) return;
+        let search = box.querySelector('.toolbox-search');
+        if (!search) {
+            renderToolbox();
+            search = box.querySelector('.toolbox-search');
+        }
+        if (search) {
+            search.focus();
+            if (typeof search.select === 'function') search.select();
+        }
+    }
+
+    // Choose Items / custom-control loading is deliberately NOT here. A custom type the
+    // engine does not model arrives `locked`, and locked means never written — so a
+    // toolbox entry for one could only ever produce controls the patcher must refuse.
+    // Loading one honestly needs a protocol addition (type discovery) plus a schema shape
+    // for unknown types, which is a separate, ADR-sized change. See the D5 report.
 
     function renderCanvas() {
         const canvas = $('canvas');
@@ -1790,6 +1855,21 @@
         });
     }
 
+    /**
+     * Ctrl+Alt+X focuses the toolbox search (Cmd+Alt+X on macOS — the VS `View.Toolbox`
+     * chord, minus the menu). Bound on `window` rather than the stage so it works from
+     * anywhere: the inspector, the canvas, or the search box itself. View state only —
+     * it focuses an input and posts nothing.
+     */
+    function setupToolboxKeys() {
+        window.addEventListener('keydown', (e) => {
+            if (!(e.ctrlKey || e.metaKey) || !e.altKey) return;
+            if (e.key !== 'x' && e.key !== 'X' && e.code !== 'KeyX') return;
+            e.preventDefault();
+            focusToolboxSearch();
+        });
+    }
+
     // ---------------------------------------------------------------- status
     function renderStatus(msg, cls) {
         const s = $('status');
@@ -1870,6 +1950,7 @@
     setupZoomControls();
     setupStatusBar();
     setupDrop();
+    setupToolboxKeys();
     setupInspectorFilter();
     renderStatus('Waiting for the engine…');
     post('ready');
