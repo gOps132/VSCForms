@@ -990,6 +990,96 @@
         return candidate;
     }
 
+    // ------------------------------------------------------- clipboard (A2 #3)
+    /**
+     * Clipboard copy/paste across forms via the host round-trip. The webview cannot touch
+     * the system clipboard on its own (permissions + async), so copy posts ControlNode JSON
+     * to the host (`copy`), which writes it via `vscode.env.clipboard`; paste asks the host
+     * (`requestPaste`), which reads it back and re-posts it as `paste`.
+     *
+     * The in-form core reuses the duplicate kernel above: deep clone, fresh ids via
+     * `uniqueId`, one GRID offset, one debounced commit. Cross-form paste needs no extra
+     * dialect work in the canvas — `generate` re-runs dialect detection per target file
+     * (SCHEMA.md:337-349), so committing the pasted nodes writes them in that file's own
+     * dialect. No schema change, no ADR (spec-vs-parity.md §2 clipboard bullet).
+     */
+    const CLIPBOARD_PREFIX = 'vscforms-controls-v1:';
+    function handledSimpleNames() { return new Set(HANDLED.map(([n]) => n)); }
+    /** Serialize the selection for the clipboard: dragRoots, locked never joins. */
+    function serializeSelection() {
+        if (!schema) return [];
+        const roots = dragRoots(selected().filter((c) => !c.locked));
+        return JSON.parse(JSON.stringify(roots));
+    }
+    function copySelection() {
+        if (!schema) return;
+        const nodes = serializeSelection();
+        if (!nodes.length) return;
+        post('copy', { nodes });
+    }
+    function requestPaste() {
+        if (!schema || readOnly) return;
+        post('requestPaste');
+    }
+    /** Parse clipboard text back to nodes. Returns null when it is not our payload. */
+    function parseClipboardText(text) {
+        if (typeof text !== 'string' || !text) return null;
+        let body = text;
+        if (body.startsWith(CLIPBOARD_PREFIX)) body = body.slice(CLIPBOARD_PREFIX.length);
+        else return null;
+        try {
+            const nodes = JSON.parse(body);
+            return Array.isArray(nodes) ? nodes : null;
+        } catch { return null; }
+    }
+    /** Fresh ids for a pasted subtree, so cross-form collisions cannot land. */
+    function assignPasteIds(node, used) {
+        node.id = uniqueId(used, String(node.id || 'ctl'));
+        for (const ch of node.children || []) assignPasteIds(ch, used);
+    }
+    /** A pasted type the target does not model lands locked, never discarded. */
+    function markUnhandledLocked(node, handled) {
+        const simple = simpleName(String(node.type || ''));
+        if (!handled.has(simple)) {
+            node.locked = true;
+            node.lockedReason = `${simple} is not one of the handled control types, so its appearance is not modelled.`;
+        }
+        for (const ch of node.children || []) markUnhandledLocked(ch, handled);
+    }
+    /** Insert deserialized clipboard nodes: the duplicate kernel, generalized to N roots. */
+    function pasteNodes(nodes) {
+        if (!schema || readOnly) return;
+        if (!Array.isArray(nodes) || !nodes.length) return;
+        const handled = handledSimpleNames();
+        const used = new Set(allControls(schema.controls).map((c) => c.id));
+        const copies = [];
+        for (const raw of nodes) {
+            if (!raw || typeof raw.id !== 'string' || typeof raw.type !== 'string') continue;
+            if (!raw.properties || typeof raw.properties.x !== 'number') continue;
+            const copy = JSON.parse(JSON.stringify(raw));
+            if (!Array.isArray(copy.children)) copy.children = [];
+            assignPasteIds(copy, used);
+            markUnhandledLocked(copy, handled);
+            copy.properties.x = Math.max(0, Math.round(copy.properties.x + GRID));
+            copy.properties.y = Math.max(0, Math.round(copy.properties.y + GRID));
+            copies.push(copy);
+        }
+        if (!copies.length) return;
+        for (const cp of copies) {
+            (function walk(n) {
+                if (n.locked) schema.analysis.unmodelledCount += 1;
+                else schema.analysis.modelledCount += 1;
+                for (const ch of n.children || []) walk(ch);
+            })(cp);
+        }
+        schema.controls.push(...copies);
+        selection = new Set(copies.map((c) => c.id));
+        recomputeCoverage();
+        commit();
+        renderCanvas();
+        renderInspector();
+    }
+
     /** The live DOM node for a control id. Re-resolved per frame: a selection change
      *  re-renders the canvas and replaces every node, so a captured node can be detached. */
     function nodeFor(id) {
@@ -1790,6 +1880,18 @@
             case 'renameRefused':
                 renderStatus('Rename refused: ' + (msg.data.message || 'unknown'), 'err');
                 break;
+            case 'paste': {
+                // Host round-trip reply to `requestPaste`. Refused forms paste nothing.
+                if (readOnly) break;
+                const d = msg.data;
+                let nodes = null;
+                if (Array.isArray(d)) nodes = d;
+                else if (d && Array.isArray(d.nodes)) nodes = d.nodes;
+                else if (d && typeof d.text === 'string') nodes = parseClipboardText(d.text);
+                else if (typeof d === 'string') nodes = parseClipboardText(d);
+                if (nodes) pasteNodes(nodes);
+                break;
+            }
         }
     });
 
@@ -1823,6 +1925,16 @@
                     case '-': zoomBy(1 / ZOOM_STEP); return;
                     case '0': setZoom(1); return;
                     case 'd': case 'D': e.preventDefault(); duplicateSelected(); return;
+                    case 'c': case 'C':
+                        // Copy wins over Align Center (ALIGN_KEYS.c): clipboard is the
+                        // product claim, centering stays on its inspector button.
+                        if (!e.shiftKey) { e.preventDefault(); copySelection(); return; }
+                        break;
+                    case 'v': case 'V':
+                        // Plain Ctrl/Cmd+V pastes via the host round-trip; Ctrl+Shift+V
+                        // keeps meaning Distribute Vertically (DISTRIBUTE_KEYS.v).
+                        if (!e.shiftKey) { e.preventDefault(); requestPaste(); return; }
+                        break;
                     default: {
                         // Shift + the same key distributes along that axis, which is what the
                         // VS designer does. Without it, dist-v had no shortcut at all and
@@ -1834,6 +1946,12 @@
                         return;
                     }
                 }
+                // Shift-modified C/V fall through to the align/distribute table below.
+                const spread = DISTRIBUTE_KEYS[e.key.toLowerCase()];
+                if (e.shiftKey && spread) { e.preventDefault(); align(spread); return; }
+                const kind = ALIGN_KEYS[e.key.toLowerCase()];
+                if (kind) { e.preventDefault(); align(kind); }
+                return;
             }
             // Escape clears the selection and cancels any in-progress gesture. Its absence is
             // felt: without it there is no way out of a selection short of clicking again.

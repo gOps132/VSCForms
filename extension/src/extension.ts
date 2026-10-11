@@ -6,6 +6,9 @@ import { runProject } from './projectRunner';
 let engine: EngineClient;
 let provider: DesignerEditorProvider | undefined;
 
+/** System-clipboard tag for canvas ControlNode payloads (A2 #3). Must match canvas.js. */
+const VSCFORMS_CLIPBOARD_PREFIX = 'vscforms-controls-v1:';
+
 /** Test-only seam. Returns the most recent undo/redo continuations we fired. */
 export const __lastEdit = () => provider?.lastEdit;
 
@@ -193,6 +196,32 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 case 'commit': {
                     if (parsed.ok === false) return;
                     await this.commit(doc, post, (msg.data ?? msg.schema) as FormSchema);
+                    break;
+                }
+
+                // Clipboard copy/paste (A2 #3) via the host round-trip. The webview
+                // cannot touch the system clipboard on its own (permissions + async),
+                // so it posts ControlNode JSON here; the host carries it through
+                // `vscode.env.clipboard`, which is shared across forms — that is what
+                // makes cross-form paste work. Paste re-posts to the canvas as `paste`;
+                // the canvas deserializes (uniqueId + locked-fallback) and commits, so
+                // `generate` re-runs dialect detection per target file (SCHEMA.md:337-349).
+                case 'copy': {
+                    try {
+                        const nodes = (msg.data as any)?.nodes ?? msg.data;
+                        await vscode.env.clipboard.writeText(
+                            VSCFORMS_CLIPBOARD_PREFIX + JSON.stringify(nodes));
+                    } catch { /* clipboard unavailable; the canvas keeps its model */ }
+                    break;
+                }
+
+                case 'requestPaste': {
+                    try {
+                        const text = await vscode.env.clipboard.readText();
+                        if (!text || !text.startsWith(VSCFORMS_CLIPBOARD_PREFIX)) break;
+                        const nodes = JSON.parse(text.slice(VSCFORMS_CLIPBOARD_PREFIX.length));
+                        if (Array.isArray(nodes)) await post('paste', { nodes });
+                    } catch { /* malformed clipboard: paste nothing */ }
                     break;
                 }
 
