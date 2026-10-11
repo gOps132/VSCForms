@@ -1,0 +1,55 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // ── Turbo mode ─────────────────────────────────────────────────
+  // OpenCode has no single "turbo" flag. Speed comes from combining:
+  //   1. never waiting on a permission prompt (permissions below)
+  //   2. keeping the session warm between prompts (warming)
+  //   3. a fast model / low-effort variant (set `model` — examples below)
+  //   4. a watcher that ignores build output (watcher.ignore)
+
+  // Zero-friction permissions: everything allowed, no prompts.
+  // The last matching rule wins, so the guards below still apply.
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "allow" },
+    // Safety rails — still hard-blocked, no prompt:
+    { "action": "shell", "resource": "rm -rf *", "effect": "deny" },
+    { "action": "shell", "resource": "sudo *", "effect": "deny" },
+    // Secrets still ask before being read:
+    { "action": "read", "resource": "*.env", "effect": "ask" },
+    { "action": "read", "resource": "*.env.*", "effect": "ask" }
+  ],
+
+  // Send keep-alive requests during idle gaps so provider-side prompt
+  // caches stay hot. These are real model requests — they cost tokens.
+  "warming": true,
+
+  // Format files automatically after edits.
+  "formatter": true,
+
+  // Keep the file watcher out of build output so events stay snappy.
+  "watcher": {
+    "ignore": [
+      ".git/**",
+      "node_modules/**",
+      "**/bin/**",
+      "**/obj/**",
+      "**/out/**",
+      "dist/**",
+      "coverage/**",
+      "*.vsix"
+    ],
+  },
+
+  // Biggest turbo lever: pick the fastest good model you have.
+  // Check /models for what's available; variants like #low (low
+  // reasoning effort) or #fast exist per model.
+  // "model": "openai/gpt-5.2#low",
+
+  // On supported providers (OpenAI, xAI, Azure Responses) a single
+  // WebSocket per session reuses the request prefix, shrinking uploads
+  // in long sessions.
+  // "providers": {
+  //   "openai": { "settings": { "transport": "websocket" } },
+  // },
+}
