@@ -720,6 +720,7 @@
         renderCanvas();
         renderInspector();
         renderStatusForSelection();
+        renderOutline();
     }
 
     /** Select everything in a rectangle. Marquee selection is view state — it posts nothing. */
@@ -736,6 +737,7 @@
         renderCanvas();
         renderInspector();
         renderStatusForSelection();
+        renderOutline();
     }
 
     function renderStatusForSelection() {
@@ -754,6 +756,132 @@
             return;
         }
         el.textContent = `${n} controls selected.`;
+    }
+
+    // ------------------------------------------------------- document outline
+    /**
+     * D6 Document Outline (issue #34): a read-only hierarchy view over the schema tree.
+     *
+     * Containers nest (their children render indented inside the parent row); locked
+     * controls appear with their reason and are never editable. Clicks reuse select(),
+     * F2 renames through the existing `rename` command path (never a schema commit).
+     *
+     * STRICTLY OUT OF SCOPE: drag-reparent and Z-order moves. Reorder is
+     * unrepresentable in id-diffed generate (A1), so the outline offers no reorder UI
+     * at all — omitted, never faked. No draggable rows, no up/down buttons.
+     *
+     * The panel is built with DOM calls here, not in the host HTML skeleton, so this
+     * stays one merge-pass region. `outlineEl` is held module-side because the panel
+     * is created lazily on first render.
+     */
+    let outlineEl = null;
+    function renderOutline() {
+        const wb = document.querySelector('.workbench');
+        if (!wb || !schema) return;
+        if (!outlineEl || outlineEl.parentNode !== wb) {
+            outlineEl = el('aside', 'outline');
+            outlineEl.id = 'outline';
+            outlineEl.setAttribute('role', 'tree');
+            outlineEl.setAttribute('aria-label', 'Document Outline');
+            outlineEl.style.minWidth = '150px';
+            outlineEl.style.maxWidth = '230px';
+            outlineEl.style.overflow = 'auto';
+            outlineEl.style.fontSize = '12px';
+            wb.appendChild(outlineEl);
+        }
+        outlineEl.innerHTML = '';
+        outlineEl.appendChild(el('h3', null, 'Outline'));
+        outlineEl.appendChild(el('div', 'outline-hint', 'Click to select · F2 to rename'));
+        const tree = el('div', 'outline-tree');
+        tree.setAttribute('role', 'group');
+        for (const c of schema.controls) appendOutlineRow(tree, c, 0);
+        outlineEl.appendChild(tree);
+    }
+    function appendOutlineRow(parent, c, depth) {
+        const simple = simpleName(c.type);
+        const row = el('div', 'outline-row'
+            + (selection.has(c.id) ? ' selected' : '')
+            + (c.locked ? ' locked' : '')
+            + (readOnly ? ' readonly' : ''));
+        row.dataset.id = c.id;
+        row.setAttribute('role', 'treeitem');
+        row.style.cursor = 'pointer';
+        row.style.whiteSpace = 'nowrap';
+        if (selection.has(c.id)) row.style.background = '#37373d';
+        const label = el('span', 'outline-label', `${c.id} (${simple})`);
+        label.style.paddingLeft = (4 + depth * 12) + 'px';
+        if (c.locked) {
+            row.title = c.lockedReason || 'Not modelled.';
+            label.style.color = '#858585';
+            label.style.fontStyle = 'italic';
+        }
+        row.appendChild(label);
+        if (c.locked) {
+            const why = el('span', 'outline-locked-reason', c.lockedReason || 'Not modelled.');
+            why.style.color = '#858585';
+            why.style.fontSize = '11px';
+            row.appendChild(why);
+        }
+        row.addEventListener('mousedown', (e) => {
+            // A mousedown on the open rename field must not reselect and destroy it.
+            if (e.target && e.target.classList && e.target.classList.contains('outline-rename')) return;
+            e.stopPropagation();
+            select(c.id);
+        });
+        parent.appendChild(row);
+        // Children nest INSIDE the parent row, so the DOM itself is the hierarchy.
+        // Deliberately no drag handlers and no buttons here: reorder UI is out of scope.
+        if (c.children && c.children.length) {
+            const kids = el('div', 'outline-children');
+            kids.setAttribute('role', 'group');
+            for (const ch of c.children) appendOutlineRow(kids, ch, depth + 1);
+            row.appendChild(kids);
+        }
+        return row;
+    }
+    function outlineRowFor(id) {
+        if (!outlineEl) return null;
+        return Array.from(outlineEl.querySelectorAll('.outline-row'))
+            .find((n) => n.dataset.id === id) || null;
+    }
+    /**
+     * F2 rename: opens an inline field on the outline row and posts through the
+     * existing `rename` command path, exactly like the inspector Name field. Locked
+     * controls and refused forms never reach the input. Enter posts, Escape/blur
+     * cancels with no message — a no-op rename never dirties the file.
+     */
+    function beginOutlineRename(id) {
+        const target = id || (selection.size === 1 ? [...selection][0] : null);
+        if (!target) return;
+        const c = findControl(target);
+        if (!c || c.locked || readOnly) return;
+        renderOutline();
+        const row = outlineRowFor(target);
+        if (!row || row.querySelector('.outline-rename')) return;
+        const input = document.createElement('input');
+        input.className = 'outline-rename';
+        input.type = 'text';
+        input.value = c.id;
+        input.setAttribute('aria-label', 'Rename ' + c.id);
+        let done = false;
+        const finish = (commitIt) => {
+            if (done) return;
+            done = true;
+            const to = input.value.trim();
+            input.remove();
+            if (commitIt && to && to !== c.id) post('rename', { id: c.id, to });
+        };
+        input.addEventListener('mousedown', (e) => e.stopPropagation());
+        input.addEventListener('dblclick', (e) => e.stopPropagation());
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') finish(true);
+            else if (e.key === 'Escape') finish(false);
+        });
+        input.addEventListener('blur', () => finish(false));
+        row.appendChild(input);
+        input.focus();
+        if (typeof input.select === 'function') input.select();
     }
 
     // ---------------------------------------------------------------- editing
@@ -1749,6 +1877,7 @@
         renderToolbox();
         renderCanvas();
         renderInspector();
+        renderOutline();
     }
 
     // ---------------------------------------------------------------- messages
@@ -1837,6 +1966,8 @@
             }
             // Escape clears the selection and cancels any in-progress gesture. Its absence is
             // felt: without it there is no way out of a selection short of clicking again.
+            // D6: F2 renames the single selected control through the existing rename path.
+            if (e.key === 'F2') { e.preventDefault(); beginOutlineRename(); return; }
             if (e.key === 'Escape') {
                 if (tabOrderMode) setTabOrderMode(false);
                 if (activeContainer) {

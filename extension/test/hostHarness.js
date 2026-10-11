@@ -1316,6 +1316,125 @@ setTimeout(async () => {
     const borderStyleSel = txtSelects.find((s) => s.id === 'fBorderStyle');
     check('TextBox inspector offers BorderStyle', !!borderStyleSel);
 
+    // ---- D6 Document Outline: read-only hierarchy + F2 rename, no reorder UI
+    // Reorder (drag-reparent / Z-order) is unrepresentable in id-diffed generate (A1),
+    // so the outline omits it entirely — the last two checks assert the omission.
+    const outlineSchema = {
+        schemaVersion: 1,
+        form: { name: 'OutlineForm', text: 'Outline', clientSize: { width: 400, height: 300 }, className: 'OutlineForm' },
+        controls: [
+            { id: 'btnTop', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 80, height: 25, text: 'Top', tabIndex: 0 } },
+            { id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+                { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 5, y: 5, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+            ], locked: false, properties: { x: 10, y: 50, width: 200, height: 150, tabIndex: 1 } },
+            { id: 'GaugeX', type: 'ThirdParty.Widgets.Gauge', children: [], locked: true,
+              lockedReason: 'Gauge is not one of the handled control types, so its appearance is not modelled.',
+              properties: { x: 220, y: 10, width: 80, height: 28 } },
+        ],
+        analysis: { modelledCount: 3, unmodelledCount: 1, coveragePercent: 75, refuses: [], warnings: [] },
+    };
+    send({ type: 'load', data: outlineSchema });
+    await settled();
+    const wb = sandbox.__workbench;
+    const outlineRows = () => wb.querySelectorAll('.outline-row');
+    const outlineRow = (id) => outlineRows().find((n) => n.dataset.id === id);
+    check('outline renders one row per control', outlineRows().length === 4,
+        'got ' + outlineRows().length);
+    check('outline nests container children under their parent row',
+        outlineRow('btnIn') && outlineRow('btnIn').parentNode
+            && outlineRow('btnIn').parentNode.parentNode === outlineRow('pnlWrap'),
+        'btnIn is not nested under pnlWrap');
+    check('outline labels name the control and its type',
+        outlineRow('btnTop') && /btnTop/.test(outlineRow('btnTop').textContent)
+            && /Button/.test(outlineRow('btnTop').textContent),
+        outlineRow('btnTop') && outlineRow('btnTop').textContent);
+    {
+        const g = outlineRow('GaugeX');
+        const why = g && g.querySelector('.outline-locked-reason');
+        check('locked control appears in the outline with its reason',
+            !!why && String(why.textContent).length > 10,
+            why ? String(why.textContent) : 'no reason node');
+        check('locked row carries the reason as a tooltip',
+            g && String(g.title || '').length > 10, g && JSON.stringify(g.title));
+    }
+    // Clicks reuse select(): canvas and outline agree on the selection.
+    outlineRow('btnIn').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
+    check('clicking an outline row selects the control on the canvas',
+        canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(',') === 'btnIn',
+        canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(','));
+    check('the outline highlights the selected row',
+        outlineRow('btnIn') && outlineRow('btnIn').classList.contains('selected'));
+    // A locked row stays selectable (that is how its reason is readable)…
+    outlineRow('GaugeX').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
+    check('locked outline row still selects, so its reason is readable',
+        canvasEl.querySelectorAll('.ctl.selected').some((n) => n.dataset.id === 'GaugeX'));
+    // …but F2 on it opens nothing and posts nothing.
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'F2', preventDefault() { } });
+    check('F2 on a locked control opens no rename field',
+        !outlineRow('GaugeX').querySelector('.outline-rename'));
+    check('F2 on a locked control posts nothing', sandbox.__sent.length === 0,
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    // F2 renames through the existing rename path: a `rename` message, never a commit.
+    outlineRow('btnTop').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'F2', preventDefault() { } });
+    const renameInput = outlineRow('btnTop') && outlineRow('btnTop').querySelector('.outline-rename');
+    check('F2 opens a rename field on the selected row', !!renameInput);
+    check('rename field starts from the current id', !!renameInput && renameInput.value === 'btnTop',
+        renameInput ? JSON.stringify(renameInput.value) : 'no field');
+    if (renameInput) {
+        renameInput.value = 'btnFirst';
+        renameInput.dispatch('keydown', { key: 'Enter', preventDefault() { }, stopPropagation() { } });
+        const posted = sandbox.__sent;
+        const renameMsg = posted.find((m) => m.type === 'rename');
+        check('F2 rename posts a rename message', !!renameMsg,
+            JSON.stringify(posted.map((m) => m.type)));
+        check('rename message carries the old id and the new name',
+            renameMsg && renameMsg.data.id === 'btnTop' && renameMsg.data.to === 'btnFirst',
+            renameMsg ? JSON.stringify(renameMsg.data) : 'none');
+        check('F2 rename does NOT post a schema commit',
+            !posted.some((m) => m.type === 'commit'), JSON.stringify(posted.map((m) => m.type)));
+    }
+    // Escape cancels with no message.
+    outlineRow('btnTop').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'F2', preventDefault() { } });
+    const cancelInput = outlineRow('btnTop') && outlineRow('btnTop').querySelector('.outline-rename');
+    check('F2 reopens the rename field for the cancel path', !!cancelInput);
+    if (cancelInput) {
+        cancelInput.value = 'btnNope';
+        cancelInput.dispatch('keydown', { key: 'Escape', preventDefault() { }, stopPropagation() { } });
+        check('Escape cancels the rename with no message', sandbox.__sent.length === 0,
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        check('Escape removes the rename field',
+            !outlineRow('btnTop').querySelector('.outline-rename'));
+    }
+    // Refused forms stay out: the hierarchy still renders, but read-only — F2 is dead.
+    send({ type: 'load', data: { ...outlineSchema, analysis: { ...outlineSchema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+    await settled();
+    check('refused form still shows the hierarchy (read-only)',
+        wb.querySelectorAll('.outline-row').length === 4,
+        String(wb.querySelectorAll('.outline-row').length));
+    outlineRow('btnTop').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'F2', preventDefault() { } });
+    check('F2 on a refused form opens no rename field',
+        !outlineRow('btnTop').querySelector('.outline-rename'));
+    check('F2 on a refused form posts nothing', sandbox.__sent.length === 0,
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    {
+        const panel = wb.querySelector('.outline');
+        const btns = panel ? panel.querySelectorAll('button') : [];
+        check('outline offers no buttons (no up/down/reparent actions)', btns.length === 0,
+            'got ' + btns.length);
+        check('outline rows are not draggable — drag-reparent is omitted, never faked',
+            outlineRows().every((r) => !r.draggable),
+            'a draggable row would fake drag-reparent');
+    }
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
