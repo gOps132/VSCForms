@@ -32,7 +32,7 @@ done
 
 if [ "$SKIP_ENGINE" -eq 0 ]; then
   echo "==> Building engine…"
-  ./scripts/publish-engine.js
+  node ./scripts/publish-engine.js
 else
   echo "==> Skipping engine build (--skip-engine)"
 fi
@@ -45,7 +45,7 @@ if [ "$NO_INSTALL" -eq 1 ]; then
   exit 0
 fi
 
-VSIX="$(ls -t dist/vscforms-"*.vsix" 2>/dev/null | head -n 1 || true)"
+VSIX="$(ls -t dist/vscforms-*.vsix 2>/dev/null | head -n 1 || true)"
 if [ -z "${VSIX:-}" ] || [ ! -f "$VSIX" ]; then
   echo "==> Error: no VSIX found in dist/ after packaging." >&2
   exit 1
