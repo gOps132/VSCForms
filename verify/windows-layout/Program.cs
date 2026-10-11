@@ -26,13 +26,18 @@ internal static class Program
 {
     private static int failures;
 
+    private static int tolerance;
+
     private static int Main(string[] args)
     {
         if (args.Length < 1)
         {
-            Console.Error.WriteLine("usage: VSCFormsLayoutCheck <schema.json>");
+            Console.Error.WriteLine("usage: VSCFormsLayoutCheck <schema.json> [tolerance]");
             return 2;
         }
+        if (args.Length >= 2 && int.TryParse(args[1],
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out int t) && t >= 0)
+            tolerance = t;
 
         using var doc = JsonDocument.Parse(File.ReadAllText(args[0]));
         var schema = doc.RootElement;
@@ -65,6 +70,13 @@ internal static class Program
         }
         using var _ = form;
 
+        // Isolate designer geometry from environment scaling. WinForms applies
+        // AutoScale (Font/Dpi) on handle creation based on the runner's DPI vs the
+        // file's AutoScaleDimensions — the same file then reports different Bounds
+        // on different machines. VSCForms deliberately does not simulate scaling
+        // (C3: read-only warning, no editing), so the harness must not fail for it:
+        // freeze scaling before any handle exists and compare the verbatim values.
+        form.AutoScaleMode = AutoScaleMode.None;
         // Force layout so every control has a real, final position.
         form.PerformLayout();
 
@@ -122,18 +134,21 @@ internal static class Program
             }
             else
             {
-                Check(id, "Location", props.GetProperty("x").GetInt32(), props.GetProperty("y").GetInt32(),
-                      found.Left, found.Top, 0);
+                Check(id, "Location.X", props.GetProperty("x").GetInt32(), found.Left);
+                Check(id, "Location.Y", props.GetProperty("y").GetInt32(), found.Top);
 
                 // Size is only comparable for controls that do not compute their own. An
                 // AutoSize control sizes itself from the font, so asserting our declared width
                 // against it would fail for a reason that has nothing to do with VSCForms.
+                // MonthCalendar is the same shape without the flag: it snaps Size to the
+                // month grid at runtime, so the designer's Size never survives verbatim.
                 bool autoSize = found is Label or CheckBox or RadioButton or LinkLabel
+                                || found is MonthCalendar
                                 || found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b;
                 if (!autoSize)
                 {
-                    Check(id, "Size", props.GetProperty("width").GetInt32(), props.GetProperty("height").GetInt32(),
-                          found.Width, found.Height, 0);
+                    Check(id, "Size.Width", props.GetProperty("width").GetInt32(), found.Width);
+                    Check(id, "Size.Height", props.GetProperty("height").GetInt32(), found.Height);
                 }
             }
 
@@ -155,13 +170,9 @@ internal static class Program
         return null;
     }
 
-    private static void Check(string id, string what, int expected, int actual, int actualX, int actualY, int tol)
+    private static void Check(string id, string what, int expected, int actual)
     {
-        int ax = what == "Location" ? actualX : expected;
-        int ay = what == "Location" ? actualY : expected;
-        _ = ax; _ = ay;
-
-        if (Math.Abs(expected - actual) > tol)
+        if (Math.Abs(expected - actual) > tolerance)
             Report(id, $"{what}: schema says {expected}, runtime is {actual}");
     }
 

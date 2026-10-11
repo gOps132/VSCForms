@@ -22,7 +22,26 @@ if [ "${1:-}" = "--canary" ]; then
   shift
 fi
 
-PROJECT="${1:-example}"
+ARG="${1:-example}"
+PROJECT=""
+DESIGNER=""
+
+# Accept either a fixture directory (legacy: fixtures/simple, example) or a direct
+# Designer file path (fixtures/invisible/SizeOnlyForm.Designer.cs). The latter is
+# required now that directories hold multiple files (invisible/) or live in
+# subdirectories (declared/*/) — resolving by leaf directory re-tested the same
+# head -1 file for every sibling and reported ERROR for subdirectories with no
+# project of their own.
+if [ -f "$ARG" ]; then
+  DESIGNER="$ARG"
+  PROJECT="$(dirname "$ARG")"
+  if [ ! -d "$PROJECT" ]; then
+    echo "ERROR no project at $PROJECT" >&2
+    exit 1
+  fi
+else
+  PROJECT="$ARG"
+fi
 
 # The engine must be published (self-contained) before this runs. The script checks the
 # publish output directory first (win-x64 RID on Windows CI), then falls back to the
@@ -89,8 +108,10 @@ rm -rf "$WORK" && mkdir -p "$WORK/src"
 
 # The Designer file is copied VERBATIM. Nothing here may rewrite it — the point is to
 # check VSCForms against the file Visual Studio produced, not against a normalised copy.
-DESIGNER=$(find "$PROJECT" -maxdepth 2 -name '*.Designer.cs' | head -1)
-[ -n "$DESIGNER" ] || { echo "SKIP  no *.Designer.cs under $PROJECT"; exit 0; }
+if [ -z "$DESIGNER" ]; then
+  DESIGNER=$(find "$PROJECT" -maxdepth 2 -name '*.Designer.cs' | head -1)
+  [ -n "$DESIGNER" ] || { echo "SKIP  no *.Designer.cs under $PROJECT"; exit 0; }
+fi
 cp "$DESIGNER" "$WORK/src/$(basename "$DESIGNER")"
 cp verify/windows-layout/Program.cs "$WORK/src/Program.cs"
 echo "using $DESIGNER (verbatim)"

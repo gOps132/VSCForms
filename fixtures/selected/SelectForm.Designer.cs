@@ -66,6 +66,7 @@ namespace FixtureSelected
             this.cboOdd.Name = "cboOdd";
             this.cboOdd.Size = new System.Drawing.Size(180, 23);
             this.cboOdd.Items.Add("uno");
+            this.cboOdd.Items.Add("dos");
             this.cboOdd.SelectedIndex = System.Math.Max(0, 1);
             //
             // btnGo

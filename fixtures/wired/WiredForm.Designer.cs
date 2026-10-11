@@ -63,6 +63,9 @@ partial class WiredForm
         this.calDetails.Size = new System.Drawing.Size(200, 120);
         this.calDetails.TabIndex = 2;
         this.calDetails.DateSelected += new System.Windows.Forms.DateRangeEventHandler(this.calDetails_DateSelected);
+        this.Controls.Add(this.btnCalculate);
+        this.Controls.Add(this.lblResult);
+        this.Controls.Add(this.calDetails);
         this.ResumeLayout(false);
         this.PerformLayout();
         //
