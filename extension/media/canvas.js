@@ -1103,9 +1103,59 @@
     }
 
     // -------------------------------------------------------------- inspector
+    /**
+     * Object selector dropdown (D9): the VS Properties-window object list. Jump
+     * selection to a hidden/buried control — selection today is otherwise
+     * click/marquee/drill-down only.
+     *
+     * Selection ONLY: this calls the existing single select() and never edits,
+     * reorders, or commits. Locked entries stay enabled so choosing one selects
+     * it alone (that is how its reason is readable — invariant 4); select()
+     * with no extend can never JOIN a group. Any drill-down scope is left first,
+     * because select() ignores ids outside it and a jump must always land.
+     */
+    function renderObjectSelector(box) {
+        if (!schema) return;
+        const wrap = el('div', 'object-selector');
+        const lab = el('label', null, 'Object');
+        lab.setAttribute('for', 'fObjectSelector');
+        wrap.appendChild(lab);
+        const dropdown = document.createElement('select');
+        dropdown.id = 'fObjectSelector';
+        dropdown.title = 'Jump selection to any control, including hidden or buried ones';
+        const current = selected();
+        const currentId = current.length === 1 ? current[0].id : '';
+        const blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = 'Select a control…';
+        dropdown.appendChild(blank);
+        const walk = (nodes, trail) => {
+            for (const n of nodes || []) {
+                const simple = simpleName(n.type);
+                const path = trail.concat(n.id).join(' › ');
+                const opt = document.createElement('option');
+                opt.value = n.id;
+                opt.textContent = n.locked ? `${path} (${simple}, locked)` : `${path} (${simple})`;
+                if (n.locked && n.lockedReason) opt.title = n.lockedReason;
+                if (n.id === currentId) opt.selected = true;
+                dropdown.appendChild(opt);
+                walk(n.children, trail.concat(n.id));
+            }
+        };
+        walk(schema.controls, []);
+        dropdown.addEventListener('change', () => {
+            const id = dropdown.value;
+            if (!id || !findControl(id)) return;
+            activeContainer = null;
+            select(id);
+        });
+        wrap.appendChild(dropdown);
+        box.appendChild(wrap);
+    }
     function renderInspector() {
         const box = $('inspector');
         box.innerHTML = '';
+        renderObjectSelector(box);
         const sel = selected();
         if (sel.length === 0) {
             renderFormInspector(box);

@@ -1316,6 +1316,76 @@ setTimeout(async () => {
     const borderStyleSel = txtSelects.find((s) => s.id === 'fBorderStyle');
     check('TextBox inspector offers BorderStyle', !!borderStyleSel);
 
+    // ---- D9 object selector dropdown: jump selection to a hidden/buried control.
+    // Selection only — choosing an entry must select without emitting a commit.
+    send({ type: 'load', data: schema });
+    await settled();
+    {
+        const selDropdown = () => ids.inspector.querySelector('select');
+        const selOptions = () => (selDropdown() ? selDropdown().querySelectorAll('option') : []);
+        const selIds = () => canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(',');
+        check('object selector dropdown is offered', !!selDropdown());
+        const flatIds = selOptions().map((o) => o.value).filter(Boolean);
+        check('dropdown lists every schema control',
+            flatIds.length === 3 && flatIds.includes('txtName') && flatIds.includes('btnSubmit')
+                && flatIds.includes('ThirdPartyGauge'),
+            flatIds.join(','));
+        const lockedOpt = selOptions().find((o) => o.value === 'ThirdPartyGauge');
+        check('locked entry is shown with its reason',
+            !!lockedOpt && /locked/i.test(String(lockedOpt.textContent))
+                && String(lockedOpt.title || '').length > 10,
+            lockedOpt ? lockedOpt.textContent + ' | ' + lockedOpt.title : 'missing');
+        // A buried control: nested inside a container, pathed so it is findable.
+        const buriedD9 = JSON.parse(JSON.stringify(schema));
+        buriedD9.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+            { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 5, y: 5, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+        ], locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+        send({ type: 'load', data: buriedD9 });
+        await settled();
+        const nestedIds = selOptions().map((o) => o.value).filter(Boolean);
+        check('dropdown lists nested controls too', nestedIds.includes('btnIn'), nestedIds.join(','));
+        const nestedOpt = selOptions().find((o) => o.value === 'btnIn');
+        check('nested entry shows its container path',
+            !!nestedOpt && /pnlWrap/.test(String(nestedOpt.textContent)),
+            nestedOpt ? nestedOpt.textContent : 'missing');
+        // Choosing an entry selects it with no commit.
+        sandbox.__sent.length = 0;
+        selDropdown().value = 'btnIn';
+        selDropdown().dispatch('change', {});
+        check('choosing an entry selects it', selIds() === 'btnIn', selIds());
+        await settled();
+        check('selecting via the dropdown posts no commit — selection is view state',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        // Drill-down scope does not trap the selector: it leaves the scope, then selects.
+        send({ type: 'load', data: buriedD9 });
+        await settled();
+        ctlNode('pnlWrap').dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+        check('drill-down entered for the jump test',
+            /Entered pnlWrap/.test(String(ids.status.textContent)), String(ids.status.textContent));
+        sandbox.__sent.length = 0;
+        selDropdown().value = 'btnSubmit';
+        selDropdown().dispatch('change', {});
+        check('jump from drill scope selects outside it', selIds() === 'btnSubmit', selIds());
+        await settled();
+        check('the drill-scope jump posts no commit either',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        // Locked entries are select-readable: choosing one selects it alone.
+        send({ type: 'load', data: schema });
+        await settled();
+        sandbox.__sent.length = 0;
+        selDropdown().value = 'ThirdPartyGauge';
+        selDropdown().dispatch('change', {});
+        check('locked entry selects alone, so its reason is readable',
+            selIds() === 'ThirdPartyGauge', selIds());
+        await settled();
+        check('selecting a locked entry posts no commit',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    }
+
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
