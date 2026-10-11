@@ -96,12 +96,16 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D2 | In-place Text edit (dblclick overlay committing via Text path) | shipped | S | `spec-vs-parity.md` §1–2 | Same setProp/INSERT path as inspector; no ADR. Never for locked/refused, containers (drill-down), or NO_TEXT. Escape cancels with no generate. (#21) |
 | D3 | Make Same Size / Center in Form (pure-geometry arrange ops) | shipped | S | `spec-vs-parity.md` §1–2 | Same-size copies schema-order-first extents, position kept; center is per-control within immediate parent frame. One commit per op; no ADR. Equal Spacing already covered by Distribute (raw gaps). (#22) |
 | D4 | Keyboard jump + resize (Ctrl+arrow move, Shift+arrow resize) | shipped | S | `spec-vs-parity.md` §1–2 | Ctrl/Cmd jumps GRID*5 (one ruler tick); Shift resizes east/south edges, top-left anchored, min 2; Ctrl+Shift resizes by jump. Same TextChanges as drag/resize; no ADR. Shift changes meaning from 2x-nudge (VS parity). (#23) |
+| D5 | Toolbox upgrade (search, Choose Items, custom controls, Ctrl+Alt+X) | missing | M | `spec-vs-parity.md` §1 | Canvas toolbox + drag-to-add shipped; VS search / Choose Items / custom controls still missing. (#33) |
+| D6 | Document Outline (hierarchy + F2 rename) | missing | M | `spec-vs-parity.md` §1 | Read-only outline + rename unblocked; drag-reparent / Z-order gated on A1 patcher move. (#34) |
+| D7 | Smart tags / action lists | missing | M | `spec-vs-parity.md` §1 | Handled-type actions only; SplitContainer/TLP actions parked behind B1/B2 ADRs. (#35) |
+| D8 | Modal type editors (Font dialog etc.) | missing | M | `spec-vs-parity.md` §1 | Alternative input over modelled properties only; unmodelled state stays out (C3). (#36) |
+| D9 | Object selector dropdown (jump to hidden/buried control) | missing | S | `spec-property-tabs.md` §7 | Selection only; no generate path. (#37) |
+| D10 | Inspector Categorized + Alphabetical views | missing | S | `spec-property-tabs.md` §§1–2 | Presentational sort/group toggle over flat rows; hardcoded category table (engine cannot load attributes). Numbering per #29; triage to flip ready-for-agent. (#32) |
 
-Further P0 candidates in `spec-vs-parity.md` §3 (in-place Text edit, Make Same Size /
-Center / Equal Spacing, Ctrl+arrow jump, Shift+arrow resize, snapline
-baselines + Alt-suppress, grid-size setting, toolbox, Document Outline, smart tags, modal
-type editors) are unfiled — add as D2+ rows with issues when claimed. RTL warning and
-invisible-props surfacing already map to C1 (#16) / C3 (#18).
+P0 after #29 is clipboard (#3), grid-size setting, snapline baselines +
+Alt-suppress (`spec-vs-parity.md` §3) — everything else formerly listed there
+shipped (D1–D4, A4, C1/C3) or moved to D5–D10 above.
 
 ## 3. Deliberately not planned (do not re-propose without an ADR)
 

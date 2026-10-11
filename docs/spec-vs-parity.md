@@ -65,15 +65,15 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 
 | VS feature | VSCForms | Note |
 |---|---|---|
-| Toolbox (Ctrl+Alt+X, search, Choose Items, custom controls) | partial | canvas Controls toolbox shipped (`canvas.js:330-353`); VS search / Choose Items / custom controls / Ctrl+Alt+X still missing |
+| Toolbox (Ctrl+Alt+X, search, Choose Items, custom controls) | partial | canvas Controls toolbox shipped (`canvas.js:330-353`); VS search / Choose Items / custom controls / Ctrl+Alt+X still missing — upgrade scoped as D5 #33 |
 | Double-click populate containers | missing, no row | dblclick is drill-down / text-edit, not populate |
-| Document Outline (Ctrl+Alt+T, F2 rename) | missing, no row | drill-down + rename field only |
+| Document Outline (Ctrl+Alt+T, F2 rename) | missing | D6 #34 — drill-down + rename field only; drag-reparent gated on A1 |
 | Properties inspector (single-select, INSERT paths) | partial | no multi-select common-props, no Margin/Padding/Font expanders |
 | Collection editors (… dialogs) | partial | items list editor only (`canvas.js:1210-1256`) |
 | Events lightning-bolt + double-click default stub + bulk stubs | missing | A3 #4 — deliberately absent v1 |
 | Visual Dock/Anchor editors | refused-by-ADR | ADR 0003 |
-| Smart tags / action lists | missing, no row | TabControl add/remove, TLP columns, SplitContainer orientation, ListView columns, Dock-in-Parent |
-| Modal type editors | missing, no row | Font dialog etc. |
+| Smart tags / action lists | missing | D7 #35 — TabControl add/remove, TLP columns, SplitContainer orientation, ListView columns, Dock-in-Parent |
+| Modal type editors | missing | D8 #36 — Font dialog etc. |
 | Data Sources window | missing, no row | .NET Framework-only per docs; out of scope |
 
 ### Layout
@@ -172,10 +172,13 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 
 ## 3. Proposed phasing
 
-- **P0 — small, no ADR:** clipboard (#3), tab-order UI (#5), in-place text,
-  size/location readout, Make Same Size / Center / Equal Spacing, Ctrl+arrow
-  jump, Shift+arrow resize, grid-size setting + Alt-suppress, RTL warning (#16,
-  display-only), invisible-props read-only surfacing (#18). Verify first: Align
+- **P0 — small, no ADR:** clipboard (#3), grid-size setting, snapline
+  baselines + Alt-suppress. Shipped and removed from this list by #29:
+  tab-order UI (#5), in-place text (D2 #21), size/location readout (D1 #20),
+  Make Same Size / Center / Equal Spacing (D3 #22), Ctrl+arrow jump +
+  Shift+arrow resize (D4 #23), RTL warning (#16, display-only),
+  invisible-props read-only surfacing (#18). The remaining unscoped candidates
+  are tracker rows D5–D10 with their own issues. Verify first: Align
   6 + Distribute 2 already shipped — do not re-implement.
 - **P1 — medium, no ADR (spec updates only):** events deferred (#4),
   SelectedIndex/DropDownStyle/drag-reorder split per item
