@@ -1960,6 +1960,198 @@ setTimeout(async () => {
             !sandbox.__sent.some((m) => m.type === 'commit'),
             JSON.stringify(sandbox.__sent.map((m) => m.type)));
     }
+    // ---- A2 clipboard copy/paste via the host round-trip (#3)
+    // Copy serializes the selection to ControlNode JSON (`copy`); paste arrives back as
+    // `paste` after the host carries it through vscode.env.clipboard. The harness stands
+    // in for the host: it asserts the outgoing messages and re-posts `paste` directly.
+    send({ type: 'load', data: schema });
+    await settled();
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'c', metaKey: true, preventDefault() { } });
+    {
+        const cp = sandbox.__sent.find((m) => m.type === 'copy');
+        check('ctrl+C posts a copy message', !!cp, JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        check('copy serializes the selection as ControlNode JSON',
+            !!cp && Array.isArray(cp.data.nodes) && cp.data.nodes.length === 1 && cp.data.nodes[0].id === 'btnSubmit',
+            cp ? JSON.stringify(cp.data.nodes.map((n) => n.id)) : 'no copy');
+        check('copy carries the control type and geometry',
+            !!cp && cp.data.nodes[0].type === 'System.Windows.Forms.Button' && cp.data.nodes[0].properties.x === 96,
+            cp ? JSON.stringify(cp.data.nodes[0]) : 'no copy');
+    }
+    // Locked never joins the payload: alone it copies nothing, in a group it is excluded.
+    ctlNode('ThirdPartyGauge').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'c', metaKey: true, preventDefault() { } });
+    check('copying a locked-only selection posts no copy message',
+        !sandbox.__sent.some((m) => m.type === 'copy'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    send({ type: 'load', data: schema });
+    // A locked click collapses the selection to itself (readable reason), so the group-with-
+    // locked order is locked-first: shift+clicking modelled controls after it re-adds them,
+    // and the payload must still exclude the locked member.
+    ctlNode('ThirdPartyGauge').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('txtName').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'c', metaKey: true, preventDefault() { } });
+    {
+        const cp = sandbox.__sent.find((m) => m.type === 'copy');
+        const idsCopied = cp ? cp.data.nodes.map((n) => n.id).sort() : [];
+        check('locked never joins a group payload',
+            !!cp && idsCopied.join(',') === 'btnSubmit,txtName', idsCopied.join(','));
+    }
+    // Ctrl+V asks the host; the host round-trip reply arrives as `paste`.
+    send({ type: 'load', data: schema });
+    ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    sandbox.__sent.length = 0;
+    stage.dispatch('keydown', { key: 'v', metaKey: true, preventDefault() { } });
+    check('ctrl+V posts a requestPaste message to the host',
+        sandbox.__sent.some((m) => m.type === 'requestPaste'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    check('ctrl+V does not commit on its own — the host reply drives the insert',
+        !sandbox.__sent.some((m) => m.type === 'commit'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    // Ctrl+Shift+V still distributes (VS parity), it must not request a paste.
+    sandbox.__sent.length = 0;
+    ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+    ctlNode('btnSubmit').dispatch('mousedown',
+        { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+    stage.dispatch('keydown', { key: 'v', metaKey: true, shiftKey: true, preventDefault() { } });
+    check('ctrl+shift+V still distributes rather than pasting',
+        !sandbox.__sent.some((m) => m.type === 'requestPaste'),
+        JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    // Paste inserts with a GRID offset and a collision-free id, then commits once.
+    send({ type: 'load', data: schema });
+    await settled();
+    sandbox.__sent.length = 0;
+    send({ type: 'paste', data: { nodes: [
+        { id: 'btnSubmit', type: 'System.Windows.Forms.Button', children: [], locked: false,
+          properties: { x: 96, y: 154, width: 84, height: 27, text: 'Submit', tabIndex: 3 } },
+    ] } });
+    {
+        const pasted = canvasEl.querySelectorAll('.ctl').map((n) => n.dataset.id);
+        check('paste inserts the node under a fresh id (uniqueId collision handling)',
+            pasted.includes('btnSubmit2') && pasted.includes('btnSubmit'),
+            pasted.join(','));
+        const node = ctlNode('btnSubmit2');
+        check('paste offsets by one grid unit so the copy is visible',
+            node && parseFloat(node.style.left) === 104 && parseFloat(node.style.top) === 162,
+            node ? `${node.style.left},${node.style.top}` : 'missing btnSubmit2');
+    }
+    await settled();
+    {
+        const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('paste posts exactly one commit', commits.length === 1,
+            String(sandbox.__sent.map((m) => m.type)));
+        const sent = commits.length && commits[0].data.controls.find((c) => c.id === 'btnSubmit2');
+        check('commit carries the pasted control', !!sent && sent.properties.text === 'Submit',
+            sent ? JSON.stringify(sent.properties) : 'no commit');
+    }
+    // A pasted type the target does not model lands locked, never discarded.
+    send({ type: 'load', data: schema });
+    await settled();
+    sandbox.__sent.length = 0;
+    send({ type: 'paste', data: { nodes: [
+        { id: 'gauge1', type: 'ThirdParty.Widgets.GaugeControl', children: [], locked: false,
+          properties: { x: 10, y: 10, width: 80, height: 28 } },
+    ] } });
+    {
+        const node = ctlNode('gauge12') || ctlNode('gauge1');
+        check('unhandled pasted type is kept on the canvas, not discarded', !!node,
+            canvasEl.querySelectorAll('.ctl').map((n) => n.dataset.id).join(','));
+        check('unhandled pasted type lands locked',
+            !!node && node.classList.contains('locked'),
+            node ? String(node.className) : 'missing node');
+    }
+    await settled();
+    {
+        const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+        const sent = commits.length && commits[commits.length - 1].data.controls.find((c) => /gauge1/.test(c.id));
+        check('commit carries the locked fallback with its reason',
+            !!sent && sent.locked === true && String(sent.lockedReason || '').length > 10,
+            sent ? JSON.stringify(sent) : 'no commit');
+    }
+    // Container+child copies as dragRoots: the child rides along, pasted once.
+    {
+        const nested = JSON.parse(JSON.stringify(schema));
+        nested.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+            { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 5, y: 5, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+        ], locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+        send({ type: 'load', data: nested });
+        await settled();
+        ctlNode('pnlWrap').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        ctlNode('btnIn').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 20, clientY: 20 });
+        sandbox.__sent.length = 0;
+        stage.dispatch('keydown', { key: 'c', metaKey: true, preventDefault() { } });
+        const cp = sandbox.__sent.find((m) => m.type === 'copy');
+        check('container+child serializes as one root (dragRoots)',
+            !!cp && cp.data.nodes.length === 1 && cp.data.nodes[0].id === 'pnlWrap'
+                && cp.data.nodes[0].children.length === 1 && cp.data.nodes[0].children[0].id === 'btnIn',
+            cp ? JSON.stringify(cp.data.nodes.map((n) => [n.id, (n.children || []).map((c) => c.id)])) : 'no copy');
+        // Paste it back: one new container, child riding along exactly once.
+        sandbox.__sent.length = 0;
+        send({ type: 'paste', data: cp.data });
+        const panels = canvasEl.querySelectorAll('.ctl').filter((n) => /^pnlWrap/.test(n.dataset.id));
+        check('pasting the container inserts one new root, not root+orphan',
+            panels.length === 2, panels.map((n) => n.dataset.id).join(','));
+        await settled();
+        const last = sandbox.__sent.filter((m) => m.type === 'commit').slice(-1)[0];
+        const roots = last ? last.data.controls.filter((c) => /^pnlWrap/.test(c.id)) : [];
+        check('the pasted child rides along inside its container (not displaced twice)',
+            roots.length === 2 && roots.some((c) => (c.children || []).length === 1
+                && c.children[0].properties.x === 5 && c.children[0].properties.y === 5),
+            last ? JSON.stringify(roots.map((c) => [c.id, c.properties.x, (c.children || []).map((g) => [g.id, g.properties.x, g.properties.y])])) : 'no commit');
+    }
+    // Clipboard text parsing: prefixed payload parses, anything else pastes nothing.
+    send({ type: 'load', data: schema });
+    await settled();
+    {
+        const before = canvasEl.querySelectorAll('.ctl').length;
+        sandbox.__sent.length = 0;
+        send({ type: 'paste', data: { text: 'vscforms-controls-v1:' + JSON.stringify([
+            { id: 'btnSubmit', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 0, y: 0, width: 84, height: 27, text: 'T', tabIndex: 0 } },
+        ]) } });
+        check('paste accepts the host clipboard text shape',
+            canvasEl.querySelectorAll('.ctl').length === before + 1,
+            `${before} -> ${canvasEl.querySelectorAll('.ctl').length}`);
+        await settled();
+        sandbox.__sent.length = 0;
+        const countAfterGood = canvasEl.querySelectorAll('.ctl').length;
+        send({ type: 'paste', data: { text: 'hello, a foreign clipboard' } });
+        check('foreign clipboard text pastes nothing',
+            canvasEl.querySelectorAll('.ctl').length === countAfterGood,
+            String(canvasEl.querySelectorAll('.ctl').length));
+        await settled();
+        check('foreign text posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    }
+    // Refused forms paste nothing and do not even ask the host.
+    send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+    await settled();
+    {
+        const before = canvasEl.querySelectorAll('.ctl').length;
+        sandbox.__sent.length = 0;
+        stage.dispatch('keydown', { key: 'v', metaKey: true, preventDefault() { } });
+        check('refused form does not request a paste',
+            !sandbox.__sent.some((m) => m.type === 'requestPaste'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        send({ type: 'paste', data: { nodes: [
+            { id: 'btnX', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 0, y: 0, width: 84, height: 27, text: 'X', tabIndex: 0 } },
+        ] } });
+        check('refused form inserts nothing on paste',
+            canvasEl.querySelectorAll('.ctl').length === before,
+            `${before} -> ${canvasEl.querySelectorAll('.ctl').length}`);
+        await settled();
+        check('refused paste posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
