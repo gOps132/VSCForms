@@ -1788,6 +1788,178 @@ setTimeout(async () => {
             ids.canvas.querySelectorAll('.smart-tag-toggle').length === 0,
             String(ids.canvas.querySelectorAll('.smart-tag-toggle').length));
     }
+    // ---- D8 modal Font editor: a dialog over the modelled font path only
+    const workbench = () => sandbox.document.querySelector('.workbench');
+    const fontBtn = () => ids.inspector.querySelectorAll('button')
+        .find((b) => String(b.textContent || '') === 'Edit Font…');
+    const openModal = () => { fontBtn().dispatch('click', {}); return workbench().querySelector('.font-modal'); };
+    const clickBtn = (id) => ctlNode(id)
+        .dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+
+    send({ type: 'load', data: schema });
+    clickBtn('btnSubmit');
+    await settled();
+    check('Font row offers the modal editor button', !!fontBtn());
+
+    // Locked controls never get an editor — not even a locked Button, which is in
+    // HAS_FONT and so renders (disabled) inline rows.
+    const lockedFontSchema = JSON.parse(JSON.stringify(schema));
+    lockedFontSchema.controls.push({ id: 'btnLock', type: 'System.Windows.Forms.Button', children: [], locked: true,
+        lockedReason: 'Not modelled in this test.', properties: { x: 10, y: 120, width: 84, height: 27, text: 'Locked' } });
+    send({ type: 'load', data: lockedFontSchema });
+    clickBtn('btnLock');
+    await settled();
+    check('locked control gets no Font editor', !fontBtn());
+
+    // Types outside HAS_FONT have no Font to edit.
+    const noFontSchema = JSON.parse(JSON.stringify(schema));
+    noFontSchema.controls.push({ id: 'prgLoad', type: 'System.Windows.Forms.ProgressBar', children: [], locked: false,
+        properties: { x: 10, y: 150, width: 140, height: 20 } });
+    send({ type: 'load', data: noFontSchema });
+    clickBtn('prgLoad');
+    await settled();
+    check('NO_TEXT control gets no Font editor', !fontBtn());
+
+    // Refused forms are read-only: no editor.
+    send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+    clickBtn('btnSubmit');
+    await settled();
+    check('refused form gets no Font editor', !fontBtn());
+    // ... and no dialog can be forced open for one either.
+    check('no modal lingers after the refused load', !workbench().querySelector('.font-modal'));
+
+    // Fresh editable model for the commit round trips. btnSubmit has NO font yet,
+    // so the first modal edit below also exercises the INSERT path.
+    send({ type: 'load', data: schema });
+    clickBtn('btnSubmit');
+    await settled();
+    {
+        sandbox.__sent.length = 0;
+        const modal = openModal();
+        check('Font button opens the modal dialog', !!modal);
+        const famInput = modal.querySelectorAll('input').find((i) => i.id === 'fFontFamily');
+        const sizeInput = modal.querySelectorAll('input').find((i) => i.id === 'fFontSize');
+        check('modal pre-fills the current size default', sizeInput && sizeInput.value === '9',
+            sizeInput ? JSON.stringify(sizeInput.value) : 'no size input');
+        check('modal pre-fills an empty family', famInput && famInput.value === '',
+            famInput ? JSON.stringify(famInput.value) : 'no family input');
+        modal.querySelector('.font-ok').dispatch('click', {});
+        await settled();
+        check('OK with no changes posts no commit — a no-op never dirties the file',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        check('no-op OK closes the dialog', !workbench().querySelector('.font-modal'));
+    }
+    {
+        // Cancel discards even a real change.
+        const modal = openModal();
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontSize').value = '20';
+        sandbox.__sent.length = 0;
+        modal.querySelector('.font-cancel').dispatch('click', {});
+        await settled();
+        check('Cancel posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        check('Cancel closes the dialog', !workbench().querySelector('.font-modal'));
+    }
+    {
+        // Escape discards with no generate.
+        const modal = openModal();
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontSize').value = '20';
+        sandbox.__sent.length = 0;
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontFamily')
+            .dispatch('keydown', { key: 'Escape', preventDefault() { }, stopPropagation() { } });
+        await settled();
+        check('Escape posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        check('Escape closes the dialog', !workbench().querySelector('.font-modal'));
+    }
+    {
+        // A modal size edit commits through the font path (INSERT: btnSubmit has none).
+        const modal = openModal();
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontSize').value = '14';
+        sandbox.__sent.length = 0;
+        modal.querySelector('.font-ok').dispatch('click', {});
+        await settled();
+        const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('modal edit posts exactly one commit', commits.length === 1,
+            String(commits.length));
+        const sent = commits.length && commits[0].data.controls.find((c) => c.id === 'btnSubmit');
+        check('modal INSERTs the font the control lacked',
+            !!sent && sent.properties.font && sent.properties.font.size === 14,
+            sent ? JSON.stringify(sent.properties.font) : 'no commit');
+    }
+    {
+        // Family + style travel in the same font value the engine patches per-argument.
+        send({ type: 'load', data: schema });
+        clickBtn('btnSubmit');
+        await settled();
+        const modal = openModal();
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontFamily').value = 'Segoe UI';
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontSize').value = '12';
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontBold').checked = true;
+        sandbox.__sent.length = 0;
+        modal.querySelector('.font-ok').dispatch('click', {});
+        await settled();
+        const commit = sandbox.__sent.filter((m) => m.type === 'commit').pop();
+        const sent = commit && commit.data.controls.find((c) => c.id === 'btnSubmit');
+        const f = sent && sent.properties.font;
+        check('modal commits family, size and style together',
+            !!f && f.family === 'Segoe UI' && f.size === 12 && f.bold === true && f.italic === false,
+            f ? JSON.stringify(f) : 'no commit');
+    }
+    {
+        // Same value as the inline inspector edit: the dialog is input UI, and the
+        // engine's per-argument patch cannot tell the two apart.
+        const sameFont = (a, b) => !!a && !!b
+            && Math.abs(a.size - b.size) <= 0.001
+            && !!a.bold === !!b.bold && !!a.italic === !!b.italic
+            && (a.family || '') === (b.family || '');
+        send({ type: 'load', data: schema });
+        clickBtn('btnSubmit');
+        await settled();
+        sandbox.__sent.length = 0;
+        const inline = insInputs().find((i) => i.id === 'fFontsize');
+        inline.value = '14';
+        inline.dispatch('change', {});
+        await settled();
+        const inlineCommit = sandbox.__sent.filter((m) => m.type === 'commit').pop();
+        const inlineFont = inlineCommit
+            && inlineCommit.data.controls.find((c) => c.id === 'btnSubmit').properties.font;
+        send({ type: 'load', data: schema });
+        clickBtn('btnSubmit');
+        await settled();
+        const modal = openModal();
+        modal.querySelectorAll('input').find((i) => i.id === 'fFontSize').value = '14';
+        sandbox.__sent.length = 0;
+        modal.querySelector('.font-ok').dispatch('click', {});
+        await settled();
+        const modalCommit = sandbox.__sent.filter((m) => m.type === 'commit').pop();
+        const modalFont = modalCommit
+            && modalCommit.data.controls.find((c) => c.id === 'btnSubmit').properties.font;
+        check('modal commits the same font value as the inline inspector edit',
+            sameFont(modalFont, inlineFont),
+            JSON.stringify({ modalFont, inlineFont }));
+    }
+    {
+        // A control that already has a font: opening and OK-ing unchanged is a no-op,
+        // so untouched files keep byte-identity.
+        const withFont = JSON.parse(JSON.stringify(schema));
+        withFont.controls.find((c) => c.id === 'btnSubmit').properties.font =
+            { family: 'Arial', size: 10, bold: true, italic: false };
+        send({ type: 'load', data: withFont });
+        clickBtn('btnSubmit');
+        await settled();
+        const modal = openModal();
+        const famInput = modal.querySelectorAll('input').find((i) => i.id === 'fFontFamily');
+        check('modal pre-fills the existing family', famInput && famInput.value === 'Arial',
+            famInput ? JSON.stringify(famInput.value) : 'no family input');
+        sandbox.__sent.length = 0;
+        modal.querySelector('.font-ok').dispatch('click', {});
+        await settled();
+        check('unchanged existing font posts no commit',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+    }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);

@@ -960,6 +960,128 @@
         });
         node.appendChild(toggle);
     }
+    /**
+     * D8 modal Font editor — an alternative input surface over the already-modelled
+     * `font` schema property (spec-vs-parity.md §1). Every value commits through the
+     * existing setProp('font') path the inline rows use, so the engine's per-argument
+     * patch — and its INSERT for controls that have no Font yet — applies unchanged.
+     * Locked controls, refused forms and types outside HAS_FONT never get a dialog.
+     * Cancel, Escape and backdrop clicks close with no generate.
+     */
+    function closeFontDialog() {
+        const hosts = [];
+        const wb = (typeof document !== 'undefined' && document.querySelector)
+            ? document.querySelector('.workbench') : null;
+        if (wb) hosts.push(wb);
+        if (typeof document !== 'undefined' && document.body && document.body !== wb) hosts.push(document.body);
+        for (const h of hosts) {
+            if (!h || typeof h.querySelectorAll !== 'function') continue;
+            for (const n of Array.from(h.querySelectorAll('.font-modal-overlay'))) {
+                if (typeof n.remove === 'function') n.remove();
+            }
+        }
+    }
+
+    function openFontDialog(c) {
+        const fsimple = simpleName(c.type);
+        if (!c || c.locked || readOnly || !HAS_FONT.has(fsimple)) return;
+        closeFontDialog();
+        const cur = c.properties.font || {};
+        const curSize = typeof cur.size === 'number' ? cur.size : 9;
+        const curBold = !!cur.bold;
+        const curItalic = !!cur.italic;
+        const curFamily = typeof cur.family === 'string' ? cur.family : '';
+
+        const host = (typeof document !== 'undefined' && document.querySelector
+            && document.querySelector('.workbench'))
+            || (typeof document !== 'undefined' ? document.body : null)
+            || $('inspector');
+        if (!host) return;
+
+        const overlay = el('div', 'font-modal-overlay');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);';
+        const dlg = el('div', 'font-modal');
+        dlg.style.cssText = 'min-width:260px;max-width:320px;padding:12px;border:1px solid var(--border);border-radius:4px;background:var(--vscode-editor-background,#1e1e1e);';
+        dlg.appendChild(el('h3', null, 'Font — ' + c.id));
+
+        const famLabel = el('label', null, 'Family (blank keeps the default)');
+        const fam = document.createElement('input');
+        fam.type = 'text'; fam.id = 'fFontFamily'; fam.value = curFamily;
+        fam.placeholder = 'Default';
+        dlg.appendChild(famLabel); dlg.appendChild(fam);
+
+        const sizeLabel = el('label', null, 'Size');
+        const size = document.createElement('input');
+        size.type = 'number'; size.id = 'fFontSize'; size.value = String(curSize);
+        dlg.appendChild(sizeLabel); dlg.appendChild(size);
+
+        const styleRow = el('div', 'row');
+        const bold = document.createElement('input');
+        bold.type = 'checkbox'; bold.id = 'fFontBold'; bold.checked = curBold;
+        styleRow.appendChild(bold); styleRow.appendChild(el('label', null, 'Bold'));
+        const italic = document.createElement('input');
+        italic.type = 'checkbox'; italic.id = 'fFontItalic'; italic.checked = curItalic;
+        styleRow.appendChild(italic); styleRow.appendChild(el('label', null, 'Italic'));
+        dlg.appendChild(styleRow);
+
+        const preview = el('div', 'font-preview', 'Ag');
+        preview.title = 'Preview';
+        preview.style.cssText = 'margin:8px 0;padding:6px;border:1px solid var(--border);text-align:center;';
+        dlg.appendChild(preview);
+        const updatePreview = () => {
+            const s = parseFloat(size.value);
+            preview.style.fontSize = (Number.isNaN(s) ? curSize : s) + 'pt';
+            preview.style.fontWeight = bold.checked ? 'bold' : 'normal';
+            preview.style.fontStyle = italic.checked ? 'italic' : 'normal';
+            preview.style.fontFamily = fam.value.trim() ? fam.value.trim() : '';
+        };
+        for (const n of [fam, size, bold, italic]) {
+            n.addEventListener('change', updatePreview);
+            n.addEventListener('input', updatePreview);
+        }
+        updatePreview();
+
+        const btnRow = el('div', 'row');
+        const ok = el('button', 'font-ok', 'OK');
+        const cancel = el('button', 'font-cancel', 'Cancel');
+        btnRow.appendChild(ok); btnRow.appendChild(cancel);
+        dlg.appendChild(btnRow);
+        overlay.appendChild(dlg);
+        host.appendChild(overlay);
+
+        let done = false;
+        const finish = (commitIt) => {
+            if (done) return;
+            done = true;
+            const famV = fam.value.trim();
+            let sizeV = parseFloat(size.value);
+            if (Number.isNaN(sizeV) || sizeV <= 0) sizeV = curSize;
+            const next = { size: sizeV, bold: !!bold.checked, italic: !!italic.checked };
+            if (famV) next.family = famV;
+            const same = Math.abs(sizeV - curSize) <= 0.001
+                && !!bold.checked === curBold && !!italic.checked === curItalic
+                && famV === curFamily;
+            closeFontDialog();
+            // The document may have reloaded while the dialog was open; committing a
+            // detached control would post a stale model, so just close.
+            if (commitIt && !same && findControl(c.id) === c) setProp(c, 'font', next);
+        };
+        ok.addEventListener('click', () => finish(true));
+        cancel.addEventListener('click', () => finish(false));
+        overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(false); });
+        // Escape closes from anywhere in the dialog (it bubbles here in a real browser).
+        // Enter commits only from the text/number fields: on a focused button the native
+        // click decides, or one keypress would both commit AND cancel.
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
+        });
+        const editKeys = (e) => {
+            if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
+            else if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
+        };
+        for (const n of [fam, size]) n.addEventListener('keydown', editKeys);
+        if (typeof fam.focus === 'function') fam.focus();
+    }
 
     // ------------------------------------------------------------- selection
     function select(id, extend) {
@@ -1635,6 +1757,17 @@
                 (v) => setProp(c, 'font', Object.assign({}, f, { bold: v }))));
             box.appendChild(boolField('Italic', !!f.italic, appearanceBlocked,
                 (v) => setProp(c, 'font', Object.assign({}, f, { italic: v }))));
+            // D8: the modal dialog is a second input over the same setProp('font')
+            // path — never a new write path. Locked/refused get no button.
+            if (!appearanceBlocked) {
+                const fontEdit = el('div', 'field');
+                fontEdit.appendChild(el('label', null, 'Font editor'));
+                const fontBtn = el('button', 'font-edit-btn', 'Edit Font…');
+                fontBtn.title = 'Edit family, size and style in a dialog';
+                fontBtn.addEventListener('click', () => openFontDialog(c));
+                fontEdit.appendChild(fontBtn);
+                box.appendChild(fontEdit);
+            }
         }
 
         // Items list editor — only for ComboBox and ListBox (they have Items in the schema)
