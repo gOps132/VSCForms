@@ -9,10 +9,10 @@ wins on state and the spec wins on rationale — then file a fix so they agree.
 same change.** A shipped capability with a stale row here is a bug in the
 change, not in the docs.
 
-Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19,
-one per gap row). Triage per `docs/agents/triage-labels.md` before claiming.
+Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19
+plus D5–D10 (#32–#37), one per gap row). Triage per `docs/agents/triage-labels.md` before claiming.
 
-Last verified: `fa12d31` (doc-drift sweep #19) + D1 readout pilot (canvas harness green).
+Last verified: `1198005` (parity-spec cleanup #27–#30, P0 re-scope #29 with D5–D10 rows).
 Re-verify by reading `engine/src/TypeTable.cs`,
 `extension/media/canvas.js` (`HANDLED`), `engine/src/Schema.cs`,
 `engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
@@ -119,10 +119,14 @@ shipped (D1–D4, A4, C1/C3) or moved to D5–D10 above.
 
 ## 4. Doc drift (known-stale, fix the doc not the code)
 
-No known drift — swept at `c47e209` (#19 closed):
+No known drift — swept at `1198005` (#31 closed):
+all three formerly untracked specs committed (#30) and corrected to HEAD
+(`spec-vs-parity.md` shipped reality + HEAD citations, deferred events;
+`spec-example-compatibility.md` 19 types + 100% example coverage + fixed
+`verify.sh` citation; `spec-property-tabs.md` citations verified, D10 numbered);
 `SCHEMA.md` v1 type table + `README.md` row read 19, `CONTEXT.md`/`AGENTS.md`/`CHANGELOG`
 flag the 47.9% ceiling as measured-at-10-types stale, and `spec-features.md` §8b is marked
-historical (tracker is the todo list).
+historical (tracker is the todo list). `git status` carries no `??` entries.
 
 ## 5. How to use this file
 
