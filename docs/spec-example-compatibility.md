@@ -5,7 +5,7 @@
 
 ## 0. Facts (verified, not assumed)
 
-- `example/` is a full clone of `flurgerburger/Washing_Machine_Timer-Fuzzy_Logic` with a nested `example/.git/` (not a submodule), plus committed `bin/`, `obj/`, `.DS_Store`. Root `.gitignore` ignores none of it. `example/.gitignore` (VS standard) ignores `bin/`/`obj/`, but the nested repo means parent git sees the whole directory as untracked (`?? example/`).
+- `example/` is a full clone of `flurgerburger/Washing_Machine_Timer-Fuzzy_Logic`, flattened to plain files (#30: nested `example/.git/` deleted, `bin/`/`obj/`/`DS_Store` removed from git; root `.gitignore` covers `example/bin/` and `example/obj/`). `example/.gitignore` (VS standard) ignores `bin/`/`obj/`.
 - `example/Form1.Designer.cs`: 48 instantiations → 48 **Modelled Controls**, 0 **Locked Controls**. **Coverage 100%**, no **Refusal** (no `ApplyResources`, no `Dock`/`Anchor`; the sibling `Form1.resx` is headers-only and never called from `InitializeComponent()`). Composition at flatten time (`parse`, 11 Oct 2026): 19 `Label`, 8 `GroupBox`, 5 `PictureBox`, 4 `TrackBar`, 2 each `ComboBox`/`Button`/`CheckBox`, 1 each `TextBox`/`RadioButton`/`ListBox`/`Panel`/`ProgressBar`/`DateTimePicker`. The snapshot carries local additions over upstream (one of each handled type), which is why it reads 48 and not the upstream count.
 - `csproj` is `net7.0-windows` + `UseWindowsForms=true`, no `EnableWindowsTargeting` → `dotnet build` fails on macOS as-is. Solution is `.slnx`-only (VS 17.13+ XML). A `WinExe` cannot execute on macOS regardless; the extension never builds or launches apps — it emits a **Surgical Patch** over the Designer File only.
 - Engine handles 19 widget types + `Form` (`engine/src/TypeTable.cs:13-43`); canvas mirrors them (`extension/media/canvas.js` `HANDLED:145-171`). Full .NET 7–10 surface is 77 controls (9 legacy Framework-only excluded). Containers modelled today: `Panel`, `GroupBox`, `TabControl`, `TabPage`; `DataGridView`, `ListView`, `TreeView` are read-only placeholders (labelled boxes, no interior).
@@ -26,7 +26,7 @@
 
 ### A2. Toolchain (demo copy diverges from upstream on purpose)
 
-- Retarget demo copy to `net10.0-windows`, add `<EnableWindowsTargeting>true</EnableWindowsTargeting>` (same trick as `test/verify.sh:142-189`), keep `UseWindowsForms=true`, `OutputType=WinExe`.
+- Retarget demo copy to `net10.0-windows`, add `<EnableWindowsTargeting>true</EnableWindowsTargeting>` (same trick as the compile-gate csproj blocks in `test/verify.sh`, e.g. `:416-425`), keep `UseWindowsForms=true`, `OutputType=WinExe`.
 - Keep the `.slnx`; add a classic `Washing_Machine_Timer-Fuzzy_Logic.sln` beside it so the VS Code C# extension and older SDKs open it.
 - Keep `Form1.resx` as-is (empty). Do not introduce `ApplyResources` calls.
 
