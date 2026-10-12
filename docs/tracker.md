@@ -50,6 +50,14 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
   corpus), `Dock`/`Anchor` (40.9%). See §3.
+- **Layout tier (Windows CI):** `scripts/verify-layout-fixtures.ps1` drives every
+  checked-in fixture through the real WinForms runtime (one run per Designer file,
+  18 fixtures). Geometry is compared per axis with no tolerance; controls whose
+  runtime size is font- or grid-determined (`AutoSize`, the `MonthCalendar` grid
+  snap, the `UpDownBase` height) are excluded, and refused forms are presence-only.
+  Fixtures must stage their controls into a parent collection — a control that is
+  never `Controls.Add`-ed parses as a top-level schema node but is absent from the
+  runtime tree, which the tier reports as control-not-found. (#43)
 
 ## 2. Gaps to implement
 

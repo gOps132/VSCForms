@@ -55,7 +55,11 @@ namespace FixtureInvisible
             //
             // InvisibleForm
             //
-            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
+            // A non-Font scale mode on purpose (C3 warning), but the dimensions must match the
+            // mode: the designer writes (7F, 15F) for Font and (96F, 96F) for Dpi. The Font-sized
+            // pair with Dpi made WinForms rescale the whole tree by (96/7, 96/15) at runtime, so
+            // the staged form could never reproduce the schema it was parsed from.
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(292, 128);
             this.Controls.Add(this.lblInfo);

@@ -145,10 +145,17 @@ internal static class Program
                 bool autoSize = found is Label or CheckBox or RadioButton or LinkLabel
                                 || found is MonthCalendar
                                 || found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b;
+                // UpDownBase (NumericUpDown, DomainUpDown) clamps its HEIGHT to the font's
+                // preferred height, so a declared Size.Height never survives runtime either —
+                // the same class of snap as MonthCalendar, but only on the height axis (the
+                // width IS designer-controlled). Skip what the runtime overrides; the point of
+                // this tier is VSCForms' geometry, not WinForms' internal font metrics.
+                bool heightSnapped = found is UpDownBase;
                 if (!autoSize)
                 {
                     Check(id, "Size.Width", props.GetProperty("width").GetInt32(), found.Width);
-                    Check(id, "Size.Height", props.GetProperty("height").GetInt32(), found.Height);
+                    if (!heightSnapped)
+                        Check(id, "Size.Height", props.GetProperty("height").GetInt32(), found.Height);
                 }
             }
 
