@@ -38,6 +38,14 @@ versioning follows [SemVer](https://semver.org/).
 - A `layout` CI job comparing the Form Schema against real WinForms runtime `Bounds`
   (Windows-only).
 
+### Removed
+
+- **Per-control smart-tag dropdowns (D7 reversal, #44)**: removed the `▾` disclosure
+  glyph and its Duplicate / Delete / Center / toggle flyout from every handled control.
+  Each action already has its own surface (`Cmd/Ctrl+D`, inspector Delete/Arrange/rows,
+  items editor, container drop), so the menus added clutter and covered control content
+  without adding capability. No engine, schema, or protocol change.
+
 ### Fixed
 
 - **Fixed: canvas drag and property edits reporting "schema is required" error**: unpacked `(msg.data ?? msg.schema)` in the extension host commit listener because `canvas.js` sends `{ type: 'commit', data: schema }`.
