@@ -213,7 +213,7 @@ Supplied from VS behavior; mapped to tracker state:
 | Document Outline (`Ctrl+Alt+T`) hierarchy + drag-reparent + Z-order | missing; drill-down + tab-strip exist, reorder unrepresentable (`generate` diffs by `id`) | A1 deferred+ADR |
 | Toolbox (`Ctrl+Alt+X`), drawers | partial — 19 handled types only (`addControl canvas.js:1484`) | B-rows per family (B3/B6 missing) |
 | Component tray (Timer, ToolTip, `BackgroundWorker`, …) | deliberately absent — non-visuals in `NonVisualFields`, never rendered | §3 not-planned |
-| Smart tags (▶ flyout) | unfiled P0 candidate (`spec-vs-parity.md` §3) | file when claimed (#29) |
+| Smart tags (▾ flyout) | removed — redundant with existing surfaces, no replacement intended | D7 removed (#44) |
 | Data Sources (`Shift+Alt+D`) drag-to-bind | out of scope — interiors display-only | B4 partial |
 | Tab Order tool overlays | shipped — status-bar mode, click-assign via TabIndex path | A4 shipped (#5) |
 

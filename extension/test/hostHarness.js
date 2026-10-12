@@ -1647,144 +1647,27 @@ setTimeout(async () => {
             'a draggable row would fake drag-reparent');
     }
 
-    // ---- D7 smart tags: flyouts on handled controls, each wired to an existing path
+    // ---- D7 smart tags removed (#44): no per-control disclosure glyph. Every action the
+    // flyout aliased already has its own surface (Cmd/Ctrl+D duplicate, inspector
+    // Delete/Arrange/rows, items editor, container drop), so a glyph on every Modelled
+    // Control was clutter, not capability. Assert absence on an editable form and a
+    // refused form; a Locked Control never had one and still does not.
     send({ type: 'load', data: schema });
     await settled();
     {
-        const tagToggle = (id) => ctlNode(id).querySelector('.smart-tag-toggle');
-        const tagKeys = (id) => {
-            const t = tagToggle(id);
-            if (!t) return null;
-            t.dispatch('click', {});
-            return ctlNode(id).querySelectorAll('.smart-tag-action').map((b) => b.dataset.key);
-        };
-        const clickTag = (id, key) => {
-            const n = ctlNode(id);
-            if (!n.querySelector('.smart-tag-flyout')) {
-                const t = n.querySelector('.smart-tag-toggle');
-                if (!t) return false;
-                t.dispatch('click', {});
-            }
-            const b = n.querySelectorAll('.smart-tag-action').find((x) => x.dataset.key === key);
-            if (!b) return false;
-            b.dispatch('click', {});
-            return true;
-        };
-        const lastCommit = () => sandbox.__sent.filter((m) => m.type === 'commit').pop();
-
-        check('handled control offers a smart tag', !!tagToggle('btnSubmit'));
-        check('locked control offers no smart tag', !tagToggle('ThirdPartyGauge'));
-        const btnKeys = tagKeys('btnSubmit');
-        for (const k of ['duplicate', 'delete', 'center-h', 'center-v']) {
-            check('button tag offers ' + k, !!btnKeys && btnKeys.includes(k), String(btnKeys));
-        }
-        send({ type: 'load', data: schema });
-        await settled();
-
-        // Checked toggle emits the same commit as the inspector checkbox path (setProp).
-        const chkSchema = {
-            ...schema,
-            controls: [
-                { id: 'chkOpt', type: 'System.Windows.Forms.CheckBox', children: [], locked: false,
-                  properties: { x: 10, y: 10, width: 110, height: 19, text: 'Opt', checked: false, tabIndex: 0 } },
-            ],
-            analysis: { modelledCount: 1, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
-        };
-        send({ type: 'load', data: chkSchema });
-        await settled();
-        check('checkbox tag offers the checked toggle', (tagKeys('chkOpt') || []).includes('checked'));
-        send({ type: 'load', data: chkSchema });
-        await settled();
-        sandbox.__sent.length = 0;
-        check('checked tag runs', clickTag('chkOpt', 'checked'));
-        await settled();
-        const chkSent = lastCommit() && lastCommit().data.controls.find((c) => c.id === 'chkOpt');
-        check('checked tag commits checked:true via the setProp path',
-            !!chkSent && chkSent.properties.checked === true,
-            chkSent ? JSON.stringify(chkSent.properties) : 'no commit');
-
-        // Duplicate tag emits the same commit as the Ctrl+D path.
-        send({ type: 'load', data: schema });
-        await settled();
-        sandbox.__sent.length = 0;
-        check('duplicate tag runs', clickTag('btnSubmit', 'duplicate'));
-        await settled();
-        const dupCommit = lastCommit();
-        const dupIds = dupCommit ? dupCommit.data.controls.map((c) => c.id) : [];
-        check('duplicate tag adds a fresh-named copy',
-            dupIds.length === 4 && dupIds.some((id) => id !== 'btnSubmit' && /btnSubmit/.test(id)),
-            dupIds.join(','));
-        const dupCopy = dupCommit && dupCommit.data.controls
-            .find((c) => c.id !== 'btnSubmit' && /btnSubmit/.test(c.id));
-        check('duplicate tag offsets by one grid unit like Ctrl+D',
-            !!dupCopy && dupCopy.properties.x === 104 && dupCopy.properties.y === 162,
-            dupCopy ? JSON.stringify(dupCopy.properties) : 'n/a');
-
-        // Center tag emits the same commit as the inspector Arrange button (align path).
-        send({ type: 'load', data: schema });
-        await settled();
-        sandbox.__sent.length = 0;
-        check('center-h tag runs', clickTag('btnSubmit', 'center-h'));
-        await settled();
-        const ctrSent = lastCommit() && lastCommit().data.controls.find((c) => c.id === 'btnSubmit');
-        check('center-h tag centers within the 292-wide form: (292-84)/2=104',
-            !!ctrSent && ctrSent.properties.x === 104,
-            ctrSent ? JSON.stringify(ctrSent.properties) : 'no commit');
-
-        // TabControl add-page tag uses the nested INSERT path (parent Controls.Add).
-        const tabSchema = {
-            ...schema,
-            controls: [
-                { id: 'tabMain', type: 'System.Windows.Forms.TabControl', locked: false,
-                  properties: { x: 10, y: 15, width: 300, height: 200, tabIndex: 0 },
-                  children: [
-                      { id: 'page1', type: 'System.Windows.Forms.TabPage', locked: false,
-                        properties: { x: 4, y: 22, width: 290, height: 170, text: 'General', tabIndex: 0 },
-                        children: [] },
-                  ] },
-            ],
-            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
-        };
-        send({ type: 'load', data: tabSchema });
-        await settled();
-        check('tabcontrol tag offers add-page', (tagKeys('tabMain') || []).includes('add-page'));
-        send({ type: 'load', data: tabSchema });
-        await settled();
-        sandbox.__sent.length = 0;
-        check('add-page tag runs', clickTag('tabMain', 'add-page'));
-        await settled();
-        const tabSent = lastCommit() && lastCommit().data.controls.find((c) => c.id === 'tabMain');
-        check('add-page tag inserts a TabPage child via the container path',
-            !!tabSent && tabSent.children.length === 2
-                && tabSent.children[1].type === 'System.Windows.Forms.TabPage',
-            tabSent ? JSON.stringify(tabSent.children.map((p) => p.id)) : 'no commit');
-
-        // ComboBox add-item tag uses the items-editor path (items array + commit).
-        const cboSchema = {
-            ...schema,
-            controls: [
-                { id: 'cboTest', type: 'System.Windows.Forms.ComboBox', children: [], locked: false,
-                  properties: { x: 10, y: 10, width: 120, height: 23, text: '', tabIndex: 0, items: ['A', 'B'] } },
-            ],
-            analysis: { modelledCount: 1, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
-        };
-        send({ type: 'load', data: cboSchema });
-        await settled();
-        check('combobox tag offers add-item', (tagKeys('cboTest') || []).includes('add-item'));
-        send({ type: 'load', data: cboSchema });
-        await settled();
-        sandbox.__sent.length = 0;
-        check('add-item tag runs', clickTag('cboTest', 'add-item'));
-        await settled();
-        const cboSent = lastCommit() && lastCommit().data.controls.find((c) => c.id === 'cboTest');
-        check('add-item tag appends through the items array',
-            !!cboSent && Array.isArray(cboSent.properties.items) && cboSent.properties.items.length === 3,
-            cboSent ? JSON.stringify(cboSent.properties.items) : 'no commit');
-
-        // Refused forms get no tags: every action would be a write we promised never to make.
-        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
-        await settled();
-        check('refused form offers no smart tags',
+        check('no disclosure glyph renders on a Modelled Control',
+            !ctlNode('btnSubmit').querySelector('.smart-tag-toggle'));
+        check('no smart-tag flyout renders anywhere',
+            ids.canvas.querySelectorAll('.smart-tag-flyout').length === 0,
+            String(ids.canvas.querySelectorAll('.smart-tag-flyout').length));
+        check('no smart-tag CSS classes leak into the canvas',
+            ids.canvas.querySelectorAll('.smart-tag-toggle,.smart-tag-action').length === 0,
+            String(ids.canvas.querySelectorAll('.smart-tag-toggle,.smart-tag-action').length));
+    }
+    send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+    await settled();
+    {
+        check('a Refusal renders no disclosure glyph',
             ids.canvas.querySelectorAll('.smart-tag-toggle').length === 0,
             String(ids.canvas.querySelectorAll('.smart-tag-toggle').length));
     }
