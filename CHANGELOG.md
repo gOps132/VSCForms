@@ -48,6 +48,15 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **Fixed: controls outside the form bounds were clipped to invisibility on resize.** The canvas
+  (`overflow: hidden`) and every container cut off anything past the edge, so shrinking the
+  form — or opening one already smaller than its layout, like the 512×320 example holding an
+  854-wide group at x=468 and a combo at y=446 inside a 261-high group — hid controls with no
+  cue and no way to grab them back. The canvas and containers are now overflow-visible,
+  VS-designer style, with a dashed outline marking the true `ClientSize` edge; the scrolling
+  stage picks up the overhang. Runtime clipping is unchanged (ADR 0006: layout view, not pixel
+  parity).
+
 - **Fixed: Ctrl/Cmd+Z did nothing after renaming a control (#45).** The rename path wrote the Designer File (and code-behind) but never fired a `CustomDocumentEditEvent`, so there was no undo step, no dirty marker, and `doc.text` stayed stale — which then poisoned the *next* edit's undo baseline across the two files. Rename now snapshots both files and fires one edit event, so a single undo restores both (`docs/adr/0008`). The layout undo path was verified end-to-end with a real trusted keypress (file + canvas, undo and redo); see `test/run-cdp-probe.js`.
 - **Fixed: canvas drag and property edits reporting "schema is required" error**: unpacked `(msg.data ?? msg.schema)` in the extension host commit listener because `canvas.js` sends `{ type: 'commit', data: schema }`.
 - **Fixed: integration test conflicting canary name**: updated canary rename target from `tabDetails` to `calDetails` in `test/suite.js` to match the `MonthCalendar` canary control in `WiredForm.Designer.cs`.

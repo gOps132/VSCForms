@@ -184,7 +184,13 @@ body { display: flex; flex-direction: column; }
 }
 .form-size { color: var(--muted); font-variant-numeric: tabular-nums; }
 
-.canvas { position: relative; overflow: hidden; }
+/* The canvas never clips: controls stranded outside ClientSize (a form shrunk
+   after layout, like the 512x320 example holding an 854-wide group at x=468)
+   stay visible and selectable, VS-designer style. The runtime still clips;
+   this is a layout view, not pixel parity (ADR 0006). The dashed outline marks
+   the ClientSize edge so overflow reads as overflow. The scrolling `.stage`
+   picks up the overhang, so no window resize can hide these controls. */
+.canvas { position: relative; overflow: visible; outline: 1px dashed var(--border); outline-offset: -1px; }
 
 /* -------------------------------------------------------------------- control */
 .ctl {
@@ -265,6 +271,11 @@ body { display: flex; flex-direction: column; }
 .ctl.t-combobox > .ctl-caption,
 .ctl.t-listbox > .ctl-caption { justify-content: flex-start; }
 /* A container positions children absolutely and shows its own caption in the border. */
+/* Containers never clip either, for the same reason as the canvas: a child below
+   the container's bottom edge (e.g. a combo at y=446 in a 261-high group) stays
+   visible and draggable instead of vanishing with no cue. Leaf controls keep the
+   default `overflow: hidden` above so their own text still clips. */
+.ctl.t-container { overflow: visible; }
 .ctl.t-container > .ctl-caption {
   inset: auto; left: 6px; top: -1px; padding: 0 2px;
   background: var(--bg); font-size: 11px;
