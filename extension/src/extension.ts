@@ -46,10 +46,11 @@ class DesignerDocument implements vscode.CustomDocument {
  * applied locally on mousedown and only pushed to the engine (and therefore to the document)
  * after the gesture settles.
  *
- * Because the file is written by the engine and NOT via a WorkspaceEdit, canvas undo has to be
- * implemented as an explicit model-level stack rather than relying on the text editor's undo
- * stack. This is a genuine limitation of the write-through model and is documented rather than
- * papered over.
+ * Undo is VS Code's job (ADR 0004): after every committed edit — layout or rename — the host
+ * fires a CustomDocumentEditEvent carrying real undo()/redo() continuations, so one Ctrl+Z
+ * restores the file(s) through VS Code's own stack. The canvas holds no undo stack of its own;
+ * a private stack plus the document events would apply one Ctrl+Z twice and diverge from the
+ * file.
  */
 class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocument> {
     public static readonly viewType = 'vscforms.formDesigner';
@@ -68,8 +69,10 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
 
     /**
      * The most recent undo/redo pair. Exported through `__lastEdit` so the integration suite
-     * can assert that our continuations restore the file exactly. VS Code's Ctrl+Z dispatch to
-     * them cannot be driven from the extension host API.
+     * can drive the continuations directly: a synthetic keypress cannot be produced from the
+     * extension host API, and while `executeCommand('undo')` does reach them (verified on
+     * VS Code 1.141, alongside a real trusted keypress), driving the continuations is the
+     * deterministic assertion — it is OUR half of the contract either way.
      */
     lastEdit: { undo: () => Promise<void>; redo: () => Promise<void> } | undefined;
 
@@ -233,15 +236,7 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 case 'rename': {
                     if (parsed.ok === false) return;
                     const { id, to } = msg.data as { id: string; to: string };
-                    const res = await engine.rename(doc.uri.fsPath, id, to);
-                    if (!res.ok) {
-                        post('renameRefused', { message: res.error ?? 'rename refused' });
-                        return;
-                    }
-                    // Re-parse rather than patching the schema in place: the id changed on disk
-                    // and the file is the source of truth.
-                    const after = await engine.parse(doc.uri.fsPath);
-                    if (after.ok) post('load', after.schema);
+                    await this.doRename(doc, post, id, to);
                     break;
                 }
 
@@ -298,27 +293,119 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
             (await vscode.workspace.fs.readFile(doc.uri))).toString('utf8');
         doc.text = after;
 
+        await this.fireEdit(doc, post, 'Edit form layout', before_, after);
+
+        await post('committed', { changed: true });
+    }
+
+    /**
+     * The sibling code-behind for a Designer File: `Form1.Designer.cs` -> `Form1.cs`.
+     * Derived, never searched for — there is exactly one. Must match the engine's
+     * `Renamer.SiblingCodeBehind` (case-insensitive suffix); if the two disagree the
+     * rename undo snapshot covers a file the engine did not write, or misses one it did.
+     */
+    private siblingCodeBehind(designerFsPath: string): string | undefined {
+        const suffix = '.Designer.cs';
+        if (!designerFsPath.toLowerCase().endsWith(suffix.toLowerCase())) return undefined;
+        // Slice the full path: it already carries its directory. (path.join(dir, absolute)
+        // would concatenate, not resolve — that bug shipped in the first version of this.)
+        return designerFsPath.slice(0, -suffix.length) + '.cs';
+    }
+
+    private async readTextIfExists(fsPath: string): Promise<string | undefined> {
+        try {
+            return Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(fsPath))).toString('utf8');
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Announce one user-visible edit on VS Code's undo stack (ADR 0004).
+     *
+     * Rename is the only operation that also writes the sibling code-behind (ADR 0008), so it
+     * passes both files and one Ctrl+Z restores both; every other operation passes Designer
+     * text only. Refusals never reach here: they write nothing and fire nothing.
+     */
+    private async fireEdit(
+        doc: DesignerDocument,
+        post: (type: string, data?: unknown) => Thenable<boolean> | Promise<boolean>,
+        label: string,
+        beforeDesigner: string,
+        afterDesigner: string,
+        codeBehind?: { path: string; before: string | undefined; after: string | undefined },
+    ): Promise<void> {
         // CustomDocumentEditEvent is an interface, not a class: we supply the document plus
         // the undo/redo continuations VS Code will invoke. Capturing the text from BEFORE the
         // engine wrote is what lets Ctrl+Z restore the file byte-for-byte, through VS Code's
         // own undo stack rather than a private one in the canvas. See ADR 0004.
         const undo = async () => {
             await vscode.workspace.fs.writeFile(
-                doc.uri, Buffer.from(before_, 'utf8'));
-            doc.text = before_;
+                doc.uri, Buffer.from(beforeDesigner, 'utf8'));
+            doc.text = beforeDesigner;
+            // The engine only ever edits an existing code-behind, never creates one, so an
+            // undefined `before` means "nothing to restore" rather than "delete the file".
+            if (codeBehind?.before !== undefined) {
+                await vscode.workspace.fs.writeFile(
+                    vscode.Uri.file(codeBehind.path), Buffer.from(codeBehind.before, 'utf8'));
+            }
             await post('undoExternal', { text: doc.text });
         };
         const redo = async () => {
             await vscode.workspace.fs.writeFile(
-                doc.uri, Buffer.from(after, 'utf8'));
-            doc.text = after;
+                doc.uri, Buffer.from(afterDesigner, 'utf8'));
+            doc.text = afterDesigner;
+            if (codeBehind?.after !== undefined) {
+                await vscode.workspace.fs.writeFile(
+                    vscode.Uri.file(codeBehind.path), Buffer.from(codeBehind.after, 'utf8'));
+            }
             await post('undoExternal', { text: doc.text });
         };
 
-        this._onDidChange.fire({ document: doc, label: 'Edit form layout', undo, redo });
+        this._onDidChange.fire({ document: doc, label, undo, redo });
         this.lastEdit = { undo, redo };
+    }
 
-        await post('committed', { changed: true });
+    /**
+     * The one rename path, shared by the canvas message handler and the test seam.
+     *
+     * Returns the engine's outcome so the seam can assert refusals; the canvas learns about
+     * success through the re-parsed `load` and about refusal through `renameRefused`.
+     */
+    private async doRename(
+        doc: DesignerDocument,
+        post: (type: string, data?: unknown) => Thenable<boolean> | Promise<boolean>,
+        id: string,
+        to: string,
+    ): Promise<{ ok: true; designerPath: string; codeBehind?: string } | { ok: false; error?: string; errorKind?: string }> {
+        const designerPath = doc.uri.fsPath;
+        const cbPath = this.siblingCodeBehind(designerPath);
+        const beforeDesigner = doc.text;
+        const beforeCodeBehind = cbPath ? await this.readTextIfExists(cbPath) : undefined;
+
+        const res = await engine.rename(designerPath, id, to);
+        if (!res.ok) {
+            await post('renameRefused', { message: res.error ?? 'rename refused' });
+            return { ok: false, error: res.error, errorKind: res.errorKind };
+        }
+
+        // The engine wrote behind VS Code's back: mirror both files into the announcement,
+        // and the Designer text into the document so the NEXT commit's undo baseline is the
+        // post-rename text. Leaving doc.text stale here is how an undo used to resurrect the
+        // old name in one file while the other kept the new one (#45).
+        const afterDesigner = Buffer.from(
+            (await vscode.workspace.fs.readFile(doc.uri))).toString('utf8');
+        doc.text = afterDesigner;
+        const afterCodeBehind = cbPath ? await this.readTextIfExists(cbPath) : undefined;
+
+        await this.fireEdit(doc, post, `Rename ${id} to ${to}`, beforeDesigner, afterDesigner,
+            cbPath ? { path: cbPath, before: beforeCodeBehind, after: afterCodeBehind } : undefined);
+
+        // Re-parse rather than patching the schema in place: the id changed on disk
+        // and the file is the source of truth.
+        const after = await engine.parse(designerPath);
+        if (after.ok) await post('load', after.schema);
+        return { ok: true, designerPath, codeBehind: res.codeBehind };
     }
 
     /**
@@ -390,9 +477,22 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 if (!o.designer || !o.from || !o.to) throw new Error('rename seam needs designer, from and to');
                 // Failures are RETURNED, not thrown: a refusal is a product behaviour the suite
                 // asserts on, and an exception would abort the run instead of being inspected.
-                const res = await engine.rename(o.designer, o.from, o.to);
+                // Runs the same doRename() the canvas triggers — including the edit event, so
+                // the suite can assert rename-undo restores both files — which requires the
+                // file to be open in a canvas (an edit belongs to an open document).
+                const wanted = o.designer;
+                const entry = Array.from(this.documents.values())
+                    .find((e) => e.uri.fsPath === wanted);
+                if (!entry) throw new Error('that document is not open in a VSCForms canvas');
+                const panel = this.panels.get(entry.uri.toString());
+                if (!panel) throw new Error('no canvas panel for that document');
+                const res = await this.doRename(
+                    entry.doc,
+                    (t: string, d?: unknown) => panel.webview.postMessage({ type: t, data: d }),
+                    o.from, o.to,
+                );
                 if (!res.ok) return { ok: false, error: res.error, errorKind: res.errorKind };
-                return { ok: true, designerPath: o.designer, codeBehind: res.codeBehind };
+                return { ok: true, designerPath: wanted, codeBehind: res.codeBehind };
             }
             case 'newProject': {
                 // The command itself is two interactive dialogs, which the suite cannot drive.

@@ -64,6 +64,7 @@ node test/verify.sh                    # Roslyn invariants + real WinForms compi
 node test/e2e.js                       # canvas -> host -> engine -> file
 node extension/test/hostHarness.js     # DOM harness over the canvas code
 node test/run-integration.js           # real VS Code; needs a display
+node test/run-cdp-probe.js             # manual only: real trusted Ctrl/Cmd+Z via CDP; needs a display, not in CI
 ./scripts/run-windows-layout.sh example   # schema vs real WinForms runtime; Windows only
 ```
 
@@ -71,11 +72,12 @@ Integration tests reach internals through the hidden `vscforms._testSeam` comman
 webview is unreachable from the extension host API. Each case runs the real production path,
 not a simulation.
 
-One thing that tier cannot drive: VS Code routes Ctrl+Z to custom editors via a keybinding
-implementation the extension host API cannot dispatch, so `executeCommand('undo')` does not
-reach it. The suite therefore asserts that *our* undo continuation restores the file
-byte-for-byte. Don't replace that assertion with a command-based one — it will silently pass
-without testing anything.
+One thing that tier cannot drive: a synthetic Ctrl+Z keypress cannot be produced from the
+extension host API, so the suite drives *our* undo continuations directly and asserts they
+restore the file byte-for-byte. The dispatch itself — a real trusted keypress reaching those
+continuations, file and canvas both reverting — is covered separately by the manual
+`run-cdp-probe` tier (live test window + CDP key events + webview DOM snapshots; verified on
+1.141, keep it passing when touching undo/rename).
 
 Two tiers carry the most weight, and they are not the same kind of test:
 

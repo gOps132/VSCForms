@@ -207,6 +207,10 @@ async function run(vscode) {
     fs.copyFileSync(path.join(ROOT, 'fixtures/simple/SimpleDialog.Designer.cs'), simple);
     const original = fs.readFileSync(simple, 'utf8');
 
+    // Pre-rename bytes for the rename-undo test. Captured inside the rename test below,
+    // which runs while the staged files are still in their original state.
+    let wiredBefore = null;
+
     const docked = path.join(dir, 'DockedForm.Designer.cs');
     fs.copyFileSync(path.join(ROOT, 'fixtures/docked/DockedForm.Designer.cs'), docked);
 
@@ -217,10 +221,23 @@ async function run(vscode) {
     await waitFor(() => isOurEditor(vscode), 10000, 'our custom editor to be selected automatically');
 
     await test('rename updates both files and the document stays in sync', async () => {
-        // The seam copies the wired fixture, renames through the SAME path the canvas uses,
-        // and re-parses. The compile tier cannot cover this because it builds against a
-        // generated shim with no event wiring — a rename that touched only the Designer File
-        // would leave CS1061 there, and every other tier would still pass.
+        // The seam renames through the same doRename() the canvas triggers (edit event
+        // included), and re-parses. The compile tier cannot cover this because it builds
+        // against a generated shim with no event wiring — a rename that touched only the
+        // Designer File would leave CS1061 there, and every other tier would still pass.
+        // The rename needs its document open: an undo step belongs to an open document,
+        // exactly as it does when the canvas renames.
+        const wiredDesigner = path.join(dir, 'Wired.Designer.cs');
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(wiredDesigner));
+        await waitFor(() => {
+            const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+            return t && t.input instanceof vscode.TabInputCustom
+                && String(t.input.uri.fsPath).endsWith('Wired.Designer.cs');
+        }, 10000, 'the wired form in our editor');
+        wiredBefore = [
+            fs.readFileSync(path.join(dir, 'Wired.Designer.cs'), 'utf8'),
+            fs.readFileSync(path.join(dir, 'Wired.cs'), 'utf8'),
+        ];
         const r = await vscode.commands.executeCommand(
             'vscforms._testSeam', 'rename', {
                 designer: path.join(dir, 'Wired.Designer.cs'),
@@ -262,6 +279,31 @@ async function run(vscode) {
         // two files disagreeing, which is the one outcome worse than not renaming at all.
         assert.strictEqual(fs.readFileSync(designer, 'utf8'), before[0], 'the Designer File was written');
         assert.strictEqual(fs.readFileSync(codeBehind, 'utf8'), before[1], 'the code-behind was written');
+    });
+
+    await test('rename is one undo step across both files (#45)', async () => {
+        // ADR 0008: one Ctrl+Z restores both files. Before the fix the rename fired no edit
+        // event at all, so Ctrl+Z after a rename did nothing — and doc.text stayed stale, so
+        // undoing the NEXT edit resurrected the old name in one file but not the other.
+        assert.ok(wiredBefore, 'precondition: the rename test did not capture the original bytes');
+        const designer = path.join(dir, 'Wired.Designer.cs');
+        const codeBehind = path.join(dir, 'Wired.cs');
+        assert.ok(fs.readFileSync(designer, 'utf8').includes('btnCompute'),
+            'precondition: the rename test should have left btnCompute in place');
+
+        await seam('undo');
+        await sleep(400);
+        assert.strictEqual(fs.readFileSync(designer, 'utf8'), wiredBefore[0],
+            'undo() did not restore the Designer File byte-for-byte');
+        assert.strictEqual(fs.readFileSync(codeBehind, 'utf8'), wiredBefore[1],
+            'undo() did not restore the code-behind byte-for-byte');
+
+        await seam('redo');
+        await sleep(400);
+        assert.ok(fs.readFileSync(designer, 'utf8').includes('btnCompute'),
+            'redo() did not re-apply the Designer File rename');
+        assert.ok(/btnCompute\.Enabled = false;/.test(fs.readFileSync(codeBehind, 'utf8')),
+            'redo() did not re-apply the code-behind rename');
     });
 
     await test('*.Designer.cs opens in OUR editor by default (priority "default")', () => {
@@ -399,11 +441,12 @@ async function run(vscode) {
 
     await test('the undo() continuation restores the file byte-for-byte', async () => {
         // NOTE ON SCOPE: we invoke the continuation we passed to CustomDocumentEditEvent, not
-        // the `undo` COMMAND. VS Code routes Ctrl+Z to custom editors via a keybinding
-        // implementation (`addImplementation(105,"custom-editor")`) that the extension host API
-        // cannot dispatch — `executeCommand('undo')` does not reach it, verified by probe.
-        // So this asserts OUR half: that undo() rewrites the file exactly. VS Code's half
-        // (calling it on Ctrl+Z) is its own documented behaviour, verified against its source.
+        // the `undo` COMMAND. A synthetic keypress cannot be produced from the extension host
+        // API, so driving the continuation directly is the deterministic assertion — it is OUR
+        // half of the contract either way. VS Code's half (calling it on Ctrl+Z, routed via
+        // the `addImplementation(105,"custom-editor")` keybinding implementation) was verified
+        // empirically on 1.141: a real trusted keypress reverts the file and re-renders the
+        // canvas, and `executeCommand('undo')` reaches the continuations too.
         const duri = vscode.Uri.file(path.join(dir, 'dirty.Designer.cs'));
         const before = fs.readFileSync(duri.fsPath, 'utf8');
         assert.ok(before.includes('new System.Drawing.Point(123, 154)'), 'precondition failed');

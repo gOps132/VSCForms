@@ -48,6 +48,7 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **Fixed: Ctrl/Cmd+Z did nothing after renaming a control (#45).** The rename path wrote the Designer File (and code-behind) but never fired a `CustomDocumentEditEvent`, so there was no undo step, no dirty marker, and `doc.text` stayed stale — which then poisoned the *next* edit's undo baseline across the two files. Rename now snapshots both files and fires one edit event, so a single undo restores both (`docs/adr/0008`). The layout undo path was verified end-to-end with a real trusted keypress (file + canvas, undo and redo); see `test/run-cdp-probe.js`.
 - **Fixed: canvas drag and property edits reporting "schema is required" error**: unpacked `(msg.data ?? msg.schema)` in the extension host commit listener because `canvas.js` sends `{ type: 'commit', data: schema }`.
 - **Fixed: integration test conflicting canary name**: updated canary rename target from `tabDetails` to `calDetails` in `test/suite.js` to match the `MonthCalendar` canary control in `WiredForm.Designer.cs`.
 

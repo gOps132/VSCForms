@@ -68,6 +68,6 @@ for — the same reasoning that keeps `Locked Control` code untouched.
   is a much larger claim on the same file and wants its own decision.
 - **Undo still works unchanged.** Both writes go through the same `CustomDocumentEditEvent`
   mechanism, so one Ctrl+Z restores both files. See
-  [ADR 0004](0004-undo-is-vs-codes-job.md).
+  [ADR 0004](0004-undo-through-vs-code.md).
 - Renaming across projects — a control referenced from another file — is out of scope. The scan
   covers the sibling code-behind only.

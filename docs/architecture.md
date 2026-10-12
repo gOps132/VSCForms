@@ -121,8 +121,8 @@ The integration tier needs a display. It reaches internals through the hidden
 `vscforms._testSeam` command because the webview is unreachable from the extension host API;
 each case runs the real production path rather than a simulation.
 
-One thing it cannot drive: VS Code routes Ctrl+Z to custom editors via a keybinding
-implementation (`addImplementation(105,"custom-editor")`) that the extension host API cannot
-dispatch — `executeCommand('undo')` does not reach it. So the suite asserts that *our*
-continuations restore the file byte-for-byte, and VS Code's dispatch is verified against its
-source instead.
+One thing it cannot drive: a synthetic Ctrl+Z keypress cannot be produced from the
+extension host API, so the suite asserts that *our* continuations restore the file
+byte-for-byte. VS Code's dispatch (keybinding implementation
+`addImplementation(105,"custom-editor")` calling them on Ctrl+Z) was verified empirically
+on 1.141 with a real trusted keypress: the file reverts and the canvas re-renders.
