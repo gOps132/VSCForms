@@ -2035,6 +2035,119 @@ setTimeout(async () => {
         check('refused paste posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
             JSON.stringify(sandbox.__sent.map((m) => m.type)));
     }
+    // ---- A1 z-order (Bring to Front / Send to Back): array order IS paint order.
+    // Index 0 is front (top), matching the Controls collection — the canvas paints
+    // array-first on top through descending z-indexes, so DOM order stays array order.
+    send({ type: 'load', data: schema });
+    await settled();
+    {
+        const order = () => canvasEl.querySelectorAll('.ctl').map((n) => n.dataset.id);
+        const zOf = (id) => String(ctlNode(id).style.zIndex || '');
+        const clickArrange = (label) => {
+            const b = ids.inspector.querySelectorAll('button').find((x) => String(x.textContent || '') === label);
+            if (!b) return false;
+            b.dispatch('click', {});
+            return true;
+        };
+        const commitIds = () => {
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const last = commits[commits.length - 1];
+            return last ? last.data.controls.map((c) => c.id) : null;
+        };
+        check('DOM order follows schema order (index 0 is front)',
+            order().join(',') === 'txtName,btnSubmit,ThirdPartyGauge', order().join(','));
+        check('z-index paints array-first on top (descending)',
+            zOf('txtName') === '3' && zOf('btnSubmit') === '2' && zOf('ThirdPartyGauge') === '1',
+            [zOf('txtName'), zOf('btnSubmit'), zOf('ThirdPartyGauge')].join(','));
+        ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        const arrangeLabels = ids.inspector.querySelectorAll('button').map((b) => String(b.textContent || ''));
+        check('inspector offers Bring to Front', arrangeLabels.includes('Bring to Front'), arrangeLabels.join(','));
+        check('inspector offers Send to Back', arrangeLabels.includes('Send to Back'), arrangeLabels.join(','));
+        // btnSubmit is mid-stack: bring it to front (index 0).
+        sandbox.__sent.length = 0;
+        check('bring-to-front action runs', clickArrange('Bring to Front'));
+        check('bring to front repaints first (on top)',
+            order().join(',') === 'btnSubmit,txtName,ThirdPartyGauge', order().join(','));
+        check('z-index follows the move',
+            zOf('btnSubmit') === '3' && zOf('txtName') === '2', `${zOf('btnSubmit')},${zOf('txtName')}`);
+        await settled();
+        check('bring to front posts one commit with array order preserved end-to-end',
+            JSON.stringify(commitIds()) === JSON.stringify(['btnSubmit', 'txtName', 'ThirdPartyGauge']),
+            JSON.stringify(commitIds()));
+        // Now front-most: send it to back (last).
+        sandbox.__sent.length = 0;
+        check('send-to-back action runs', clickArrange('Send to Back'));
+        check('send to back repaints last (behind)',
+            order().join(',') === 'txtName,ThirdPartyGauge,btnSubmit', order().join(','));
+        await settled();
+        check('send to back commits the reordered array',
+            JSON.stringify(commitIds()) === JSON.stringify(['txtName', 'ThirdPartyGauge', 'btnSubmit']),
+            JSON.stringify(commitIds()));
+        // Already at front: bring to front is a no-op with no commit.
+        ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        sandbox.__sent.length = 0;
+        clickArrange('Bring to Front');
+        await settled();
+        check('bring to front at front posts no commit', sandbox.__sent.length === 0,
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        // Locked controls get no z-order buttons: they must never move (invariant 4).
+        ctlNode('ThirdPartyGauge').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        const lockedLabels = ids.inspector.querySelectorAll('button').map((b) => String(b.textContent || ''));
+        check('locked control offers no Bring to Front', !lockedLabels.includes('Bring to Front'), lockedLabels.join(','));
+        check('locked control offers no Send to Back', !lockedLabels.includes('Send to Back'), lockedLabels.join(','));
+        // Refused forms are read-only: no buttons either.
+        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+        await settled();
+        ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        const roLabels = ids.inspector.querySelectorAll('button').map((b) => String(b.textContent || ''));
+        check('refused form offers no Bring to Front', !roLabels.includes('Bring to Front'), roLabels.join(','));
+        // Multi-selection moves as a block, preserving internal order.
+        send({ type: 'load', data: schema });
+        await settled();
+        ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        ctlNode('btnSubmit').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+        sandbox.__sent.length = 0;
+        check('multi-selection offers Send to Back', clickArrange('Send to Back'));
+        check('block keeps internal order at back',
+            order().join(',') === 'ThirdPartyGauge,txtName,btnSubmit', order().join(','));
+        await settled();
+        check('block move commits one reordered array',
+            JSON.stringify(commitIds()) === JSON.stringify(['ThirdPartyGauge', 'txtName', 'btnSubmit']),
+            JSON.stringify(commitIds()));
+        // Nested: the child reorders within its own parent group only.
+        const zNested = JSON.parse(JSON.stringify(schema));
+        zNested.controls.push({ id: 'pnlW', type: 'System.Windows.Forms.Panel', children: [
+            { id: 'btnA', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 5, y: 5, width: 80, height: 25, text: 'A', tabIndex: 0 } },
+            { id: 'btnB', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 30, y: 30, width: 80, height: 25, text: 'B', tabIndex: 1 } },
+        ], locked: false, properties: { x: 10, y: 100, width: 200, height: 90, tabIndex: 2 } });
+        send({ type: 'load', data: zNested });
+        await settled();
+        ctlNode('btnB').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        sandbox.__sent.length = 0;
+        check('nested bring-to-front action runs', clickArrange('Bring to Front'));
+        const kidOrder = () => ctlNode('pnlW').children
+            .filter((n) => n.classList.contains('ctl')).map((n) => n.dataset.id);
+        check('nested child repaints first inside its parent',
+            kidOrder().join(',') === 'btnB,btnA', kidOrder().join(','));
+        check('nested child is front-most inside its own stacking context',
+            String(ctlNode('btnB').style.zIndex) === '2' && String(ctlNode('btnA').style.zIndex) === '1',
+            `${ctlNode('btnB').style.zIndex},${ctlNode('btnA').style.zIndex}`);
+        await settled();
+        {
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const last = commits[commits.length - 1];
+            const pnl = last && last.data.controls.find((c) => c.id === 'pnlW');
+            check('nested move commits the reordered children array',
+                !!pnl && pnl.children.map((c) => c.id).join(',') === 'btnB,btnA',
+                pnl ? pnl.children.map((c) => c.id).join(',') : 'no commit');
+            check('nested move leaves the top-level array alone',
+                !!last && last.data.controls.map((c) => c.id).join(',') === 'txtName,btnSubmit,ThirdPartyGauge,pnlW',
+                last ? last.data.controls.map((c) => c.id).join(',') : 'no commit');
+        }
+    }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);

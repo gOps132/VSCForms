@@ -25,6 +25,10 @@ public sealed class Patcher
     private readonly List<TextChange> _changes = new();
     private readonly string _eol = "\n";
 
+    /// <summary>Z-order move changes, tracked separately so a failed verification can drop them.</summary>
+    private readonly List<TextChange> _moveChanges = new();
+    private readonly List<(string Key, List<string> Target)> _movedGroups = new();
+
     private Patcher(SourceText source, DesignerDocument doc)
     {
         _source = source;
@@ -87,6 +91,13 @@ public sealed class Patcher
             DeleteControl(id, cs);
         }
 
+        // --- z-order ----------------------------------------------------------
+        // Same ids, different order => MOVE (ADR 0009). Relocates the Controls.Add lines
+        // verbatim — never delete+insert, which would destroy unmodelled properties.
+        var ambiguous = ApplyReorders(incoming, incomingById);
+        if (ambiguous is not null)
+            return PatchResult.Refused(ambiguous, "ambiguous-order");
+
         // --- form-level -------------------------------------------------------
         if (incoming.Form.Text != doc.Schema.Form.Text)
             PatchFormText(incoming.Form.Text);
@@ -101,15 +112,30 @@ public sealed class Patcher
         // --- assemble ---------------------------------------------------------
         // Non-overlapping zero-width inserts are allowed to share a position; overlapping
         // replacements are not. Sort by span start, then drop any change that overlaps.
-        var ordered = _changes.OrderBy(c => c.Span.Start).ToList();
-        var accepted = new List<TextChange>(ordered.Count);
-        int cursor = -1;
-        foreach (var c in ordered)
+        List<TextChange> Accept(IEnumerable<TextChange> changes)
         {
-            if (c.Span.Start < cursor) continue;
-            if (string.IsNullOrEmpty(c.NewText) && c.Span.Length == 0) { continue; }
-            accepted.Add(c);
-            if (c.Span.Length > 0) cursor = c.Span.End;
+            var ordered = changes.OrderBy(c => c.Span.Start).ToList();
+            var accepted = new List<TextChange>(ordered.Count);
+            int cursor = -1;
+            foreach (var c in ordered)
+            {
+                if (c.Span.Start < cursor) continue;
+                if (string.IsNullOrEmpty(c.NewText) && c.Span.Length == 0) { continue; }
+                accepted.Add(c);
+                if (c.Span.Length > 0) cursor = c.Span.End;
+            }
+            return accepted;
+        }
+
+        var accepted = Accept(_changes);
+
+        // The move encoding is positional arithmetic over line spans; prove it landed by
+        // re-parsing rather than by inspection. On mismatch the moves are dropped while the
+        // property edits still apply — a wrong order is never written.
+        if (_moveChanges.Count > 0 && !VerifyReorders(_source.WithChanges(accepted)))
+        {
+            Console.Error.WriteLine("  z-order move failed verification; moves dropped");
+            accepted = Accept(_changes.Where(c => !_moveChanges.Any(m => m.Span.Equals(c.Span) && m.NewText == c.NewText)));
         }
 
         // MF_DEBUG=1 prints every emitted span; kept permanently because "what exactly did
@@ -129,9 +155,9 @@ public sealed class Patcher
     public static string Patch(string original, FormSchema incoming) =>
         Apply(SourceText.From(original), incoming).Text ?? original;
 
-    public sealed record PatchResult(string? Text, List<TextChange> Changes, bool Changed, string? Refusal = null)
+    public sealed record PatchResult(string? Text, List<TextChange> Changes, bool Changed, string? Refusal = null, string? RefusalKind = null)
     {
-        public static PatchResult Refused(string why) => new(null, new(), false, why);
+        public static PatchResult Refused(string why, string kind = "refused") => new(null, new(), false, why, kind);
     }
 
     private static IEnumerable<ControlNode> Flatten(IEnumerable<ControlNode> nodes)
@@ -1022,6 +1048,238 @@ public sealed class Patcher
 
         var fieldStmt = cs.FieldDeclarator?.Ancestors().OfType<FieldDeclarationSyntax>().FirstOrDefault();
         if (fieldStmt is not null) Replace(WholeLineSpan(fieldStmt.Span), "");
+    }
+
+    // ------------------------------------------------------- z-order (reorder)
+
+    /// <summary>
+    /// Z-order (A1, ADR 0009): the order of the `controls` (and nested `children`) arrays IS
+    /// the paint order — index 0 is the front (top of the z-order), matching the
+    /// `Controls.Add` statement order in the file. A schema carrying the same ids in a
+    /// different order is a MOVE, expressed by relocating the `Controls.Add` lines verbatim.
+    ///
+    /// Returns a refusal message when a needed reorder is ambiguous (a duplicated Add or two
+    /// textually identical control blocks), or null when there is nothing to refuse. Groups
+    /// that cannot be moved safely are skipped SILENTLY, emitting nothing: a Locked Control
+    /// is never cut, and a group whose Add lines are interleaved with other statements is
+    /// left alone. Skipping is safe; guessing is not.
+    /// </summary>
+    private string? ApplyReorders(FormSchema incoming, Dictionary<string, ControlNode> incomingById)
+    {
+        // Target order per sibling group from the incoming schema: "" is top level.
+        var incomingGroups = new List<(string Key, List<string> Ids)> { ("", incoming.Controls.Select(c => c.Id).ToList()) };
+        void Walk(IEnumerable<ControlNode> nodes)
+        {
+            foreach (var n in nodes)
+            {
+                if (n.Children.Count > 0)
+                    incomingGroups.Add((n.Id, n.Children.Select(c => c.Id).ToList()));
+                Walk(n.Children);
+            }
+        }
+        Walk(incoming.Controls);
+
+        // Current order per sibling group from the file's Add statements — the same scan the
+        // schema ordering reads, so the two cannot disagree about what "current" means.
+        var fileGroups = new Dictionary<string, List<(string Id, ExpressionStatementSyntax Stmt)>>(StringComparer.Ordinal);
+        foreach (var rec in _doc.AddRecords())
+        {
+            var key = GroupKey(rec.Container, _doc.Controls);
+            if (!fileGroups.TryGetValue(key, out var list)) fileGroups[key] = list = new();
+            list.Add((rec.Child, rec.Stmt));
+        }
+
+        foreach (var (key, wanted) in incomingGroups)
+        {
+            var refusal = ApplyReorder(key, wanted, fileGroups.GetValueOrDefault(key) ?? new(), incomingById);
+            if (refusal is not null) return refusal;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Normalises a Controls.Add container to a sibling-group key, mirroring the roots
+    /// predicate in BuildSchema: the form collection and orphaned parents are top level.
+    /// </summary>
+    private static string GroupKey(string? container, Dictionary<string, DesignerDocument.ControlSyntax> controls) =>
+        container is null || container == "Controls" || !controls.ContainsKey(container) ? "" : container;
+
+    private string? ApplyReorder(string key, List<string> wanted,
+        List<(string Id, ExpressionStatementSyntax Stmt)> filed, Dictionary<string, ControlNode> incomingById)
+    {
+        var fileSet = new HashSet<string>(filed.Select(e => e.Id), StringComparer.Ordinal);
+        var wantSet = new HashSet<string>(wanted, StringComparer.Ordinal);
+        // Controls with no Add line (never staged), inserts, deletes and reparents take no
+        // part in the move: only ids present on both sides have a line to relocate.
+        var current = Dedup(filed.Select(e => e.Id)).Where(id => wantSet.Contains(id)).ToList();
+        var target = Dedup(wanted).Where(id => fileSet.Contains(id)).ToList();
+        if (current.SequenceEqual(target)) return null;
+
+        // Every remaining id needs an AddCall span; anything else is a shape we do not move.
+        foreach (var id in current.Concat(target))
+            if (!_doc.Controls.TryGetValue(id, out var cs) || cs.AddCall is null)
+                return null;
+
+        var label = key == "" ? "this.Controls" : $"this.{key}.Controls";
+
+        // The required refusal (ADR 0009): a duplicated Add makes the move ambiguous — there
+        // is no single statement to relocate — so the whole generate is refused rather than
+        // guessed, and the file stays untouched.
+        if (filed.Count != Dedup(filed.Select(e => e.Id)).Count)
+            return $"ambiguous z-order in {label}: a Controls.Add appears more than once; remove the duplication and retry";
+        if (filed.Select(e => AddLineText(e.Stmt)).Distinct(StringComparer.Ordinal).Count() != filed.Count)
+            return $"ambiguous z-order in {label}: two Controls.Add lines are textually identical; remove the duplication and retry";
+        if (HasDuplicateBlocks(current))
+            return $"ambiguous z-order in {label}: two controls are textually identical, so the move is ambiguous";
+
+        // Relocate only common ids' lines. Anything else inside the line range (a deleted
+        // control's Add, a comment, ResumeLayout between Adds) skips the group: the encoding
+        // below assumes the range holds nothing but this group's Add lines and whitespace.
+        var spans = new Dictionary<string, TextSpan>(StringComparer.Ordinal);
+        foreach (var id in current) spans[id] = WholeLineSpan(_doc.Controls[id].AddCall!.Span);
+        var ordered = spans.Values.OrderBy(s => s.Start).ToList();
+        var rangeStart = ordered[0].Start;
+        var rangeEnd = ordered[^1].End;
+        var text = _source.ToString();
+        foreach (var sp in ordered)
+            if (sp.End > text.Length || text[sp.End - 1] != '\n') return null;  // last line of file: no safe anchor
+        {
+            int cursor = rangeStart;
+            foreach (var sp in ordered)
+            {
+                for (int k = cursor; k < sp.Start; k++)
+                    if (!char.IsWhiteSpace(text[k])) return null;
+                cursor = sp.End;
+            }
+            for (int k = cursor; k < rangeEnd; k++)
+                if (!char.IsWhiteSpace(text[k])) return null;
+        }
+
+        // Simulate the reorder, cutting only unlocked controls. A Locked Control's statements
+        // never enter a change span; its relative stacking may still shift when a sibling
+        // moves past it, which is inherent to any z-order operation.
+        var sim = current.ToList();
+        var cut = new List<string>();
+        int budget = sim.Count * sim.Count + 1;
+        while (!sim.SequenceEqual(target) && budget-- > 0)
+        {
+            int i = 0;
+            while (i < sim.Count && sim[i].Equals(target[i], StringComparison.Ordinal)) i++;
+            var want = target[i];
+            if (!IsLockedForMove(want, incomingById))
+            {
+                sim.Remove(want);
+                sim.Insert(i, want);
+                if (!cut.Contains(want)) cut.Add(want);
+            }
+            else
+            {
+                var have = sim[i];
+                if (IsLockedForMove(have, incomingById)) return null;
+                sim.RemoveAt(i);
+                sim.Insert(target.IndexOf(have), have);
+                if (!cut.Contains(have)) cut.Add(have);
+            }
+        }
+        if (!sim.SequenceEqual(target)) return null;
+        if (cut.Count == 0) return null;
+
+        // Encode as deletes of the moved lines plus inserts of their verbatim text at kept
+        // lines' starts (or the range end). Kept lines keep their relative order — the
+        // simulation only relocates cut ids — so every run of moved lines in target order has
+        // a kept anchor or the range end to attach to. Inserts are recorded before deletes so
+        // a shared boundary keeps both (the assembler is stable at equal starts).
+        var cutSet = new HashSet<string>(cut, StringComparer.Ordinal);
+        var keptSet = new HashSet<string>(current.Where(id => !cutSet.Contains(id)), StringComparer.Ordinal);
+        if (!target.Where(keptSet.Contains).SequenceEqual(current.Where(keptSet.Contains))) return null;
+        string LineOf(string id) => text.Substring(spans[id].Start, spans[id].Length);
+        void Emit(TextChange c) { _changes.Add(c); _moveChanges.Add(c); }
+        var pending = new StringBuilder();
+        void Flush(int at)
+        {
+            if (pending.Length == 0) return;
+            Emit(new TextChange(new TextSpan(at, 0), pending.ToString()));
+            pending.Clear();
+        }
+        foreach (var id in target)
+        {
+            if (keptSet.Contains(id)) Flush(spans[id].Start);
+            else pending.Append(LineOf(id));
+        }
+        Flush(rangeEnd);
+        foreach (var id in cut) Emit(new TextChange(spans[id], ""));
+        _movedGroups.Add((key, target));
+
+        Console.Error.WriteLine($"  z-order '{label}': {string.Join(",", current)} -> {string.Join(",", target)}");
+        return null;
+    }
+
+    private bool IsLockedForMove(string id, Dictionary<string, ControlNode> incomingById)
+    {
+        if (incomingById.TryGetValue(id, out var node) && node.Locked) return true;
+        return _doc.Controls.TryGetValue(id, out var cs) && !TypeTable.IsHandled(cs.Type);
+    }
+
+    private string AddLineText(ExpressionStatementSyntax stmt)
+    {
+        var span = WholeLineSpan(stmt.Span);
+        return _source.ToString().Substring(span.Start, span.Length);
+    }
+
+    /// <summary>
+    /// True when two sibling controls have byte-identical statement blocks, in which case a
+    /// text-level move could misattribute the relocation. Spans are id-anchored so this
+    /// cannot fire on well-formed files; it guards corrupt ones.
+    /// </summary>
+    private bool HasDuplicateBlocks(List<string> ids)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in ids)
+        {
+            if (!_doc.Controls.TryGetValue(id, out var cs) || cs.AddCall is null) continue;
+            var spans = new List<TextSpan> { WholeLineSpan(cs.InitAssignment.Span), WholeLineSpan(cs.AddCall.Span) };
+            spans.AddRange(cs.Properties.Values.Select(a => WholeLineSpan(a.Span)));
+            spans.AddRange(cs.ItemsStatements.Select(s => WholeLineSpan(s.Span)));
+            var sb = new StringBuilder();
+            var text = _source.ToString();
+            foreach (var sp in spans.OrderBy(s => s.Start))
+                sb.Append(text.Substring(sp.Start, sp.Length));
+            if (!seen.Add(sb.ToString())) return true;
+        }
+        return false;
+    }
+
+    private static List<string> Dedup(IEnumerable<string> ids)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<string>();
+        foreach (var id in ids) if (seen.Add(id)) result.Add(id);
+        return result;
+    }
+
+    /// <summary>
+    /// Re-parses the patched text and checks every moved group landed in its target order.
+    /// A mismatch means the encoding above is wrong — the caller drops the moves rather than
+    /// writing a patch it cannot account for.
+    /// </summary>
+    private bool VerifyReorders(SourceText trial)
+    {
+        DesignerDocument doc;
+        try { doc = DesignerDocument.Parse(trial); }
+        catch { return false; }
+        var groups = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var rec in doc.AddRecords())
+        {
+            var key = GroupKey(rec.Container, doc.Controls);
+            if (!groups.TryGetValue(key, out var list)) groups[key] = list = new();
+            list.Add(rec.Child);
+        }
+        foreach (var (key, target) in _movedGroups)
+        {
+            if (!groups.TryGetValue(key, out var filed)) return false;
+            if (!Dedup(filed).SequenceEqual(target)) return false;
+        }
+        return true;
     }
 
     /// <summary>Walks backwards over an immediately-preceding `// id` comment header.</summary>

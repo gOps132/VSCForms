@@ -535,6 +535,15 @@
         node.classList.add('t-' + simple.toLowerCase());
 
         // placement is relative to the containing canvas, so nested controls offset correctly
+        // Z-order (A1, ADR 0009): the schema array is front-first (index 0 paints on top,
+        // matching the Controls collection), while DOM siblings paint last-on-top. An explicit
+        // z-index reconciles the two without disturbing DOM order. Every node gets one, so each
+        // control is its own stacking context and nested children can never leak above an
+        // uncle: paint order stays inside the parent.
+        const zParent = parentOf(c.id);
+        const zSibs = zParent ? zParent.children : (schema ? schema.controls : []);
+        const zAt = zSibs.findIndex((n) => n.id === c.id);
+        if (zAt >= 0) node.style.zIndex = String(zSibs.length - zAt);
         node.style.left = c.properties.x + 'px';
         node.style.top = c.properties.y + 'px';
         node.style.width = Math.max(c.properties.width, 2) + 'px';
@@ -1242,6 +1251,47 @@
         }
     }
 
+    /**
+     * A1 Z-order (ADR 0009): Bring to Front / Send to Back. The schema arrays ARE the paint
+     * order (index 0 is front), so this is a pure reorder of the sibling list — no property
+     * changes, one debounced commit() like every other edit, and therefore one VS Code undo
+     * step (ADR 0004). The engine expresses it as a surgical relocation of the
+     * Controls.Add lines; unmodelled properties survive because nothing is deleted.
+     *
+     * Multi-selections move as a block within each parent group, preserving internal order.
+     * Locked controls never move: the single-selection buttons are hidden for them, and the
+     * multi path filters them (AGENTS.md invariant 4).
+     */
+    function zorderSelection(dir) {
+        if (readOnly) return;
+        const s = selected().filter((c) => !c.locked);
+        if (!s.length) return;
+        const groups = new Map();
+        for (const c of s) {
+            const list = siblingList(c);
+            if (!groups.has(list)) groups.set(list, []);
+            groups.get(list).push(c);
+        }
+        let moved = false;
+        for (const [list, members] of groups) {
+            if (members.some((m) => list.indexOf(m) < 0)) continue;   // detached model: never guess
+            const before = list.map((m) => m.id).join(',');
+            for (const m of members) list.splice(list.indexOf(m), 1);
+            // Front is index 0, back is the end — the same order the file's Controls.Add
+            // block and the Controls collection use (ADR 0009).
+            if (dir === 'front') list.unshift(...members);
+            else list.push(...members);
+            if (list.map((m) => m.id).join(',') !== before) moved = true;
+        }
+        if (moved) commit();
+    }
+
+    /** The sibling list a control reorders within: its parent's children, else top level. */
+    function siblingList(c) {
+        const parent = parentOf(c.id);
+        return parent ? parent.children : (schema ? schema.controls : []);
+    }
+
     /** The operations a multi-selection offers, also bound to keyboard shortcuts. */
     function alignActions() {
         return [
@@ -1258,6 +1308,8 @@
             ['Same Size', () => align('same-both')],
             ['Center in Form Horizontally', () => align('center-form-h')],
             ['Center in Form Vertically', () => align('center-form-v')],
+            ['Bring to Front', () => zorderSelection('front')],
+            ['Send to Back', () => zorderSelection('back')],
         ];
     }
 
@@ -1502,6 +1554,9 @@
     }
     function makeGuide(dir, pos, extent) {
         const g = el('div', 'guide ' + dir);
+        // Controls now carry explicit z-indexes (A1), so view chrome needs one too or it
+        // paints underneath them.
+        g.style.zIndex = '1000';
         if (dir === 'h') { g.style.top = pos + 'px'; g.style.width = extent + 'px'; }
         else { g.style.left = pos + 'px'; g.style.height = extent + 'px'; }
         $('canvas').appendChild(g);
@@ -1786,6 +1841,10 @@
                 .addEventListener('click', () => align('center-form-h'));
             box.appendChild(el('button', null, 'Center in Form Vertically'))
                 .addEventListener('click', () => align('center-form-v'));
+            box.appendChild(el('button', null, 'Bring to Front'))
+                .addEventListener('click', () => zorderSelection('front'));
+            box.appendChild(el('button', null, 'Send to Back'))
+                .addEventListener('click', () => zorderSelection('back'));
         }
 
         if (!c.locked && !readOnly) {
@@ -2119,6 +2178,8 @@
 
     function beginMarquee(e) {
         const box = el('div', 'marquee');
+        // As for guides above: view chrome paints above z-indexed controls.
+        box.style.zIndex = '1000';
         $('canvas').appendChild(box);
         // Form-space origin, so the rectangle tracks the pointer at any zoom.
         const r = $('canvas').getBoundingClientRect();
