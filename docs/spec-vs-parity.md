@@ -72,7 +72,7 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 | Collection editors (… dialogs) | partial | items list editor only (`canvas.js:1210-1256`) |
 | Events lightning-bolt + double-click default stub + bulk stubs | missing | A3 #4 — deliberately absent v1 |
 | Visual Dock/Anchor editors | refused-by-ADR | ADR 0003 |
-| Smart tags / action lists | shipped | D7 #35 — handled-type tags reusing existing paths; TLP columns, SplitContainer orientation, Dock-in-Parent parked behind ADRs |
+| Smart tags / action lists | removed | D7 — per-control ▾ dropdowns removed as redundant (#44, was #35); every action lives on its own surface, no engine/schema change |
 | Modal type editors | shipped | D8 #36 — Font modal through existing path; colors already have native pickers |
 | Data Sources window | missing, no row | .NET Framework-only per docs; out of scope |
 
