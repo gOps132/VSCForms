@@ -261,6 +261,43 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('engine refuses to write a refused form', locGen.ok === false, JSON.stringify(locGen));
     check('refused file is byte-identical on disk', fs.readFileSync(loc, 'utf8') === locBefore);
 
+    // 8. z-order: a canvas reorder travels the real contract into Controls.Add order.
+    // btnCancel is last (back-most); Bring to Front must make its Add first.
+    const parsedZ = await engine.send({ cmd: 'parse', path: target });
+    canvas.send({ type: 'load', data: parsedZ.schema });
+    const cancelBtn = canvas.byId('btnCancel');
+    check('btnCancel starts back-most',
+        parsedZ.schema.controls.map((c) => c.id).pop() === 'btnCancel',
+        parsedZ.schema.controls.map((c) => c.id).join(','));
+    cancelBtn.dispatch('mousedown', {});
+    const frontBtn = canvas.ids.inspector.querySelectorAll('button')
+        .find((b) => b.textContent === 'Bring to Front');
+    check('canvas offers Bring to Front', !!frontBtn);
+    frontBtn.dispatch('click', {});
+    await sleep(320);
+    const zCommits = canvas.sent.filter((m) => m.type === 'commit');
+    const zCommit = zCommits[zCommits.length - 1];
+    check('canvas committed the reordered array',
+        !!zCommit && zCommit.data.controls.map((c) => c.id)[0] === 'btnCancel',
+        zCommit ? zCommit.data.controls.map((c) => c.id).join(',') : 'no commit');
+    const beforeZ = fs.readFileSync(target, 'utf8');
+    const zgen = await engine.send({ cmd: 'generate', path: target, schema: zCommit.data });
+    check('engine applied the reorder', zgen.ok && zgen.changed,
+        JSON.stringify(zgen).slice(0, 160));
+    const afterZ = fs.readFileSync(target, 'utf8');
+    const zAdds = [...afterZ.matchAll(/Controls\.Add\((?:this\.)?(\w+)\)/g)].map((m) => m[1]);
+    check('btnCancel Controls.Add moved first in the file',
+        zAdds[0] === 'btnCancel' && zAdds.length === 5, zAdds.join(','));
+    // A move relocates lines: the file gains and loses nothing, so the sorted
+    // line multiset is identical (a positional compare would count shifted lines).
+    const sortedLines = (t) => t.split('\n').slice().sort().join('\n');
+    check('reorder moved lines without adding, removing or editing any',
+        sortedLines(afterZ) === sortedLines(beforeZ));
+    const reZ = await engine.send({ cmd: 'parse', path: target });
+    check('re-parse returns the new paint order',
+        reZ.schema.controls.map((c) => c.id)[0] === 'btnCancel',
+        reZ.schema.controls.map((c) => c.id).join(','));
+
     engine.kill();
     fs.rmSync(dir, { recursive: true, force: true });
 

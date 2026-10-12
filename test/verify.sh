@@ -747,6 +747,160 @@ else
   echo "$SEL_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
 fi
 
+echo
+# ---------------------------------------------------------------------------
+# Z-order (A1, ADR 0009): the controls array IS the paint order (index 0 = front,
+# matching the Controls collection), moved by relocating Controls.Add lines verbatim.
+# ---------------------------------------------------------------------------
+sect "[roslyn] z-order: parse preserves Controls.Add order as the paint order"
+work zorder ZOrderForm
+OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")
+echo "$OUT" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['schema']
+a=d['analysis']
+assert [c['id'] for c in d['controls']]==['btnFront','btnMid','btnBack','calPick','pnlNest'], [c['id'] for c in d['controls']]
+assert a['modelledCount']==6 and a['unmodelledCount']==1 and a['coveragePercent']==85.71, a
+assert a['refuses']==[], a['refuses']
+pnl=[c for c in d['controls'] if c['id']=='pnlNest'][0]
+assert [c['id'] for c in pnl['children']]==['btnInA','btnInB'], [c['id'] for c in pnl['children']]
+cal=[c for c in d['controls'] if c['id']=='calPick'][0]
+assert cal['locked'] is True" \
+  && ok "adds order, nesting, locked member and 85.71% coverage" || bad "z-order parse"
+
+sect "[roslyn] z-order: no-op generate is byte-identical"
+work zorder ZOrderForm
+cp "$FILE" /tmp/mf-zo-orig.cs
+python_tweak "pass" >/dev/null
+if diff -q /tmp/mf-zo-orig.cs "$FILE" >/dev/null; then ok "untouched z-order form round-trips byte-identical"
+else bad "no-op generate rewrote the z-order form"; fi
+
+sect "[roslyn] z-order: bring to front relocates only the Controls.Add line"
+work zorder ZOrderForm
+cp "$FILE" /tmp/mf-zo-orig.cs
+python_tweak "
+cs=s['controls']
+b=[c for c in cs if c['id']=='btnBack'][0]
+cs.remove(b); cs.insert(0,b)" >/dev/null
+python3 -c "
+import re
+adds=[m.group(1) for m in re.finditer(r'this\.Controls\.Add\(this\.(\w+)\)', open('$FILE').read())]
+assert adds==['btnBack','btnFront','btnMid','calPick','pnlNest'], adds" \
+  && ok "btnBack's Add moved first; every other line stayed" || bad "bring to front mis-ordered"
+CHANGED=$(diff /tmp/mf-zo-orig.cs "$FILE" | grep -c '^[<>]')
+[ "$CHANGED" -eq 2 ] && ok "bring to front = exactly 2 changed lines" || bad "bring to front touched $CHANGED lines (expected 2)"
+MISSING=""
+for keep in "FlatStyle = System.Windows.Forms.FlatStyle.Flat" \
+            "Cursors.Hand" \
+            "TabStop = false" \
+            "MonthCalendar calPick" \
+            "this.btnBack.Location = new System.Drawing.Point(60, 80);"; do
+  grep -qF "$keep" "$FILE" || MISSING="$MISSING"$'\n'"        - $keep"
+done
+[ -z "$MISSING" ] && ok "unmodelled properties and the moved control's own block survive" \
+  || bad "bring to front destroyed:$MISSING"
+
+sect "[roslyn] z-order: send to back jumps over a locked control without touching it"
+work zorder ZOrderForm
+cp "$FILE" /tmp/mf-zo-orig.cs
+python_tweak "
+cs=s['controls']
+f=[c for c in cs if c['id']=='btnFront'][0]
+cs.remove(f); cs.append(f)" >/dev/null
+python3 -c "
+import re
+adds=[m.group(1) for m in re.finditer(r'this\.Controls\.Add\(this\.(\w+)\)', open('$FILE').read())]
+assert adds==['btnMid','btnBack','calPick','pnlNest','btnFront'], adds" \
+  && ok "btnFront's Add moved last, past the locked control" || bad "send to back mis-ordered"
+CHANGED=$(diff /tmp/mf-zo-orig.cs "$FILE" | grep -c '^[<>]')
+[ "$CHANGED" -eq 2 ] && ok "send to back = exactly 2 changed lines" || bad "send to back touched $CHANGED lines (expected 2)"
+grep -qF "this.calPick.Location = new System.Drawing.Point(180, 20);" "$FILE" \
+  && grep -qF "private System.Windows.Forms.MonthCalendar calPick;" "$FILE" \
+  && ok "the locked control's statements survive verbatim" || bad "locked control disturbed"
+
+sect "[roslyn] z-order: nested reorder moves only within the container"
+work zorder ZOrderForm
+cp "$FILE" /tmp/mf-zo-orig.cs
+grep "this.Controls.Add" /tmp/mf-zo-orig.cs > /tmp/mf-zo-top-orig.txt
+python_tweak "
+for c in s['controls']:
+    if c['id']=='pnlNest':
+        kids=c['children']
+        b=[k for k in kids if k['id']=='btnInB'][0]
+        kids.remove(b); kids.insert(0,b)" >/dev/null
+python3 -c "
+import re
+adds=[m.group(1) for m in re.finditer(r'pnlNest\.Controls\.Add\(this\.(\w+)\)', open('$FILE').read())]
+assert adds==['btnInB','btnInA'], adds" \
+  && ok "btnInB's Add moved first inside the panel" || bad "nested reorder mis-ordered"
+if diff -q <(grep "this.Controls.Add" /tmp/mf-zo-orig.cs) <(grep "this.Controls.Add" "$FILE") >/dev/null; then
+  ok "top-level Adds untouched by a nested reorder"
+else bad "nested reorder leaked into the top level"; fi
+CHANGED=$(diff /tmp/mf-zo-orig.cs "$FILE" | grep -c '^[<>]')
+[ "$CHANGED" -eq 2 ] && ok "nested reorder = exactly 2 changed lines" || bad "nested reorder touched $CHANGED lines (expected 2)"
+
+sect "[roslyn] z-order: a duplicated Controls.Add refuses the reorder, not the file"
+work zorder AmbiguousForm
+cp "$FILE" /tmp/mf-amb-orig.cs
+python_tweak "pass" >/dev/null
+if diff -q /tmp/mf-amb-orig.cs "$FILE" >/dev/null; then ok "no-op on a duplicated Add is byte-identical"
+else bad "no-op generate rewrote the ambiguous form"; fi
+R=$(python_tweak "s['controls'].reverse()")
+if echo "$R" | grep -q '"ok":false'; then ok "reorder over a duplication refuses with ok:false"
+else bad "ambiguous reorder was accepted"; fi
+if echo "$R" | grep -q 'ambiguous-order'; then ok "the refusal names ambiguous-order"
+else bad "refusal mislabelled: $R"; fi
+if diff -q /tmp/mf-amb-orig.cs "$FILE" >/dev/null; then ok "refused reorder left the file untouched"
+else bad "refused reorder modified the file"; fi
+python_tweak "
+for c in s['controls']:
+    if c['id']=='btnB': c['properties'].update(x=200)" >/dev/null
+grep -qF 'this.btnB.Location = new System.Drawing.Point(200, 48);' "$FILE" \
+  && [ "$(grep -c 'Controls.Add(this.btnA)' "$FILE")" -eq 2 ] \
+  && ok "a property edit without a reorder still applies; the duplication stands" \
+  || bad "property edit on the ambiguous form failed"
+
+sect "[roslyn] z-order: the fixture compiles before and after a move"
+ZO_SRC=$(mktemp -d)/zo/src
+mkdir -p "$ZO_SRC"
+cp fixtures/zorder/ZOrderForm.Designer.cs "$ZO_SRC/"
+{ echo "using System;"; echo "using System.Windows.Forms;"; echo "namespace FixtureZOrder {"
+  echo "  public partial class ZOrderForm : Form {"
+  echo "    public ZOrderForm() { InitializeComponent(); }"
+  echo "  }"; echo "}"; } > "$ZO_SRC/Form.cs"
+cat > "$ZO_SRC/Z.csproj" <<'CSPROJ'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+CSPROJ
+ZO_BUILD=$(cd "$ZO_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$ZO_BUILD" | grep -q "Build succeeded"; then
+  ok "the z-order fixture compiles as real WinForms controls"
+else
+  bad "z-order fixture FAILED to compile"
+  echo "$ZO_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+work zorder ZOrderForm
+python_tweak "
+cs=s['controls']
+b=[c for c in cs if c['id']=='btnBack'][0]
+cs.remove(b); cs.insert(0,b)" >/dev/null
+cp "$FILE" "$ZO_SRC/ZOrderForm.Designer.cs"
+ZO_MOVE_BUILD=$(cd "$ZO_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$ZO_MOVE_BUILD" | grep -q "Build succeeded"; then
+  ok "the reordered z-order fixture still compiles"
+else
+  bad "reordered z-order fixture FAILED to compile"
+  echo "$ZO_MOVE_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+
 echo "roslyn tier: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
 # --------------------------------------------------------------- compile tier

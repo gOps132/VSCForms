@@ -120,6 +120,16 @@ interface ControlProperties {
 }
 ```
 
+### Z-order: array order is paint order
+
+The `controls` array (and each nested `children` array) is ordered front-to-back: index 0
+paints on top. This round-trips from the `Controls.Add` statement order in the file — the
+first `Add` is index 0, which is the front of the WinForms z-order
+(`Control.ControlCollection.SetChildIndex` puts index 0 on top; see ADR 0009).
+
+The canvas paints array-first on top through descending `z-index`es, so DOM order stays
+array order while the eye sees the runtime stacking.
+
 ### Invariants the engine MUST enforce
 
 1. `id` is a valid C# identifier, unique within the form.
@@ -246,6 +256,12 @@ reports a parse error with no cause. `dotnet --version` did exactly this once.
    => DELETE (user removed it from the canvas).
 6. A control `locked === true` => **NEVER** touch it. No property edits, no delete.
 7. Everything the schema does not mention => byte-identical.
+8. A control present in both but at a different index => MOVE (z-order: Bring to Front /
+   Send to Back). The engine relocates that control's `Controls.Add` line(s) verbatim
+   within the sibling group — never delete+insert, which would destroy unmodelled
+   properties. A group that cannot be moved safely is left alone; a duplicated
+   `Controls.Add` (no single statement to relocate) is refused with `ok: false` and
+   `errorKind: "ambiguous-order"`, and the file is untouched. See ADR 0009.
 
 Step 6 is the safety invariant. If the diff logic is ever unsure, it emits nothing.
 

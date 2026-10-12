@@ -107,7 +107,7 @@ public static class Program
                     return new Response
                     {
                         Id = req.Id, Ok = false, Changed = false,
-                        Error = result.Refusal, ErrorKind = "refused",
+                        Error = result.Refusal, ErrorKind = result.RefusalKind ?? "refused",
                     };
                 }
 

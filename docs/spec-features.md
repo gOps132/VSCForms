@@ -146,7 +146,7 @@ churn on every edit, which is exactly what the dialect work exists to prevent.
 |---|---|---|
 | **Multi-select, align, distribute** | M | QOL; see `spec-canvas-qol.md` §3. Pure geometry over data we already hold |
 | **Copy / paste / duplicate** | S–M | `Cmd/Ctrl+D` is the cheap version |
-| **Z-order** | M + **protocol change** | **Not free** — `generate` diffs by `id`, so a reorder is currently unrepresentable and delete+insert would destroy unmodelled properties. Needs a patcher move + ADR. Deferred |
+| **Z-order** | M + **protocol change** | **Shipped** (ADR 0009): the array order is the paint order (index 0 = front) and `generate` moves `Controls.Add` lines verbatim — a move, never delete+insert, so unmodelled properties survive. A duplicated Add refuses the reorder (`ambiguous-order`) |
 | **Event scaffolding** (`btnSubmit_Click`) | M | Deliberately absent (v1). Note it is a *bigger* claim on the hand-written `Form1.cs` than rename was — ADR 0008 is the precedent for how to bound that |
 | **Tab order / tab index editing** | S | `TabIndex` exists in the schema and the canvas; the *ordering* UI does not |
 | **Resource editing** (images for `PictureBox`) | L | Needs image serialisation. Out of scope |
@@ -184,7 +184,7 @@ Each step is independently shippable and independently testable.
    there are more controls to align.
 6. **Phase C placeholders** — cheapest of the visibility wins, lowest editing payoff. Do it when
    there is time, not before.
-7. **Z-order**, only with the protocol change and an ADR.
+7. **Z-order**, only with the protocol change and an ADR — shipped (ADR 0009).
 
 ## 7. Verification
 
@@ -208,8 +208,10 @@ not the form. That is the bug a flat renderer would have.
    it improves every form rather than unblocking a few.
 3. **Phase C placeholders are display-only and say so.** A box that admits what it cannot show
    is honest; one that implies an editable grid is not.
-4. **Z-order deferred** pending a protocol change + ADR. Shipping it as delete+insert destroys
-   unmodelled properties.
+4. **Z-order shipped** (ADR 0009) with the protocol change and ADR this decision required:
+   array order is paint order (index 0 = front), the move relocates `Controls.Add` lines
+   verbatim, and a duplicated Add refuses the reorder. Delete+insert stays out — it would
+   destroy unmodelled properties, which is data loss, not a missing feature.
 5. **`example/` stays untouched** while `spec-phase-2.md` §5 is unresolved. `TrackBar` (Phase A)
    would take it from 91.4% to 100%, which is a good demonstration and a reason to revisit
    whether it should be committed at all.

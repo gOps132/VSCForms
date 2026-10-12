@@ -48,7 +48,7 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
 | Rubber-band selection | shipped | marquee |
 | Align (6) + Distribute (2) | shipped | `canvas.js:796-944` |
 | Make Same Size / Center in Form / Equal Spacing | shipped | D3 #22 — same-size copies schema-order-first extents (`canvas.js:818-829,930-944`); center per-control within immediate parent frame (`canvas.js:800-814,867-871`); Equal Spacing covered by Distribute (raw gaps) |
-| Format → Order (Bring to Front / Send to Back) | deferred+ADR | A1 #2 — `generate` diffs by `id`, reorder unrepresentable |
+| Format → Order (Bring to Front / Send to Back) | shipped | A1 #2 — array order is paint order (index 0 = front); inspector buttons reorder through `commit()`; engine moves `Controls.Add` lines verbatim (ADR 0009); duplicated Add refuses (`ambiguous-order`) |
 | Ctrl+arrow snapline jump; Shift+arrow / Ctrl+Shift+arrow resize | shipped | D4 #23 — Ctrl/Cmd jumps GRID*5, Shift resizes east/south edges min 2 (`canvas.js:576-596,771-788`); Shift no longer means 2× nudge |
 | Snaplines (edges) + grid | partial | shipped toggleable (`canvas.js:36-61,1683-1687`); no baselines, no Margin/Padding encoding, no Alt-suppress, off-in-TLP |
 | Size/location readout | shipped | D1 #20 — read-only single-selection X/Y + W×H in form units, multi keeps count (`canvas.js:741-757`) |
@@ -146,9 +146,11 @@ maps to tracker §2 row where shown · `refused-by-ADR` = correct behaviour, not
   (AutoScaleMode/Dimensions, Margin/Padding, Size-vs-ClientSize). Any field shown
   must state read-only — surfacing without wiring repeats the BackColor/Font
   silent-discard bug. Editing any of them is separate. No ADR for read-only.
-- **Z-order (A1 #2):** reorder unrepresentable in id-diffed `generate`
-  (`SCHEMA.md:236-247`); delete+insert destroys unmodelled props (ADR 0001).
-  **Needs ADR** + patcher move op first.
+- **Z-order (shipped A1 #2, ADR 0009):** array order is paint order (index 0 = front,
+  `SCHEMA.md` z-order section); the move relocates `Controls.Add` lines verbatim, never
+  delete+insert (which destroys unmodelled props, ADR 0001). A duplicated Add refuses the
+  reorder (`ambiguous-order`). Canvas buttons ride the existing `commit()` path; no ADR
+  beyond 0009, no local undo stack.
 - **SplitContainer (B1 #9):** parser maps `Panel1/Panel2.Controls.Add` to two
   slots + optional `SplitterDistance`; splitter drag = single-arg patch.
   Orientation flip = move semantics at small scale. **Needs ADR.**

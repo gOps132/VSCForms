@@ -136,21 +136,19 @@ The gaps that make the canvas feel imprecise rather than incomplete.
 | **Alignment / distribute** | The most-used feature in the VS designer, and it is pure geometry over data we already have | Needs multi-select first. `Align Left/Right/Center/Top/Middle/Bottom`, `Distribute H/V` |
 | **Copy / paste / duplicate** | Every designer has it | `Cmd/Ctrl+D` duplicate is the cheap 80%: offset by `GRID`, no clipboard, no system-permissions question in a webview |
 | **Escape** | Deselect. Costs one line; its absence is felt | Must also cancel an in-progress drag |
-| **Z-order** | `Bring to Front` / `Send to Back` | The schema is an ordered array, so this is a real reorder the patcher must express as a *move*, not delete+insert. **This needs engine work — see below** |
+| **Z-order** | `Bring to Front` / `Send to Back` | **Shipped** (ADR 0009): inspector buttons reorder the sibling array (index 0 = front) through the existing `commit()` path — no new message, no local undo stack. The engine expresses the reorder as a *move* of the `Controls.Add` lines, not delete+insert. **This needed engine work — see below** |
 
-**Z-order is the one item here that is not free**, and it is worth being precise about why.
-`generate` diffs by `id`: a control absent from the schema is deleted, and one present but not
-in the file is inserted. There is no "same control, different index" case. So a reorder is
-currently unrepresentable, and doing it as delete+insert would **destroy and recreate the
+**Z-order is the one item here that was not free**, and it is worth being precise about why.
+`generate` diffed by `id`: a control absent from the schema was deleted, and one present but not
+in the file was inserted. There was no "same control, different index" case. So a reorder was
+unrepresentable, and doing it as delete+insert would **destroy and recreate the
 control**, losing every property the schema does not model.
 
-That is a genuine protocol gap, so z-order is split out:
+That was a genuine protocol gap, so z-order needed:
 
-> **Requires `SCHEMA.md` change + `Patcher.cs` work + an ADR note.** The patcher must learn to
-> move a control's statements to a new index, and the safety question is what happens when two
-> controls have identical property sets. Recommendation: refuse a reorder that would make two
-> controls textually identical, since the move is then ambiguous. Until that exists, z-order is
-> **out of scope** — it is listed here so it is not quietly forgotten, not because it is cheap.
+> **`SCHEMA.md` change + `Patcher.cs` work + an ADR note** (all shipped as ADR 0009). The patcher
+> moves a control's `Controls.Add` lines to the new index verbatim, and refuses a reorder over
+> a duplicated `Controls.Add` (`ambiguous-order`), since the move is then ambiguous.
 
 ## 5. Item 4 — orientation and discoverability
 
@@ -210,9 +208,9 @@ arithmetic, not the feel.
    user on every re-parse, which is disorienting and makes zoom level untrustworthy.
 3. **Grid snap stays ON by default and becomes toggleable.** Defaulting it off would silently
    change how every existing movement behaves. Toggling is additive.
-4. **Z-order is DEFERRED** pending a patcher move + an ADR (§4). Shipping it as delete+insert
-   would destroy unmodelled properties — data loss, not a missing feature. Explicitly not in
-   this implementation.
+4. **Z-order shipped** (ADR 0009) with the patcher move + ADR (§4) this decision required.
+   Shipping it as delete+insert would have destroyed unmodelled properties — data loss, not
+   a missing feature.
 5. **`Cmd/Ctrl+D` duplicates; no clipboard copy/paste.** Clipboard in a webview needs
    permissions and an async round-trip; duplicate gets most of the value for none of the risk.
    Copy/paste is a follow-up if duplicate proves insufficient.

@@ -266,6 +266,30 @@ public sealed class DesignerDocument
         };
     }
 
+    /// <summary>
+    /// One `X.Controls.Add(y)` / `X.TabPages.Add(y)` statement, in file order.
+    /// </summary>
+    internal sealed record AddRecord(string? Container, string Child, ExpressionStatementSyntax Stmt);
+
+    /// <summary>
+    /// Every `Controls.Add` / `TabPages.Add` statement in the method, in file order.
+    ///
+    /// Shared by schema ordering and the patcher's z-order move so the two cannot drift:
+    /// both read sibling order from the same scan. A duplicated Add (same child twice) keeps
+    /// every occurrence here; ordering uses the first, and a reorder over a duplication is
+    /// refused rather than guessed (ADR 0009).
+    /// </summary>
+    internal List<AddRecord> AddRecords()
+    {
+        var records = new List<AddRecord>();
+        foreach (var stmt in InitializeComponent?.Body?.Statements ?? default)
+            if (stmt is ExpressionStatementSyntax es
+                && TryParseAddCall(es.Expression, out var container, out var child)
+                && child is not null)
+                records.Add(new AddRecord(container, child, es));
+        return records;
+    }
+
     public static ControlSyntax NewControlSyntax(string id, string type, VariableDeclaratorSyntax? field,
         ExpressionStatementSyntax init, ExpressionStatementSyntax? add, string? parent) => new()
         {
@@ -450,6 +474,24 @@ public sealed class DesignerDocument
         var unmodelled = 0;
         var warnings = new List<string>(analysis.Warnings);
 
+        // Sibling order is the Controls.Add order: index 0 is the front of the z-order
+        // (Control.ControlCollection.SetChildIndex puts index 0 on top), so the FIRST Add
+        // statement is the front-most sibling. A duplicated Add keeps its first position;
+        // the duplication itself is refused if a reorder is ever attempted (ADR 0009).
+        // Declared before BuildNode because the local function captures it.
+        var addPosition = new Dictionary<string, int>(StringComparer.Ordinal);
+        {
+            int k = 0;
+            foreach (var stmt in ic.Body?.Statements ?? default)
+            {
+                if (stmt is ExpressionStatementSyntax es
+                    && TryParseAddCall(es.Expression, out _, out var added)
+                    && added is not null && !addPosition.ContainsKey(added))
+                    addPosition[added] = k;
+                k++;
+            }
+        }
+
         ControlNode BuildNode(string id)
         {
             var cs = index[id];
@@ -477,7 +519,7 @@ public sealed class DesignerDocument
 
             if (TypeTable.IsContainer(cs.Type))
             {
-                foreach (var child in index.Values.Where(c => c.Parent == id))
+                foreach (var child in index.Values.Where(c => c.Parent == id).OrderBy(c => addPosition.GetValueOrDefault(c.Id, int.MaxValue)))
                     if (index.ContainsKey(child.Id))
                         node.Children.Add(BuildNode(child.Id));
             }
@@ -488,7 +530,7 @@ public sealed class DesignerDocument
         var roots = index.Values
             .Where(c => c.Parent is null || c.Parent == "Controls" || !index.ContainsKey(c.Parent))
             .Select(c => c.Id)
-            .OrderBy(id => AddCallIndex(ic, id))
+            .OrderBy(id => addPosition.GetValueOrDefault(id, int.MaxValue))
             .ToList();
 
         var controls = new List<ControlNode>();
@@ -517,18 +559,6 @@ public sealed class DesignerDocument
                 Warnings = warnings,
             },
         };
-    }
-
-    private static int AddCallIndex(MethodDeclarationSyntax ic, string id)
-    {
-        var i = 0;
-        foreach (var stmt in ic.Body?.Statements ?? default)
-        {
-            if (stmt is ExpressionStatementSyntax es && es.ToString().Contains($"this.{id}", StringComparison.Ordinal))
-                return i;
-            i++;
-        }
-        return int.MaxValue;
     }
 
     private static ControlProperties ReadProperties(ControlSyntax cs, bool handled, Dictionary<string, ControlSyntax> index)

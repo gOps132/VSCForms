@@ -45,7 +45,8 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   nested containers, coverage banner (never hideable), locked boxes with
   reasons, rename field, items list editor, single-selection size/location
   readout (X/Y + W×H in the status bar, form units), dblclick in-place Text edit,
-  same-size / center-in-form arrange ops, keyboard jump + resize, tab-order mode.
+  same-size / center-in-form arrange ops, keyboard jump + resize, tab-order mode,
+  Bring to Front / Send to Back (z-order: array order is paint order, index 0 = front).
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -68,7 +69,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 
 | # | Gap | Status | Cost | Spec | Note |
 |---|---|---|---|---|---|
-| A1 | Z-order (Bring to Front / Send to Back) | deferred+ADR | M + protocol | `spec-features.md` §4, `spec-canvas-qol.md` §4 | `generate` diffs by `id`; reorder is unrepresentable. Delete+insert would destroy unmodelled props. Needs patcher move + ADR. |
+| A1 | Z-order (Bring to Front / Send to Back) | shipped | M + protocol | `spec-features.md` §4, `spec-canvas-qol.md` §4 | Array order is paint order (index 0 = front); `generate` moves `Controls.Add` lines verbatim, never delete+insert. Inspector buttons ride `commit()`; duplicated Add refuses (`ambiguous-order`). ADR 0009. (#2) |
 | A2 | Clipboard copy/paste | shipped | S–M | `spec-canvas-qol.md` §8 decision 5 | `copy`/`requestPaste`/`paste` host round-trip via system clipboard (`vscforms-controls-v1:` wire format); Ctrl/Cmd+C/V. Reuses duplicate kernel; locked filtered, refused guarded, unhandled paste lands locked. (#3) |
 | A3 | Event scaffolding (`btn_Click` generation) | missing | M | `spec-features.md` §4 | Deliberately absent v1. Bigger claim on hand-written `Form1.cs` than rename; ADR 0008 is the bounding precedent. |
 | A4 | Tab-order editing UI | shipped | S | `spec-features.md` §4 | Mode toggle in status bar: badges show TabIndex, mousedown assigns next in click order (existing setProp/INSERT path). Esc exits; refused forms stay out; dblclick suppressed in mode. TabStop not modelled. (#5) |
