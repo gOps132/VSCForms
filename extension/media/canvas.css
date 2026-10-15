@@ -501,3 +501,20 @@ body { display: flex; flex-direction: column; }
 }
 .field button:hover:not([disabled]) { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
 .field button[disabled], .field input[disabled] { opacity: .5; }
+
+/* D10 inspector view toggle: presentational sort/group switch. View state only —
+   switching views never touches the file, so the pressed button is the only state. */
+.inspector-view { display: flex; gap: 4px; margin: 6px 0; }
+.inspector-view-btn {
+  cursor: pointer; font-size: 11px; padding: 2px 8px;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 3px;
+}
+.inspector-view-btn[aria-pressed="true"] {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+.inspector-cat {
+  margin: 10px 0 2px; font-size: 10px; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}

@@ -30,6 +30,15 @@
     let tabOrderNext = 0;
     /** Filter text for properties in inspector. */
     let inspectorFilter = '';
+    /**
+     * Inspector sort mode. Pure VIEW state like the toolbox filter: switching views
+     * re-renders the inspector only, never touches `schema` and never posts a commit
+     * (renderInspector builds DOM; commit happens only on field change). Same change
+     * class as shipped D1 readout — no ADR, no engine work. The engine has no category
+     * table because categories never cross the protocol; the table below is the single
+     * source, mirroring VS `[Category]` values (spec-property-tabs §§1–2).
+     */
+    let inspectorView = 'flat'; // 'flat' | 'categorized' | 'alphabetical'
     /** Filter text for the Controls toolbox. View state: never committed, never undoable. */
     let toolboxFilter = '';
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
@@ -191,6 +200,36 @@
     /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
     const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
         'ComboBox', 'ListBox', 'GroupBox', 'Form', 'TabPage']);
+
+    /**
+     * D10 inspector views. Hardcoded per-property category table mirroring VS
+     * `[Category]` values (docs/spec-property-tabs.md §§1–2): the engine cannot load
+     * .NET attributes (type resolution is purely syntactic), so categories live here,
+     * next to HANDLED, as the single source. Every offered property label must have
+     * an entry; anything without one falls in Misc. Labels are the inspector field
+     * labels (the `label` argument to the *Field constructors below), NOT schema keys,
+     * because views regroup rendered rows. Action surfaces (object selector, Arrange
+     * buttons, Delete, Font dialog button is Appearance) are not properties: the
+     * selector and actions stay outside the groups in every view.
+     */
+    const PROP_CATEGORIES = {
+        'X': 'Layout', 'Y': 'Layout', 'Width': 'Layout', 'Height': 'Layout',
+        'AutoSize': 'Layout',
+        'Text': 'Appearance', 'Title (Text)': 'Appearance',
+        'BackColor': 'Appearance', 'ForeColor': 'Appearance',
+        'Font size': 'Appearance', 'Bold': 'Appearance', 'Italic': 'Appearance',
+        'Font editor': 'Appearance',
+        'TextAlign': 'Appearance', 'BorderStyle': 'Appearance', 'Checked': 'Appearance',
+        'Enabled': 'Behavior', 'Visible': 'Behavior', 'TabIndex': 'Behavior',
+        'Multiline': 'Behavior', 'ReadOnly': 'Behavior', 'MaxLength': 'Behavior',
+        'PasswordChar': 'Behavior', 'ScrollBars': 'Behavior',
+        'Minimum': 'Behavior', 'Maximum': 'Behavior', 'Value': 'Behavior',
+        'SelectedIndex': 'Behavior', 'SelectedItem': 'Behavior',
+        'DropDownStyle': 'Behavior',
+        'Items': 'Data',
+        'Name': 'Design',
+    };
+    function propCategory(label) { return PROP_CATEGORIES[label] || 'Misc'; }
 
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => {
@@ -490,12 +529,12 @@
         const sizeEl = $('form-size');
         if (sizeEl) sizeEl.textContent = `${schema.form.clientSize.width} x ${schema.form.clientSize.height}`;
         const ins = $('inspector');
-        if (!ins) return;
-        const inputs = ins.querySelectorAll('input');
-        if (inputs.length >= 3 && selected().length === 0) {
-            inputs[1].value = String(schema.form.clientSize.width);
-            inputs[2].value = String(schema.form.clientSize.height);
-        }
+        if (!ins || selected().length !== 0) return;
+        // Id-based: flat-index lookup breaks outside flat view, where rows move.
+        const w = inspectorInputById('fWidth');
+        const h = inspectorInputById('fHeight');
+        if (w) w.value = String(schema.form.clientSize.width);
+        if (h) h.value = String(schema.form.clientSize.height);
     }
 
     function applyTextAlign(captionEl, align) {
@@ -1620,6 +1659,7 @@
         const sel = selected();
         if (sel.length === 0) {
             renderFormInspector(box);
+            applyInspectorView(box);
             applyInspectorFilter();
             return;
         }
@@ -1637,6 +1677,7 @@
         const c = sel[0];
         const simple = simpleName(c.type);
         box.appendChild(el('h3', null, `${simple} — ${c.id}`));
+        renderInspectorViewToggle(box);
 
         if (c.locked) {
             const n = el('div', 'field');
@@ -1673,7 +1714,7 @@
         // them. Wiring the inspector is what makes them reachable at all
         // (docs/spec-features.md §3: cheapest real capability in the project — no schema
         // change, no ADR).
-        box.appendChild(el('h4', null, 'Appearance'));
+        box.appendChild(el('h4', 'inspector-section', 'Appearance'));
 
         // Booleans are CHECKBOXES, not text fields: "false" typed as a string is a typo that
         // silently produces a different property value.
@@ -1720,6 +1761,7 @@
             // path — never a new write path. Locked/refused get no button.
             if (!appearanceBlocked) {
                 const fontEdit = el('div', 'field');
+                fontEdit.dataset.prop = 'Font editor'; fontEdit.dataset.cat = propCategory('Font editor');
                 fontEdit.appendChild(el('label', null, 'Font editor'));
                 const fontBtn = el('button', 'font-edit-btn', 'Edit Font…');
                 fontBtn.title = 'Edit family, size and style in a dialog';
@@ -1731,8 +1773,9 @@
 
         // Items list editor — only for ComboBox and ListBox (they have Items in the schema)
         if ((simple === 'ComboBox' || simple === 'ListBox') && !appearanceBlocked) {
-            box.appendChild(el('h4', null, 'Items'));
+            box.appendChild(el('h4', 'inspector-section', 'Items'));
             const itemsContainer = el('div', 'items-editor');
+            itemsContainer.dataset.prop = 'Items'; itemsContainer.dataset.cat = propCategory('Items');
             if (!c.properties.items) c.properties.items = [];
             const items = c.properties.items;
 
@@ -1791,7 +1834,7 @@
 
         // TextBox-specific properties
         if (simple === 'TextBox' && !appearanceBlocked) {
-            box.appendChild(el('h4', null, 'TextBox'));
+            box.appendChild(el('h4', 'inspector-section', 'TextBox'));
             box.appendChild(boolField('Multiline', !!c.properties.multiline, appearanceBlocked,
                 (v) => setProp(c, 'multiline', v)));
             box.appendChild(boolField('ReadOnly', !!c.properties.readOnly, appearanceBlocked,
@@ -1807,7 +1850,7 @@
 
         // Leaf widget values and ranges (TrackBar, ProgressBar, NumericUpDown)
         if (['TrackBar', 'ProgressBar', 'NumericUpDown'].includes(simple) && !appearanceBlocked) {
-            box.appendChild(el('h4', null, 'Range'));
+            box.appendChild(el('h4', 'inspector-section', 'Range'));
             box.appendChild(numField('Minimum', c.properties.minimum ?? 0, appearanceBlocked,
                 (v) => setProp(c, 'minimum', v)));
             box.appendChild(numField('Maximum', c.properties.maximum ?? 100, appearanceBlocked,
@@ -1851,12 +1894,14 @@
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));
         }
 
+        applyInspectorView(box);
         applyInspectorFilter();
     }
 
     function renderFormInspector(box) {
         if (!schema) return;
         box.appendChild(el('h3', null, `${schema.form.name} (Form)`));
+        renderInspectorViewToggle(box);
         if (readOnly) {
             const n = el('div', 'field');
             n.appendChild(el('div', 'note warn',
@@ -1875,17 +1920,99 @@
             schema.form.clientSize.height = Math.max(v, 60);
             commit();
         }));
-        box.appendChild(el('h4', null, 'Appearance'));
+        box.appendChild(el('h4', 'inspector-section', 'Appearance'));
         box.appendChild(colorField('BackColor', schema.form.backColor ?? '', readOnly, (v) => {
             schema.form.backColor = v;
             commit();
         }));
     }
 
+    /**
+     * D10 view toggle + regroup. The toggle is view state: clicking re-renders the
+     * inspector only, never touches `schema`, never posts a commit — so switching
+     * views is byte-identical on the file by construction (same class as D1/D5).
+     * Categorized groups by PROP_CATEGORIES in alphabetical category order with
+     * uncategorized rows under Misc; Alphabetical is one flat A–Z list. Both drop
+     * the flat section heads (`.inspector-section`) and keep action surfaces
+     * (Arrange/Delete, warnings, object selector) outside the groups. Nodes are
+     * MOVED, not rebuilt, so field listeners and in-progress input survive the switch.
+     */
+    function renderInspectorViewToggle(box) {
+        const wrap = el('div', 'inspector-view');
+        wrap.setAttribute('role', 'group');
+        wrap.title = 'Inspector view. Switching views never touches the file.';
+        for (const [mode, label] of [['flat', 'Flat'], ['categorized', 'Categorized'], ['alphabetical', 'Alphabetical']]) {
+            const b = el('button', 'inspector-view-btn', label);
+            b.dataset.view = mode;
+            if (inspectorView === mode) b.setAttribute('aria-pressed', 'true');
+            else b.setAttribute('aria-pressed', 'false');
+            b.title = mode === 'flat'
+                ? 'Flat view (current order). Switching views never touches the file.'
+                : `${label} view. Switching views never touches the file.`;
+            b.addEventListener('click', () => {
+                if (inspectorView === mode) return;
+                inspectorView = mode;
+                renderInspector();
+            });
+            wrap.appendChild(b);
+        }
+        box.appendChild(wrap);
+    }
+
+    function applyInspectorView(box) {
+        if (inspectorView === 'flat' || !box) return;
+        // Legacy flat grouping heads are wrong in every other view — drop them. The
+        // Arrange head is an ACTION head (not tagged) and stays, anchoring the tail.
+        // (Class-only selectors: the harness stand-in matches those faithfully.)
+        for (const h of box.querySelectorAll('.inspector-section')) h.remove();
+        // Property rows: every *Field div carries dataset.prop/cat; the Items list
+        // editor is a div.items-editor tagged the same way. Warnings carry neither
+        // and stay at the top; action buttons carry neither and stay at the tail.
+        const rows = [];
+        for (const n of Array.from(box.children)) {
+            if ((n.classList && n.classList.contains('field') && n.dataset && n.dataset.prop)
+                || (n.classList && n.classList.contains('items-editor'))) {
+                rows.push(n);
+            }
+        }
+        if (!rows.length) return;
+        const anchor = Array.from(box.children).find((n) =>
+            n.tagName === 'H4' && /Arrange/.test(n.textContent || ''));
+        for (const r of rows) r.remove();
+        const labelOf = (n) => String((n.dataset && n.dataset.prop) || '');
+        if (inspectorView === 'alphabetical') {
+            rows.sort((a, b) => labelOf(a).toLowerCase() < labelOf(b).toLowerCase() ? -1 : 1);
+            for (const r of rows) {
+                if (anchor) box.insertBefore(r, anchor);
+                else box.appendChild(r);
+            }
+            return;
+        }
+        // Categorized: alphabetical category order, A–Z labels within a category.
+        const groups = new Map();
+        for (const r of rows) {
+            const cat = (r.dataset && r.dataset.cat) || 'Misc';
+            if (!groups.has(cat)) groups.set(cat, []);
+            groups.get(cat).push(r);
+        }
+        for (const cat of Array.from(groups.keys()).sort()) {
+            const head = el('h4', 'inspector-cat', cat);
+            if (anchor) box.insertBefore(head, anchor);
+            else box.appendChild(head);
+            const list = groups.get(cat).sort((a, b) =>
+                labelOf(a).toLowerCase() < labelOf(b).toLowerCase() ? -1 : 1);
+            for (const r of list) {
+                if (anchor) box.insertBefore(r, anchor);
+                else box.appendChild(r);
+            }
+        }
+    }
+
     function setProp(c, key, value) { c.properties[key] = value; commit(); }
 
     function boolField(label, value, disabled, onChange) {
         const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
         const id = 'f' + label;
         const row = el('div', 'row');
         const box = document.createElement('input');
@@ -1909,6 +2036,7 @@
      */
     function colorField(label, value, disabled, onChange) {
         const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
         f.appendChild(el('label', null, label));
         const row = el('div', 'row');
         const sw = document.createElement('input');
@@ -1929,6 +2057,7 @@
 
     function numField(label, value, disabled, onChange) {
         const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
         const id = 'f' + label.replace(/\s+/g, '');
         const lab = el('label', null, label);
         lab.setAttribute('for', id);
@@ -1945,6 +2074,7 @@
     }
     function strField(label, value, disabled, onChange) {
         const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
         const id = 'f' + label.replace(/\s+/g, '');
         const lab = el('label', null, label);
         lab.setAttribute('for', id);
@@ -1958,6 +2088,7 @@
     }
     function selectField(label, value, options, disabled, onChange) {
         const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
         const id = 'f' + label.replace(/\s+/g, '');
         const lab = el('label', null, label);
         lab.setAttribute('for', id);
@@ -1998,19 +2129,42 @@
             const text = lab ? lab.textContent.toLowerCase() : '';
             f.style.display = text.includes(query) ? '' : 'none';
         }
+        // D10: an empty category head is clutter — hide it when none of its rows
+        // survive the filter. (The Items list editor is never filtered, as in flat.)
+        // Index-based sibling walk: works on the live DOM and the harness stand-in.
+        const kids = Array.from(box.children);
+        for (const h of box.querySelectorAll('.inspector-cat')) {
+            if (!query) { h.style.display = ''; continue; }
+            const cat = h.textContent;
+            let any = false;
+            for (let i = kids.indexOf(h) + 1; i < kids.length; i++) {
+                const n = kids[i];
+                if (n.tagName === 'H4') break;
+                if (n.classList && n.classList.contains('field')
+                    && n.dataset && n.dataset.cat === cat && n.style.display !== 'none') {
+                    any = true;
+                    break;
+                }
+            }
+            h.style.display = any ? '' : 'none';
+        }
+    }
+    function inspectorInputById(id) {
+        const ins = $('inspector');
+        if (!ins) return null;
+        // By id scan, not querySelector('#…'): ids like fTitle(Text) hold parens.
+        // Index-based lookup would break outside flat view, where X/Y/W/H move.
+        return Array.from(ins.querySelectorAll('input')).find((n) => n.id === id) || null;
     }
     function updateInspectorValues() {
         const sel = selected();
         if (sel.length === 1) {
             const c = sel[0];
-            const ins = $('inspector');
-            if (!ins) return;
-            const inputs = ins.querySelectorAll('input');
-            if (inputs.length >= 4) {
-                inputs[0].value = String(c.properties.x);
-                inputs[1].value = String(c.properties.y);
-                inputs[2].value = String(c.properties.width);
-                inputs[3].value = String(c.properties.height);
+            const pairs = [['fX', c.properties.x], ['fY', c.properties.y],
+                ['fWidth', c.properties.width], ['fHeight', c.properties.height]];
+            for (const [id, v] of pairs) {
+                const input = inspectorInputById(id);
+                if (input) input.value = String(v);
             }
         } else if (sel.length === 0) {
             updateFormInspectorValues();

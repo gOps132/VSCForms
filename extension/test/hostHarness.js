@@ -66,7 +66,17 @@ class El {
     set textContent(v) { this._text = String(v); this.children = []; }
     get innerHTML() { return this._html || ''; }
     set innerHTML(v) { this._html = v; this.children = []; }
-    appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
+    appendChild(c) {
+        // Faithful move semantics: appending an attached node MOVES it (the D10 view
+        // regroup re-appends live rows instead of rebuilding them, so listeners and
+        // in-progress input survive the switch). Without this the stand-in duplicates.
+        if (c.parentNode && c.parentNode !== this) c.parentNode.removeChild(c);
+        else if (c.parentNode === this) {
+            const i = this.children.indexOf(c);
+            if (i >= 0) this.children.splice(i, 1);
+        }
+        c.parentNode = this; this.children.push(c); return c;
+    }
     removeChild(c) {
         const i = this.children.indexOf(c);
         if (i >= 0) this.children.splice(i, 1);
@@ -127,6 +137,7 @@ class El {
         for (const fn of (this.listeners[type] || []).slice()) fn(event);
     }
     insertBefore(node, ref) {
+        if (node.parentNode) node.parentNode.removeChild(node);
         const i = this.children.indexOf(ref);
         node.parentNode = this;
         if (i < 0) this.children.push(node); else this.children.splice(i, 0, node);
@@ -2146,6 +2157,177 @@ setTimeout(async () => {
             check('nested move leaves the top-level array alone',
                 !!last && last.data.controls.map((c) => c.id).join(',') === 'txtName,btnSubmit,ThirdPartyGauge,pnlW',
                 last ? last.data.controls.map((c) => c.id).join(',') : 'no commit');
+        }
+
+        // ---- D10 inspector views: Flat / Categorized / Alphabetical (spec-property-tabs §§1–2)
+        // Presentational sort/group over the same rows: switching views re-renders only,
+        // never posts a commit (byte-identical file by construction — same class as D1/D5,
+        // no ADR, no engine change). Every offered property carries a category; Misc is
+        // the fallback for anything unmapped.
+        send({ type: 'load', data: schema });
+        await settled();
+        ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+        await settled();
+        {
+            const viewBtn = (label) => ids.inspector.querySelectorAll('button')
+                .find((b) => String(b.textContent || '') === label);
+            const setView = (label) => viewBtn(label).dispatch('click', {});
+            const fieldLabels = () => ids.inspector.querySelectorAll('.field')
+                .filter((f) => f.dataset && f.dataset.prop).map((f) => String(f.dataset.prop));
+            const catHeads = () => ids.inspector.querySelectorAll('.inspector-cat')
+                .map((h) => String(h.textContent));
+            const sorted = (xs) => xs.slice().sort((a, b) =>
+                a.toLowerCase() < b.toLowerCase() ? -1 : 1);
+
+            check('inspector offers all three view modes',
+                !!viewBtn('Flat') && !!viewBtn('Categorized') && !!viewBtn('Alphabetical'));
+            check('flat is the default view',
+                viewBtn('Flat').getAttribute('aria-pressed') === 'true');
+            check('flat keeps the current row order (geometry first)',
+                fieldLabels().slice(0, 4).join(',') === 'X,Y,Width,Height',
+                fieldLabels().slice(0, 6).join(','));
+            check('flat keeps the legacy section heads',
+                ids.inspector.querySelectorAll('.inspector-section').length > 0);
+
+            // Categorized: groups in alphabetical category order, A–Z rows within.
+            sandbox.__sent.length = 0;
+            setView('Categorized');
+            await settled();
+            check('switching views posts no commit — the file is untouched',
+                !sandbox.__sent.some((m) => m.type === 'commit'),
+                JSON.stringify(sandbox.__sent.map((m) => m.type)));
+            check('categorized marks itself pressed', viewBtn('Categorized').getAttribute('aria-pressed') === 'true');
+            const heads = catHeads();
+            check('categorized groups exist', heads.length >= 3, heads.join(','));
+            check('categories run in alphabetical order',
+                JSON.stringify(heads) === JSON.stringify(sorted(heads)), heads.join(','));
+            check('legacy flat section heads are gone in categorized view',
+                ids.inspector.querySelectorAll('.inspector-section').length === 0);
+            check('no property row is lost regrouping',
+                fieldLabels().length >= 10, String(fieldLabels().length));
+            check('every offered property carries a category (none unmapped)',
+                ids.inspector.querySelectorAll('.field')
+                    .filter((f) => f.dataset && f.dataset.prop)
+                    .every((f) => String(f.dataset.cat || '').length > 0));
+            check('Name sits in the Design group',
+                ids.inspector.querySelectorAll('.field')
+                    .filter((f) => f.dataset && f.dataset.prop === 'Name')
+                    .every((f) => f.dataset.cat === 'Design'));
+            {
+                // A–Z within each category: walk the regrouped DOM in order.
+                const seen = {};
+                let ordered = true;
+                for (const n of ids.inspector.children) {
+                    if (n.classList && n.classList.contains('inspector-cat')) {
+                        seen.cur = String(n.textContent); seen[seen.cur] = [];
+                    } else if (n.classList && n.classList.contains('field') && n.dataset && n.dataset.prop && seen.cur) {
+                        seen[seen.cur].push(String(n.dataset.prop));
+                    }
+                }
+                for (const cat of Object.keys(seen).filter((k) => k !== 'cur' && Array.isArray(seen[k]))) {
+                    if (JSON.stringify(seen[cat]) !== JSON.stringify(sorted(seen[cat]))) { ordered = false; break; }
+                }
+                check('rows run A–Z within each category', ordered);
+            }
+
+            // An edit in categorized view travels the same setProp/commit path.
+            sandbox.__sent.length = 0;
+            const catText = ids.inspector.querySelectorAll('input').find((i) => i.id === 'fText');
+            check('categorized view keeps the Text field addressable', !!catText);
+            catText.value = 'Categorized edit';
+            catText.dispatch('change', {});
+            await settled();
+            const catCommit = sandbox.__sent.find((m) => m.type === 'commit');
+            const catSent = catCommit && catCommit.data.controls.find((c) => c.id === 'btnSubmit');
+            check('editing in categorized view commits through the same path',
+                !!catSent && catSent.properties.text === 'Categorized edit',
+                catSent ? JSON.stringify(catSent.properties) : 'no commit');
+
+            // Live drag values still reach the inspector outside flat order (id lookup).
+            {
+                const x0 = parseFloat(ctlNode('btnSubmit').style.left);
+                ctlNode('btnSubmit').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
+                sandbox.window.dispatch('mousemove', { clientX: 140, clientY: 100 });
+                sandbox.window.dispatch('mouseup', {});
+                mirrorScale();
+                const fx = ids.inspector.querySelectorAll('input').find((i) => i.id === 'fX');
+                check('drag in categorized view moves the control',
+                    parseFloat(ctlNode('btnSubmit').style.left) !== x0);
+                check('drag in categorized view updates the regrouped X field by id',
+                    !!fx && fx.value === String(Math.round(parseFloat(ctlNode('btnSubmit').style.left))),
+                    fx ? JSON.stringify(fx.value) : 'no fX input');
+                await settled();
+                sandbox.__sent.length = 0;
+            }
+            sandbox.__sent.length = 0;
+            setView('Alphabetical');
+            await settled();
+            check('alphabetical switch posts no commit either',
+                !sandbox.__sent.some((m) => m.type === 'commit'),
+                JSON.stringify(sandbox.__sent.map((m) => m.type)));
+            check('alphabetical shows no category heads',
+                ids.inspector.querySelectorAll('.inspector-cat').length === 0,
+                String(ids.inspector.querySelectorAll('.inspector-cat').length));
+            {
+                const labs = fieldLabels();
+                check('alphabetical lists every row A–Z',
+                    labs.length >= 10 && JSON.stringify(labs) === JSON.stringify(sorted(labs)),
+                    labs.join(','));
+            }
+
+            // Back to flat: legacy order and heads return, still no commit.
+            sandbox.__sent.length = 0;
+            setView('Flat');
+            await settled();
+            check('returning to flat posts no commit',
+                !sandbox.__sent.some((m) => m.type === 'commit'),
+                JSON.stringify(sandbox.__sent.map((m) => m.type)));
+            check('flat order is restored',
+                fieldLabels().slice(0, 4).join(',') === 'X,Y,Width,Height',
+                fieldLabels().slice(0, 6).join(','));
+
+            // Locked controls and refused forms keep the toggle (read-only rows regroup
+            // the same way); multi-selection has no properties, so no toggle there.
+            ctlNode('ThirdPartyGauge').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+            await settled();
+            check('locked control keeps the view toggle',
+                !!viewBtn('Flat') && !!viewBtn('Categorized') && !!viewBtn('Alphabetical'));
+            send({ type: 'load', data: schema });
+            await settled();
+            ctlNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 });
+            ctlNode('btnSubmit').dispatch('mousedown',
+                { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+            await settled();
+            check('multi-selection offers no view toggle (nothing to sort)',
+                !ids.inspector.querySelectorAll('button').some((b) => String(b.textContent || '') === 'Categorized'));
+
+            // Form inspector (no selection) regroups too: Title/BackColor under
+            // Appearance, Width/Height under Layout.
+            winKey('Escape', {});
+            await settled();
+            check('form inspector offers the view toggle', !!viewBtn('Categorized'));
+            sandbox.__sent.length = 0;
+            setView('Categorized');
+            await settled();
+            check('form switch posts no commit',
+                !sandbox.__sent.some((m) => m.type === 'commit'),
+                JSON.stringify(sandbox.__sent.map((m) => m.type)));
+            {
+                const fhe = catHeads();
+                check('form categories cover Appearance and Layout',
+                    fhe.includes('Appearance') && fhe.includes('Layout'), fhe.join(','));
+            }
+            sandbox.__sent.length = 0;
+            const fw = ids.inspector.querySelectorAll('input').find((i) => i.id === 'fWidth');
+            fw.value = '500';
+            fw.dispatch('change', {});
+            await settled();
+            const fCommit = sandbox.__sent.find((m) => m.type === 'commit');
+            check('form edit in categorized view commits the same path',
+                !!fCommit && fCommit.data.form.clientSize.width === 500,
+                fCommit ? JSON.stringify(fCommit.data.form.clientSize) : 'no commit');
+            setView('Flat');
+            await settled();
         }
     }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
