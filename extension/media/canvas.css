@@ -212,6 +212,9 @@ body { display: flex; flex-direction: column; }
    by the default `overflow: hidden`. Selection therefore switches to visible; the caption
    may briefly overflow a selected control, which is far less bad than invisible handles. */
 .ctl.selected { overflow: visible; outline: 1px dotted var(--accent); outline-offset: -1px; }
+/* Click-order primary (dominant) in a group wears white handles, like VS, so the
+   control align/same-size reference is visible at a glance. */
+.ctl.dominant .handle { background: #fff; }
 .ctl.selected::after {
   content: ''; position: absolute; inset: -2px;
   border: 1px solid var(--accent); pointer-events: none;

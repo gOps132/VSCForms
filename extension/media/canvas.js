@@ -19,6 +19,14 @@
     let schema = null;
     /** Selected ids. A Set, not a string: multi-select is the base case, not a mode. */
     let selection = new Set();
+    /**
+     * Click order of the selection: the first entry is the dominant (VS primary)
+     * control that align/same-size reference. A Set alone cannot hold this — its
+     * iteration order is insertion order only until a delete/re-add, and marquee
+     * selection never "clicks" at all. Every site that replaces `selection`
+     * replaces this in the same statement.
+     */
+    let clickOrder = [];
     /** Set when the form refuses editing: canvas becomes read-only. */
     let readOnly = false;
     /** The container we have "drilled into" via double-click. When set, only its
@@ -280,6 +288,22 @@
     /** Selected controls, in schema order so alignment output is deterministic. */
     function selected() {
         return allControls(schema ? schema.controls : []).filter((c) => selection.has(c.id));
+    }
+
+    /**
+     * Click-order primary (VS "dominant" control): the first-clicked member of the
+     * selection. `selected()` stays schema order for compat; align/same-size
+     * reference THIS. Falls back to schema-first when the order is unknown, and to
+     * null when the selection is empty.
+     */
+    function dominant() {
+        for (const id of clickOrder) {
+            if (!selection.has(id)) continue;
+            const c = findControl(id);
+            if (c) return c;
+        }
+        const s = selected();
+        return s.length ? s[0] : null;
     }
 
     /** The selection can be edited only when it is non-empty, not refused, and fully modelled. */
@@ -627,9 +651,14 @@
 
         if (selection.has(c.id)) {
             node.classList.add('selected');
-            // Handles only make sense for a single selection; on a group they would imply the
-            // group can be resized, which is not what a drag does.
-            if (selection.size === 1 && !c.locked && !readOnly) renderHandles(node);
+            // The click-order primary wears the `dominant` class (white handles in a
+            // group, like VS — that is how the align/same-size reference is visible).
+            // Handles stay off non-dominant members: they would imply the group can
+            // be resized, which is not what a drag does.
+            const dom = dominant();
+            const isDom = !!dom && dom.id === c.id;
+            if (isDom) node.classList.add('dominant');
+            if (!c.locked && !readOnly && (selection.size === 1 || isDom)) renderHandles(node);
         }
 
         // A container positions its children absolutely, so it must not be a flex/column
@@ -646,8 +675,10 @@
             const originNode = e.target && typeof e.target.closest === 'function'
                 ? e.target.closest('.ctl') : null;
             if (originNode && originNode !== node) return;
-            // Shift+click extends rather than replaces; a plain click always collapses, so the
-            // selection can never contain a control the user cannot see selected.
+            // Shift+click extends rather than replaces, and so does Ctrl/Cmd+click (VS
+            // parity: toggle the member, first click wins the dominant); a plain click
+            // always collapses, so the selection can never contain a control the user
+            // cannot see selected.
             // A Locked Control must never enter the selection. Not merely because it cannot be
             // dragged: `selection` is what a group drag iterates, so a locked member would be
             // MOVED by dragging a sibling — writing a control we have promised never to write
@@ -659,8 +690,14 @@
             // Locked and refused never reach here (guarded above).
             if (tabOrderMode) { setProp(c, 'tabIndex', tabOrderNext++); return; }
 
-            const extend = e.shiftKey;
-            if (extend) select(c.id, true); else if (!selection.has(c.id) || selection.size > 1) select(c.id);
+            const extend = e.shiftKey || e.ctrlKey || e.metaKey;
+            if (extend) {
+                // Toggling OFF starts no drag: the control just left the selection,
+                // so there is nothing to move.
+                const wasMember = selection.has(c.id);
+                select(c.id, true);
+                if (wasMember) return;
+            } else if (!selection.has(c.id) || selection.size > 1) select(c.id);
             beginDrag(e, c, node, containerNode);
         });
         node.addEventListener('dblclick', (e) => {
@@ -678,6 +715,7 @@
                 // Enter container: double-click a GroupBox, Panel, TabControl, TabPage
                 activeContainer = c;
                 selection = new Set();
+                clickOrder = [];
                 renderCanvas();
                 renderInspector();
                 renderStatus('Entered ' + c.id + ' — double-click outside or press Escape to exit', 'ok');
@@ -949,9 +987,17 @@
     function select(id, extend) {
         if (id && !inActiveContainer(id)) return; // ignore clicks outside active container
         if (extend) {
-            if (selection.has(id)) selection.delete(id); else selection.add(id);
+            if (!id) return;
+            if (selection.has(id)) {
+                selection.delete(id);
+                clickOrder = clickOrder.filter((x) => x !== id);
+            } else {
+                selection.add(id);
+                clickOrder.push(id);
+            }
         } else {
             selection = new Set(id ? [id] : []);
+            clickOrder = id ? [id] : [];
         }
         renderCanvas();
         renderInspector();
@@ -960,16 +1006,25 @@
     }
 
     /** Select everything in a rectangle. Marquee selection is view state — it posts nothing. */
-    function selectInRect(a, b) {
+    function selectInRect(a, b, add) {
         const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
         const y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
-        selection = new Set(
-            allControls(schema ? schema.controls : [])
-                .filter((c) => !c.locked
-                    && c.properties.x < x2 && c.properties.x + c.properties.width > x1
-                    && c.properties.y < y2 && c.properties.y + c.properties.height > y1
-                    && inActiveContainer(c.id))
-                .map((c) => c.id));
+        const hit = allControls(schema ? schema.controls : [])
+            .filter((c) => !c.locked
+                && c.properties.x < x2 && c.properties.x + c.properties.width > x1
+                && c.properties.y < y2 && c.properties.y + c.properties.height > y1
+                && inActiveContainer(c.id))
+            .map((c) => c.id);
+        if (add) {
+            // Shift+marquee ADDS: the click order survives, newcomers append in schema
+            // order. Locked never joins (filtered above, AGENTS.md invariant 4).
+            for (const id of hit) {
+                if (!selection.has(id)) { selection.add(id); clickOrder.push(id); }
+            }
+        } else {
+            selection = new Set(hit);
+            clickOrder = hit.slice();
+        }
         renderCanvas();
         renderInspector();
         renderStatusForSelection();
@@ -1179,10 +1234,10 @@
 
         if (s.length < 2) return;
 
-        // Make Same Size copies the schema-order-first (dominant) control's extents.
+        // Make Same Size copies the click-order dominant's extents (VS primary).
         // Position is untouched: resizing keeps the top-left corner, like VS.
         if (kind === 'same-w' || kind === 'same-h' || kind === 'same-both') {
-            const ref = s[0].properties;
+            const ref = (dominant() || s[0]).properties;
             for (const c of s) {
                 if (kind === 'same-w' || kind === 'same-both') c.properties.width = ref.width;
                 if (kind === 'same-h' || kind === 'same-both') c.properties.height = ref.height;
@@ -1206,20 +1261,20 @@
             return;
         }
 
-        const left = Math.min(...s.map((c) => c.properties.x));
-        const right = Math.max(...s.map((c) => c.properties.x + c.properties.width));
-        const top = Math.min(...s.map((c) => c.properties.y));
-        const bottom = Math.max(...s.map((c) => c.properties.y + c.properties.height));
+        // Align references the DOMINANT control's edges (VS aligns to the primary),
+        // not the bounding box of the group.
+        const dom = dominant() || s[0];
+        const dp = dom.properties;
 
         for (const c of s) {
             const p = c.properties;
             switch (kind) {
-                case 'left': p.x = left; break;
-                case 'right': p.x = right - p.width; break;
-                case 'hcenter': p.x = Math.round((left + right - p.width) / 2); break;
-                case 'top': p.y = top; break;
-                case 'bottom': p.y = bottom - p.height; break;
-                case 'vcenter': p.y = Math.round((top + bottom - p.height) / 2); break;
+                case 'left': p.x = dp.x; break;
+                case 'right': p.x = dp.x + dp.width - p.width; break;
+                case 'hcenter': p.x = Math.round(dp.x + (dp.width - p.width) / 2); break;
+                case 'top': p.y = dp.y; break;
+                case 'bottom': p.y = dp.y + dp.height - p.height; break;
+                case 'vcenter': p.y = Math.round(dp.y + (dp.height - p.height) / 2); break;
             }
         }
         commit();
@@ -1382,6 +1437,7 @@
         });
         schema.controls.push(...copies);
         selection = new Set(copies.map((c) => c.id));
+        clickOrder = copies.map((c) => c.id);
         recomputeCoverage();
         commit();
         renderCanvas();
@@ -1481,6 +1537,7 @@
         }
         schema.controls.push(...copies);
         selection = new Set(copies.map((c) => c.id));
+        clickOrder = copies.map((c) => c.id);
         recomputeCoverage();
         commit();
         renderCanvas();
@@ -2215,6 +2272,7 @@
         schema.controls.push(node);
         schema.analysis.modelledCount += 1;
         selection = new Set([node.id]);
+        clickOrder = [node.id];
         commit();
     }
 
@@ -2243,6 +2301,7 @@
         schema.analysis.modelledCount = Math.max(0, schema.analysis.modelledCount - 1);
         recomputeCoverage();
         selection = new Set();
+        clickOrder = [];
         commit();
     }
 
@@ -2306,6 +2365,7 @@
             if (activeContainer) {
                 activeContainer = null;
                 selection = new Set();
+                clickOrder = [];
                 renderCanvas();
                 renderInspector();
                 renderStatus('Exited container', 'ok');
@@ -2335,6 +2395,9 @@
         // As for guides above: view chrome paints above z-indexed controls.
         box.style.zIndex = '1000';
         $('canvas').appendChild(box);
+        // Shift+marquee ADDS to the selection; a plain marquee replaces it. Captured
+        // at mousedown: the modifier held when the gesture STARTS decides.
+        const add = !!e.shiftKey;
         // Form-space origin, so the rectangle tracks the pointer at any zoom.
         const r = $('canvas').getBoundingClientRect();
         const start = { x: (e.clientX - r.left) / view.scale, y: (e.clientY - r.top) / view.scale };
@@ -2345,7 +2408,7 @@
             const w = Math.abs(cur.x - start.x), h = Math.abs(cur.y - start.y);
             box.style.left = x + 'px'; box.style.top = y + 'px';
             box.style.width = w + 'px'; box.style.height = h + 'px';
-            selectInRect(start, cur);
+            selectInRect(start, cur, add);
         }
         function up() {
             window.removeEventListener('mousemove', move);
@@ -2470,6 +2533,7 @@
                 if (msg.type === 'load') bannerDismissed = false;
                 readOnly = schema.analysis.refuses.length > 0;
                 selection = new Set();
+                clickOrder = [];
                 // A new document means fresh view state; reset silently so the
                 // 'Ready' / 'changed on disk' message below survives.
                 setTabOrderMode(false, false);
@@ -2582,6 +2646,7 @@
                 if (activeContainer) {
                     activeContainer = null;
                     selection = new Set();
+                    clickOrder = [];
                     renderCanvas();
                     renderInspector();
                     renderStatus('Exited container', 'ok');

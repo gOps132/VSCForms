@@ -39,7 +39,8 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   generation), `rename` (Designer File + code-behind member-access receivers
   only, ADR 0008).
 - **Canvas toolset:** drag, 8-handle resize, snap (grid + edges, toggleable),
-  multi-select + marquee, align/distribute, `Cmd/Ctrl+D` duplicate, zoom
+  multi-select + marquee (click-order dominant + Ctrl/Cmd+click toggle +
+  Shift+marquee-add, align/distribute-to-dominant), `Cmd/Ctrl+D` duplicate, zoom
   (`Cmd/Ctrl`+wheel, `+/-`/`0`, Fit, 0.25–4.0), space/middle-drag pan, rulers,
   zoom bar, Escape deselect, tab-strip activation, drill-down selection for
   nested containers, coverage banner (never hideable), locked boxes with
@@ -111,6 +112,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D8 | Modal type editors (Font dialog etc.) | shipped | M | `spec-vs-parity.md` §1 | Font modal through existing setProp/INSERT path (no-op emits nothing, `Regular` kept). Colors already have native pickers; Margin/Padding stays out (C3). (#36) |
 | D9 | Object selector dropdown (jump to hidden/buried control) | shipped | S | `spec-property-tabs.md` §7 | Pathed flat list over all controls; change → select() only, no commit; locked select-readable alone. (#37) |
 | D10 | Inspector Categorized + Alphabetical views | shipped | S | `spec-property-tabs.md` §§1–2 | Presentational sort/group toggle over flat rows (Flat/Categorized/Alphabetical buttons in the inspector; view state only, switching never commits so the file is byte-identical). Hardcoded per-property category table in canvas (`PROP_CATEGORIES`, VS `[Category]` values; unmapped → Misc); no engine table — categories never cross the protocol, same class as D1/D5. Live drag values look up inputs by id (index lookup breaks outside flat order). (#32) |
+| D11 | Click-order dominant selection + Ctrl+click + align-to-dominant | shipped | S | `spec-vs-parity.md` §1 | First-clicked member is the primary (`dominant` class + white handles in a group); align/same-size reference its edges/extents, not the group bbox; Ctrl/Cmd+click toggles membership (toggling off starts no drag); Shift+marquee adds, plain marquee replaces; locked never joins a group. View state only, no protocol change, no ADR. (#47) |
 
 P0 after #29 is clipboard (#3), grid-size setting, snapline baselines +
 Alt-suppress (`spec-vs-parity.md` §3) — everything else formerly listed there

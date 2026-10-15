@@ -2330,6 +2330,155 @@ setTimeout(async () => {
             await settled();
         }
     }
+
+    // ---- Task 1 (#47): click-order dominant + Ctrl+click + align-to-dominant
+    // The dominant (VS primary) is the FIRST-clicked member, not schema-first.
+    // It carries the `dominant` class (+ white handles in a group); align and
+    // same-size reference its edges/extents. Ctrl+click toggles membership.
+    // Shift+marquee ADDS to the selection instead of replacing it.
+    send({ type: 'load', data: schema });
+    await settled();
+    winKey('0', { ctrlKey: true, metaKey: true });
+    mirrorScale();
+    {
+        const domMarked = (id) => !!ctlNode(id) && ctlNode(id).classList.contains('dominant');
+        const selIds = () => canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).sort().join(',');
+        const down = (id, extra) => ctlNode(id).dispatch('mousedown',
+            Object.assign({ preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 }, extra || {}));
+        const arrange = (label) => {
+            const b = ids.inspector.querySelectorAll('button').find((x) => String(x.textContent || '') === label);
+            if (!b) return false;
+            b.dispatch('click', {});
+            return true;
+        };
+        const endDrag = () => { sandbox.window.dispatch('mouseup', {}); mirrorScale(); };
+
+        // Click btnSubmit FIRST, txtName second: dominant is btnSubmit although
+        // schema order puts txtName first.
+        down('btnSubmit');
+        endDrag();
+        check('a single selection marks its control dominant', domMarked('btnSubmit'));
+        down('txtName', { shiftKey: true });
+        endDrag();
+        check('a multi-selection marks exactly one dominant',
+            canvasEl.querySelectorAll('.ctl.dominant').length === 1,
+            String(canvasEl.querySelectorAll('.ctl.dominant').length));
+        check('dominant is the first-clicked control, not schema-first',
+            domMarked('btnSubmit') && !domMarked('txtName'),
+            'btnSubmit=' + domMarked('btnSubmit') + ' txtName=' + domMarked('txtName'));
+        check('the dominant member shows resize handles in a group (white)',
+            !!ctlNode('btnSubmit').querySelector('.handle'));
+        check('a non-dominant member shows no handles',
+            !ctlNode('txtName').querySelector('.handle'));
+
+        // Align right references the DOMINANT right edge (btnSubmit: 96+84=180),
+        // not the bbox max (txtName: 96+180=276). txtName lands at x=0.
+        sandbox.__sent.length = 0;
+        winKey('r', { metaKey: true });
+        check('align-right references the dominant edge, not the bbox max',
+            leftOf('txtName') === 0 && leftOf('btnSubmit') === 96,
+            `txtName x=${leftOf('txtName')} btnSubmit x=${leftOf('btnSubmit')}`);
+        await settled();
+        check('dominant align posts exactly one commit',
+            sandbox.__sent.filter((m) => m.type === 'commit').length === 1,
+            String(sandbox.__sent.map((m) => m.type)));
+
+        // Same Size copies the DOMINANT extents (btnSubmit 84x27), not
+        // schema-first (txtName 180x23).
+        send({ type: 'load', data: schema });
+        await settled();
+        down('btnSubmit');
+        endDrag();
+        down('txtName', { shiftKey: true });
+        endDrag();
+        sandbox.__sent.length = 0;
+        check('same-size action runs for the dominant check', arrange('Same Size'));
+        check('same-size copies the dominant (first-clicked) extents',
+            parseFloat(ctlNode('txtName').style.width) === 84
+                && parseFloat(ctlNode('txtName').style.height) === 27,
+            `${ctlNode('txtName').style.width}x${ctlNode('txtName').style.height}`);
+        await settled();
+        sandbox.__sent.length = 0;
+
+        // Ctrl+click toggles: add, remove, and empty the selection.
+        send({ type: 'load', data: schema });
+        await settled();
+        down('btnSubmit');
+        endDrag();
+        down('txtName', { ctrlKey: true });
+        endDrag();
+        check('ctrl+click adds to the selection', selIds() === 'btnSubmit,txtName', selIds());
+        check('ctrl-added member leaves the dominant alone',
+            domMarked('btnSubmit') && !domMarked('txtName'));
+        down('txtName', { ctrlKey: true });
+        endDrag();
+        check('ctrl+click on a member removes it', selIds() === 'btnSubmit', selIds());
+        check('removing a non-dominant keeps the dominant',
+            domMarked('btnSubmit')
+                && canvasEl.querySelectorAll('.ctl.dominant').length === 1);
+        down('btnSubmit', { ctrlKey: true });
+        endDrag();
+        check('ctrl+click on the dominant empties the selection', selIds() === '');
+        check('no dominant class survives an empty selection',
+            canvasEl.querySelectorAll('.ctl.dominant').length === 0);
+        // Toggling OFF starts no drag: nothing moved, nothing posted.
+        check('toggling off posts no commit — selection is view state',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+
+        // Ctrl+click on a Locked Control still collapses to it alone (readable
+        // reason) and never builds a group — invariant 4 holds for Ctrl too.
+        send({ type: 'load', data: schema });
+        await settled();
+        down('btnSubmit');
+        endDrag();
+        down('ThirdPartyGauge', { ctrlKey: true });
+        endDrag();
+        check('ctrl+click on locked selects it alone, never a group',
+            selIds() === 'ThirdPartyGauge', selIds());
+
+        // Shift+marquee ADDS: pre-select btnSubmit, then sweep a rect covering
+        // txtName (y 78..101) but not btnSubmit (y 154..181).
+        send({ type: 'load', data: schema });
+        await settled();
+        down('btnSubmit');
+        endDrag();
+        sandbox.__sent.length = 0;
+        canvasEl.dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 0, clientY: 0, shiftKey: true });
+        sandbox.window.dispatch('mousemove', { clientX: 400, clientY: 100 });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+        check('shift+marquee keeps the pre-existing selection',
+            selIds() === 'btnSubmit,txtName', selIds());
+        check('shift+marquee posts no commit — selection is view state',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+
+        // Plain marquee still replaces: the pre-selection is dropped.
+        send({ type: 'load', data: schema });
+        await settled();
+        down('btnSubmit');
+        endDrag();
+        canvasEl.dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 0, clientY: 0 });
+        sandbox.window.dispatch('mousemove', { clientX: 400, clientY: 100 });
+        sandbox.window.dispatch('mouseup', {});
+        mirrorScale();
+        check('plain marquee replaces the selection',
+            selIds() === 'txtName', selIds());
+
+        // Escape clears the dominant marking with the selection.
+        down('btnSubmit');
+        endDrag();
+        down('txtName', { shiftKey: true });
+        endDrag();
+        winKey('Escape', {});
+        check('escape clears the selection with the dominant block',
+            canvasEl.querySelectorAll('.ctl.selected').length === 0);
+        check('escape clears the dominant marking too',
+            canvasEl.querySelectorAll('.ctl.dominant').length === 0);
+    }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
