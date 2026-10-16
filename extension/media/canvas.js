@@ -53,7 +53,7 @@
     // editor share one history. See the keydown handler at the bottom of this file.
 
     const SNAP = 4;          // px within which an edge snaps
-    const GRID = 8;          // movement granularity
+    const GRID = 8;          // default movement granularity (view.gridSize overrides)
 
     // ------------------------------------------------------------- view state
     // Zoom and pan are VIEW state: they never touch `schema`, never post a commit, and are
@@ -66,7 +66,11 @@
     const ZOOM_MIN = 0.25;
     const ZOOM_MAX = 4;
     const ZOOM_STEP = 1.25;
-    const view = { scale: 1, panning: false, snap: true };
+    // snapMode 'lines' is VS SnapLines (edges + centers + baselines with magnetic
+    // pull, plus grid quantize); 'grid' is grid quantize only (no guides, no pull).
+    // gridSize and snapMode are VIEW state like zoom and the master snap toggle:
+    // they never touch `schema`, never post a commit, and need no protocol change.
+    const view = { scale: 1, panning: false, snap: true, gridSize: GRID, snapMode: 'lines' };
 
     /** Pointer delta in FORM units. The only place the scale is divided out. */
     function formDelta(ev, origin) {
@@ -77,7 +81,8 @@
     /** Round to the grid in FORM space, never in screen space — screen rounding drifts at
      *  fractional zoom and pulls controls off the grid they are snapped to. */
     function snapTo(v) {
-        return view.snap ? Math.round(v / GRID) * GRID : Math.round(v);
+        const g = view.gridSize > 0 ? view.gridSize : GRID;
+        return view.snap ? Math.round(v / g) * g : Math.round(v);
     }
 
     function frameEl() { return document.querySelector('.form-frame') || $('canvas'); }
@@ -152,7 +157,7 @@
     /** Cheap orientation, not a measuring instrument: a tick every 5 grid units, scaled with
      *  the canvas so a tick keeps meaning the same form distance at any zoom. */
     function renderRulers() {
-        const major = GRID * 5 * view.scale;
+        const major = (view.gridSize > 0 ? view.gridSize : GRID) * 5 * view.scale;
         for (const id of ['ruler-h', 'ruler-v']) {
             const r = $(id);
             if (!r) continue;
@@ -729,10 +734,11 @@
             // GRID is FORM units. A nudge must never be "8 screen pixels" — at 50% zoom that
             // would be a 16px move, and the control would drift off its grid.
             // VS parity (SizeControl commands, #48): plain arrows move by GRID; Ctrl/Cmd is
-            // the 1px fine step (the old GRID*5 jump was inverted). Shift resizes with the
+            // the 1px fine step (the old GRID*5 jump was inverted). The plain step follows
+            // the grid-size setting (#49); the fine step stays 1px. Shift resizes with the
             // same step — Right/Down grow, Left/Up shrink, top-left anchored. Ctrl+Shift
             // resizes by the fine step.
-            const step = (e.ctrlKey || e.metaKey) ? 1 : GRID;
+            const step = (e.ctrlKey || e.metaKey) ? 1 : (view.gridSize > 0 ? view.gridSize : GRID);
             const many = selected();
             // dragRoots, like a drag: nudging a container already carries its children.
             const nudgeTarget = dragRoots(many.length > 1 && many.some((m) => m.id === c.id) ? many : [c]);
@@ -1609,9 +1615,6 @@
     function beginDrag(e, c, node, containerNode) {
         e.preventDefault();
         const origin = { mx: e.clientX, my: e.clientY, x: c.properties.x, y: c.properties.y };
-        const parentBox = containerNode
-            ? containerNode.getBoundingClientRect()
-            : $('canvas').getBoundingClientRect();
 
         // Dragging any member of a multi-selection moves the WHOLE selection by one delta,
         // which is what makes group positioning possible at all. dragRoots drops members
@@ -1624,16 +1627,34 @@
             // Divide the scale out FIRST, then snap in form space. Snapping in screen space
             // drifts at fractional zoom and pulls controls off the grid.
             const { dx, dy } = formDelta(ev, origin);
+            // Alt held mid-gesture suppresses snap entirely (#49): raw 1px deltas, no
+            // pull, no guides — read off the MOVE event, since Alt may go down mid-drag.
+            const suppressed = !!ev.altKey;
+            let qx = suppressed ? Math.round(dx) : snapTo(dx);
+            let qy = suppressed ? Math.round(dy) : snapTo(dy);
+            // Magnetic pull over the group's shared bbox, so a multi-selection snaps as
+            // one block and never splits. Quantize first, then pull: the pull corrects a
+            // quantized landing onto a nearby edge/center/baseline, or leaves it alone.
+            let guides = [];
+            if (!suppressed && view.snap && view.snapMode === 'lines') {
+                const bb = groupBBox(groupStart, qx, qy);
+                const parent = parentOf(c.id);
+                const sn = snapMoveRect(bb.x, bb.y, bb.w, bb.h,
+                    groupStart.length === 1 ? baselineOf(c) + qy : null,
+                    snapExclude(groupStart), parent, frameOrigin(parent));
+                qx += sn.dx; qy += sn.dy; guides = sn.guides;
+            }
             // Container clamp (#48): one shared delta, limited so every root lands inside
             // its own parent frame. Clamped from the gesture START — clamping per-mousemove
-            // would stick at the wall and never come back.
+            // would stick at the wall and never come back. Runs after the pull so a pull
+            // past the wall is still contained.
             const cl = clampMoveDelta(groupStart.map((s) => {
                 const f = parentFrame(s.g);
                 return {
                     x: s.x, y: s.y,
                     w: s.g.properties.width, h: s.g.properties.height, fw: f.w, fh: f.h,
                 };
-            }), snapTo(dx), snapTo(dy));
+            }), qx, qy);
             for (const s of groupStart) {
                 s.g.properties.x = s.x + cl.dx;
                 s.g.properties.y = s.y + cl.dy;
@@ -1643,7 +1664,7 @@
                     n.style.top = s.g.properties.y + 'px';
                 }
             }
-            showGuides(c, parentBox);
+            renderSnapGuides(guides);
             updateInspectorValues();
             renderStatusForSelection();
         }
@@ -1663,26 +1684,50 @@
         const min = minExtent(c);
         const o = { x: c.properties.x, y: c.properties.y, w: c.properties.width, h: c.properties.height };
         function move(ev) {
-            // Same rule as drag: form units in, form units out.
+            // Same rule as drag: form units in, form units out. Alt suppresses (#49).
             const { dx, dy } = formDelta(ev, { mx: e.clientX, my: e.clientY });
+            const suppressed = !!ev.altKey;
             let { x, y, w, h } = o;
             if (dir.includes('e')) w = Math.max(o.w + dx, min.w);
             if (dir.includes('s')) h = Math.max(o.h + dy, min.h);
             if (dir.includes('w')) { w = Math.max(o.w - dx, min.w); x = o.x + (o.w - w); }
             if (dir.includes('n')) { h = Math.max(o.h - dy, min.h); y = o.y + (o.h - h); }
+            // Grid quantize on the resized extents (west/north keep the far edge fixed),
+            // then magnetic pull of the moving edges in lines mode.
+            let guides = [];
+            if (!suppressed && view.snap) {
+                const g = view.gridSize > 0 ? view.gridSize : GRID;
+                const q = (v) => Math.round(v / g) * g;
+                if (dir.includes('e')) w = Math.max(q(w), min.w);
+                if (dir.includes('s')) h = Math.max(q(h), min.h);
+                if (dir.includes('w')) { const r = o.x + o.w; x = q(x); w = Math.max(r - x, min.w); x = r - w; }
+                if (dir.includes('n')) { const b = o.y + o.h; y = q(y); h = Math.max(b - y, min.h); y = b - h; }
+                if (view.snapMode === 'lines') {
+                    const parent = parentOf(c.id);
+                    const sn = snapResizeRect(x, y, w, h, dir,
+                        snapExclude([{ g: c }]), parent, frameOrigin(parent));
+                    x = sn.x; y = sn.y;
+                    w = Math.max(sn.w, min.w); h = Math.max(sn.h, min.h);
+                    guides = sn.guides;
+                }
+            }
             c.properties.x = Math.round(x); c.properties.y = Math.round(y);
             c.properties.width = Math.round(w); c.properties.height = Math.round(h);
             const live = nodeFor(c.id);
             if (live) {
+                live.style.left = c.properties.x + 'px';
+                live.style.top = c.properties.y + 'px';
                 live.style.width = Math.max(c.properties.width, 2) + 'px';
                 live.style.height = Math.max(c.properties.height, 2) + 'px';
             }
+            renderSnapGuides(guides);
             updateInspectorValues();
             renderStatusForSelection();
         }
         function up() {
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
+            clearGuides();
             commit();
         }
         window.addEventListener('mousemove', move);
@@ -1692,22 +1737,184 @@
     // --------------------------------------------------------------- guides
     let guides = [];
     function clearGuides() { for (const g of guides) g.remove(); guides = []; }
-    function showGuides(c, parentBox) {
+    /**
+     * Task 3 (#49) SnapLines: VS-style edge/center/baseline alignment with magnetic
+     * pull. Render-only drag math + guide divs — the committed schema carries plain
+     * x/y/width/height, so no patcher, schema or protocol change, and no ADR.
+     *
+     * - Alt held on the move/resize event suppresses everything (handled by the
+     *   callers, not here): raw 1px deltas, no pull, no guides.
+     * - `grid` mode (or master snap off) skips pull + guides; grid quantize still
+     *   applies while master snap is on.
+     * - Candidates are same-frame editable siblings (same parent object, unlocked)
+     *   plus the parent frame's own edges. Locked controls never participate: a
+     *   TLP/FLP child cannot reach here anyway (B2 — those types are unmodelled, so
+     *   they arrive locked), and this exclusion is what suppresses snaplines around
+     *   them. Frame CENTERS are deliberately not candidates: a wide container dragged
+     *   past the form middle would otherwise stick mid-form on every pass.
+     * - Baselines apply to the MOVE of a single text control only (Label/TextBox/
+     *   Button — the types with a text line), never to groups and never to resize.
+     *   The offset is conservative (no layout sim, ADR 0006): default 9pt font at
+     *   96dpi with a per-type chrome inset. Same-font pairs align exactly;
+     *   cross-type pairs align by text line even when their tops differ.
+     */
+    const BASELINE_TYPES = new Set(['Label', 'TextBox', 'Button']);
+    const BASELINE_INSET = { Label: 2, TextBox: 4, Button: 6 };
+    function baselineOf(c) {
+        if (!c || !c.properties) return null;
+        const simple = simpleName(c.type);
+        if (!BASELINE_TYPES.has(simple)) return null;
+        const f = c.properties.font || {};
+        const size = typeof f.size === 'number' && f.size > 0 ? f.size : 9;
+        return c.properties.y + (BASELINE_INSET[simple] || 0) + size * (96 / 72) * 0.8;
+    }
+    /** Snap candidates for one frame: sibling edges + centers + baselines, plus the
+     *  frame's own edges. `exclude` holds dragged ids (roots and their descendants,
+     *  which ride along) so a control never snaps to itself. */
+    function snapCandidates(exclude, parent) {
+        const xs = [];
+        const ys = [];
+        const baselines = [];
+        const f = parent
+            ? { w: parent.properties.width, h: parent.properties.height }
+            : { w: schema.form.clientSize.width, h: schema.form.clientSize.height };
+        xs.push(0, f.w);
+        ys.push(0, f.h);
+        for (const o of allControls(schema.controls)) {
+            if (!o.properties || o.locked || exclude.has(o.id)) continue;
+            if (parentOf(o.id) !== parent) continue;   // same frame only, never mixed units
+            const p = o.properties;
+            xs.push(p.x, p.x + p.width / 2, p.x + p.width);
+            ys.push(p.y, p.y + p.height / 2, p.y + p.height);
+            const bl = baselineOf(o);
+            if (bl !== null && bl !== undefined) baselines.push(bl);
+        }
+        return { xs, ys, baselines };
+    }
+    /** Nearest candidate within SNAP of `pos`, or null. */
+    function nearestSnap(pos, cands) {
+        let best = null;
+        for (const at of cands) {
+            const d = at - pos;
+            if (Math.abs(d) <= SNAP && (best === null || Math.abs(d) < Math.abs(best.d))) {
+                best = { d, at };
+            }
+        }
+        return best;
+    }
+    /** Proposed shared bbox of a drag group at a quantized delta. */
+    function groupBBox(starts, qx, qy) {
+        let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+        for (const s of starts) {
+            x1 = Math.min(x1, s.x + qx); y1 = Math.min(y1, s.y + qy);
+            x2 = Math.max(x2, s.x + qx + s.g.properties.width);
+            y2 = Math.max(y2, s.y + qy + s.g.properties.height);
+        }
+        return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    }
+    /** Dragged ids plus their descendants (children ride along, so they are the
+     *  dragged control for snap purposes too). `starts` are dragRoots entries. */
+    function snapExclude(starts) {
+        const exclude = new Set();
+        for (const s of starts) {
+            exclude.add(s.g.id);
+            for (const d of allControls(s.g.children)) exclude.add(d.id);
+        }
+        return exclude;
+    }
+    /** A parent frame's offset in canvas (form) units: the sum of ancestor positions. */
+    function frameOrigin(parent) {
+        let x = 0, y = 0;
+        let p = parent;
+        while (p) { x += p.properties.x; y += p.properties.y; p = parentOf(p.id); }
+        return { x, y };
+    }
+    /**
+     * Snap a proposed move rect: every rect edge (left/center/right,
+     * top/middle/bottom) plus the single-control baseline competes, and the
+     * nearest match per axis wins (edges first on exact ties — deterministic).
+     * Guides render at every match within SNAP, positioned in canvas units.
+     */
+    function snapMoveRect(x, y, w, h, bl, exclude, parent, origin) {
+        const c = snapCandidates(exclude, parent);
+        const found = [];
+        let dx = 0, dy = 0;
+        let best = null;
+        for (const e of [x, x + w / 2, x + w]) {
+            const m = nearestSnap(e, c.xs);
+            if (m) {
+                found.push({ dir: 'v', pos: origin.x + m.at });
+                if (best === null || Math.abs(m.d) < Math.abs(best)) best = m.d;
+            }
+        }
+        dx = best === null ? 0 : best;
+        best = null;
+        for (const e of [y, y + h / 2, y + h]) {
+            const m = nearestSnap(e, c.ys);
+            if (m) {
+                found.push({ dir: 'h', pos: origin.y + m.at });
+                if (best === null || Math.abs(m.d) < Math.abs(best)) best = m.d;
+            }
+        }
+        if (bl !== null && bl !== undefined) {
+            const m = nearestSnap(bl, c.baselines);
+            if (m) {
+                found.push({ dir: 'h', pos: origin.y + m.at, baseline: true });
+                if (best === null || Math.abs(m.d) < Math.abs(best)) best = m.d;
+            }
+        }
+        dy = best === null ? 0 : best;
+        return { dx, dy, guides: found };
+    }
+    /**
+     * Snap a proposed resize rect: only the edges named by `dir` match. East/south
+     * grow the extent; west/north move the origin with the far edge fixed. Centers
+     * match by moving twice as far (the far edge stays for west/north too).
+     */
+    function snapResizeRect(x, y, w, h, dir, exclude, parent, origin) {
+        const c = snapCandidates(exclude, parent);
+        const found = [];
+        if (dir.includes('e') || dir.includes('w')) {
+            const fixed = dir.includes('e');
+            const edge = fixed ? x + w : x;
+            const me = nearestSnap(edge, c.xs);
+            const mm = nearestSnap(x + w / 2, c.xs);
+            let pick = null;
+            if (me) pick = { d: me.d, at: me.at, center: false };
+            if (mm && (!pick || Math.abs(mm.d) < Math.abs(pick.d))) {
+                pick = { d: mm.d, at: mm.at, center: true };
+            }
+            if (pick) {
+                found.push({ dir: 'v', pos: origin.x + pick.at });
+                if (fixed) w += pick.center ? pick.d * 2 : pick.d;
+                else { const d = pick.center ? pick.d * 2 : pick.d; x += d; w -= d; }
+            }
+        }
+        if (dir.includes('s') || dir.includes('n')) {
+            const fixed = dir.includes('s');
+            const edge = fixed ? y + h : y;
+            const me = nearestSnap(edge, c.ys);
+            const mm = nearestSnap(y + h / 2, c.ys);
+            let pick = null;
+            if (me) pick = { d: me.d, at: me.at, center: false };
+            if (mm && (!pick || Math.abs(mm.d) < Math.abs(pick.d))) {
+                pick = { d: mm.d, at: mm.at, center: true };
+            }
+            if (pick) {
+                found.push({ dir: 'h', pos: origin.y + pick.at });
+                if (fixed) h += pick.center ? pick.d * 2 : pick.d;
+                else { const d = pick.center ? pick.d * 2 : pick.d; y += d; h -= d; }
+            }
+        }
+        return { x, y, w, h, guides: found };
+    }
+    function renderSnapGuides(found) {
         clearGuides();
         const canvas = $('canvas');
-        if (!canvas) return;
-        const cb = canvas.getBoundingClientRect();
-        const k = view.scale || 1;
-        const siblings = allControls(schema.controls).filter((o) => o.id !== c.id && o.properties);
-        for (const o of siblings) {
-            const oy = (cb.top - parentBox.top) / k + o.properties.y;
-            if (Math.abs(c.properties.y + c.properties.height - oy) <= SNAP) {
-                guides.push(makeGuide('h', oy, canvas.clientWidth));
-            }
-            const ox = (cb.left - parentBox.left) / k + o.properties.x;
-            if (Math.abs(c.properties.x + c.properties.width - ox) <= SNAP) {
-                guides.push(makeGuide('v', ox, canvas.clientHeight));
-            }
+        if (!canvas || !found.length) return;
+        for (const g of found) {
+            const n = makeGuide(g.dir, g.pos, g.dir === 'h' ? canvas.clientWidth : canvas.clientHeight);
+            if (g.baseline) n.classList.add('baseline');
         }
     }
     function makeGuide(dir, pos, extent) {
@@ -2499,12 +2706,43 @@
         const s = $('status-tools');
         if (!s) return;
         const toggle = el('button', 'snap-toggle', view.snap ? 'Snap: on' : 'Snap: off');
-        toggle.title = 'Snap to the 8px grid and to other controls\' edges';
+        toggle.title = 'Snap to the grid and to other controls\' edges';
         toggle.addEventListener('click', () => {
             view.snap = !view.snap;
             toggle.textContent = view.snap ? 'Snap: on' : 'Snap: off';
         });
         s.appendChild(toggle);
+        // SnapLines vs grid-only (#49): lines mode aligns edges, centers and
+        // baselines with magnetic pull; grid-only quantizes with no guides and
+        // no pull. View state — switching never touches the file.
+        const mode = el('button', 'snap-mode-toggle',
+            view.snapMode === 'lines' ? 'Snap mode: lines' : 'Snap mode: grid-only');
+        mode.title = 'SnapLines (edges, centers, baselines + magnetic pull) vs grid-only (quantize, no guides)';
+        mode.addEventListener('click', () => {
+            view.snapMode = view.snapMode === 'lines' ? 'grid' : 'lines';
+            mode.textContent = view.snapMode === 'lines' ? 'Snap mode: lines' : 'Snap mode: grid-only';
+        });
+        s.appendChild(mode);
+        // Grid size (#49): the quantize step in form units. View state — changing
+        // it never touches the file and needs no protocol change.
+        const gridWrap = el('label', 'grid-size-wrap', 'Grid ');
+        const gridSize = document.createElement('input');
+        gridSize.type = 'number';
+        gridSize.className = 'grid-size';
+        gridSize.value = String(view.gridSize);
+        gridSize.min = '1';
+        gridSize.max = '64';
+        gridSize.title = 'Grid size in form units';
+        gridSize.setAttribute('aria-label', 'Grid size in form units');
+        gridSize.addEventListener('change', () => {
+            const v = parseInt(gridSize.value, 10);
+            if (!Number.isNaN(v) && v >= 1 && v <= 64) view.gridSize = v;
+            else gridSize.value = String(view.gridSize);
+        });
+        // Typing a size must not nudge the selection, like the toolbox filter.
+        gridSize.addEventListener('keydown', (e) => e.stopPropagation());
+        gridWrap.appendChild(gridSize);
+        s.appendChild(gridWrap);
         const tabBtn = el('button', 'tab-order-toggle', 'Tab order: off');
         tabBtn.title = 'Tab order mode: badge each control with its TabIndex, click to reassign in order, Esc to exit';
         tabBtn.addEventListener('click', () => setTabOrderMode(!tabOrderMode));

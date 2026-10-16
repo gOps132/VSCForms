@@ -761,14 +761,16 @@ setTimeout(async () => {
         send({ type: 'load', data: nestedDrag });
         nestWrap().dispatch('mousedown',
             { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
-        // (+40,+24): stays clear of the container clamp walls (Task 2, #48 —
-        // pnlWrap 200x150 in a 292x196 form pins at x=92,y=46), so this asserts
-        // the carry-along, not the clamp.
-        sandbox.window.dispatch('mousemove', { clientX: 140, clientY: 124 });
+        // (+40,+16): stays clear of the container clamp walls (Task 2, #48 —
+        // pnlWrap 200x150 in a 292x196 form pins at x=92,y=46) AND of every
+        // snapline (Task 3, #49 — the old +24 vector grazes btnSubmit's bottom
+        // edge at 181 and now pulls), so this asserts the carry-along, not the
+        // clamp and not the pull.
+        sandbox.window.dispatch('mousemove', { clientX: 140, clientY: 116 });
         sandbox.window.dispatch('mouseup', {});
         mirrorScale();
         check('dragging a container moves the container',
-            nestPos('pnlWrap') === '50,34', nestPos('pnlWrap'));
+            nestPos('pnlWrap') === '50,26', nestPos('pnlWrap'));
         check('the child rides along: its relative coordinates are untouched',
             nestPos('btnIn') === '5,5', nestPos('btnIn'));
 
@@ -2614,6 +2616,344 @@ setTimeout(async () => {
             canvasEl.querySelectorAll('.ctl.selected').length === 0);
         check('escape clears the dominant marking too',
             canvasEl.querySelectorAll('.ctl.dominant').length === 0);
+    }
+
+    // ---- Task 3 (#49): snap/grid — Alt-suppress, baselines, edges+pull,
+    // grid-size, SnapLines vs grid-only mode. Render-only: drag math + guide
+    // divs, view state only (grid-size and mode never commit, no protocol).
+    send({ type: 'load', data: schema });
+    await settled();
+    winKey('0', { ctrlKey: true, metaKey: true });
+    mirrorScale();
+    {
+        // The earlier snap test left the master toggle OFF; Task 3 needs it ON.
+        const snapToggle = () => ids['status-tools'].querySelector('.snap-toggle');
+        if (snapToggle() && /off/.test(String(snapToggle().textContent))) snapToggle().dispatch('click', {});
+        const modeBtn = () => ids['status-tools'].querySelector('.snap-mode-toggle');
+        const gridInput = () => ids['status-tools'].querySelector('.grid-size');
+        const guides = () => canvasEl.querySelectorAll('.guide');
+        const down = (id, extra) => ctlNode(id).dispatch('mousedown',
+            Object.assign({ preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 }, extra || {}));
+        const endDrag = () => { sandbox.window.dispatch('mouseup', {}); mirrorScale(); };
+        const leftOf = (id) => parseFloat(ctlNode(id).style.left);
+        const topOf = (id) => parseFloat(ctlNode(id).style.top);
+        // btnA right edge sits at the NON-GRID x=123 (43+80): a drag landing
+        // exactly there proves magnetic pull, because grid quantize alone can
+        // only ever land on multiples of 8.
+        const snapSchema = {
+            ...schema,
+            controls: [
+                { id: 'btnA', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 43, y: 40, width: 80, height: 25, text: 'A', tabIndex: 0 } },
+                { id: 'btnB', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 200, y: 100, width: 60, height: 25, text: 'B', tabIndex: 1 } },
+            ],
+            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        };
+
+        check('snap offers a SnapLines vs grid-only mode toggle', !!modeBtn());
+        check('snap offers a grid-size setting', !!gridInput());
+        const ensureLinesMode = () => {
+            if (modeBtn() && /grid-only/.test(String(modeBtn().textContent))) modeBtn().dispatch('click', {});
+        };
+        const ensureGrid8 = () => {
+            const g = gridInput();
+            if (g && g.value !== '8') { g.value = '8'; g.dispatch('change', {}); }
+        };
+        ensureLinesMode();
+        ensureGrid8();
+
+        // Edge pull on move: dx=-77 quantizes to -80 (x=120), but btnA's
+        // right edge at 123 is within SNAP, so the pull wins and x lands 123.
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 123, clientY: 100 });
+        check('edge pull overrides grid quantize on move', leftOf('btnB') === 123,
+            `x=${leftOf('btnB')} (grid alone gives 120)`);
+        check('a vertical guide renders at the matched edge',
+            guides().some((g) => g.classList.contains('v')), String(guides().length));
+        endDrag();
+        await settled();
+        {
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const last = commits[commits.length - 1];
+            const sent = last && last.data.controls.find((c) => c.id === 'btnB');
+            check('the pull commit carries the snapped position',
+                !!sent && sent.properties.x === 123,
+                sent ? JSON.stringify(sent.properties) : 'no commit');
+            sandbox.__sent.length = 0;
+        }
+
+        // Center pull on move: widths differ (80 vs 60), so center match
+        // (x=53) is distinct from any left-edge match (x=43).
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 53, clientY: 100 });
+        check('center pull aligns control centers, not left edges', leftOf('btnB') === 53,
+            `x=${leftOf('btnB')}`);
+        endDrag();
+
+        // Top pull on move (dy=-60 quantizes to -56, i.e. y=44; pull to 40).
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 200, clientY: 40 });
+        check('top-edge pull aligns tops on move', topOf('btnB') === 40,
+            `y=${topOf('btnB')} (grid alone gives 44)`);
+        check('a horizontal guide renders at the matched edge',
+            guides().some((g) => g.classList.contains('h')), String(guides().length));
+        endDrag();
+
+        // Bottom-to-top pull on move: btnB's top meets btnA's bottom (65).
+        // dy=-35 quantizes to -32 (y=68); pull wins at 65.
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 200, clientY: 65 });
+        check('bottom-to-top pull aligns edges on move', topOf('btnB') === 65,
+            `y=${topOf('btnB')} (grid alone gives 68)`);
+        endDrag();
+
+        // Baseline guide: two Labels share the text line. lbl1 top is 40;
+        // dy=-58 quantizes to -56 (y=44, 4 off) so the baseline pull wins.
+        const baseSchema = {
+            ...schema,
+            controls: [
+                { id: 'lbl1', type: 'System.Windows.Forms.Label', children: [], locked: false,
+                  properties: { x: 20, y: 40, width: 80, height: 17, text: 'First', tabIndex: 0 } },
+                { id: 'lbl2', type: 'System.Windows.Forms.Label', children: [], locked: false,
+                  properties: { x: 200, y: 100, width: 80, height: 17, text: 'Second', tabIndex: 1 } },
+            ],
+            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        };
+        send({ type: 'load', data: baseSchema });
+        await settled();
+        down('lbl2', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 200, clientY: 42 });
+        check('baseline pull aligns the shared text line', topOf('lbl2') === 40,
+            `y=${topOf('lbl2')}`);
+        check('a baseline guide renders for text controls',
+            guides().some((g) => g.classList.contains('baseline')),
+            `guides: ${guides().map((g) => String(g.className)).join(' ')}`);
+        endDrag();
+
+        // Cross-type baseline: a Button's text line meets a Label's. The Button
+        // is h=30 so its center (y+15) and baseline (y+15.6) match at DIFFERENT
+        // y values (33.5 vs 36): landing on 36 proves the baseline won, because
+        // grid gives 36 too but edges-only would take the center match to 33.5
+        // (and the top-edge match would take 40). The y is off-grid and off-edge.
+        const crossSchema = {
+            ...schema,
+            controls: [
+                { id: 'lbl1', type: 'System.Windows.Forms.Label', children: [], locked: false,
+                  properties: { x: 20, y: 40, width: 80, height: 17, text: 'First', tabIndex: 0 } },
+                { id: 'btnX', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 200, y: 100, width: 60, height: 30, text: 'X', tabIndex: 1 } },
+            ],
+            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        };
+        send({ type: 'load', data: crossSchema });
+        await settled();
+        down('btnX', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 200, clientY: 37 });
+        check('cross-type baseline pull beats the nearer edge/center matches', topOf('btnX') === 36,
+            `y=${topOf('btnX')} (edges-only gives 33.5 or 40)`);
+        check('cross-type baseline renders a baseline guide',
+            guides().some((g) => g.classList.contains('baseline')),
+            `guides: ${guides().map((g) => String(g.className)).join(' ')}`);
+        endDrag();
+
+        // Non-text controls get edge guides but never baseline guides.
+        const panelSchema = {
+            ...schema,
+            controls: [
+                { id: 'pnl1', type: 'System.Windows.Forms.Panel', children: [], locked: false,
+                  properties: { x: 20, y: 40, width: 100, height: 60, tabIndex: 0 } },
+                { id: 'pnl2', type: 'System.Windows.Forms.Panel', children: [], locked: false,
+                  properties: { x: 200, y: 100, width: 100, height: 60, text: '', tabIndex: 1 } },
+            ],
+            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        };
+        send({ type: 'load', data: panelSchema });
+        await settled();
+        down('pnl2', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 200, clientY: 42 });
+        check('panels still pull by edge', topOf('pnl2') === 40, `y=${topOf('pnl2')}`);
+        check('panels render no baseline guide',
+            !guides().some((g) => g.classList.contains('baseline')),
+            `guides: ${guides().map((g) => String(g.className)).join(' ')}`);
+        endDrag();
+
+        // Alt-held suppresses quantize, pull AND guides. A raw +5/+1 lands
+        // exactly (grid would give +8/+0, pull would stick to an edge), and no
+        // guide divs render — even mid-gesture at an exact edge alignment.
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 205, clientY: 101, altKey: true });
+        check('alt-held drag moves by the raw delta, unquantized',
+            leftOf('btnB') === 205 && topOf('btnB') === 101,
+            `${leftOf('btnB')},${topOf('btnB')}`);
+        check('alt-held drag renders no guides', guides().length === 0,
+            String(guides().length));
+        sandbox.window.dispatch('mousemove', { clientX: 124, clientY: 100, altKey: true });
+        check('alt-held drag skips the pull too (raw 124, not pulled 123, not grid 128)',
+            leftOf('btnB') === 124, `x=${leftOf('btnB')}`);
+        check('alt-held drag at an edge still renders no guides', guides().length === 0,
+            String(guides().length));
+        endDrag();
+
+        // Grid-size view state: at 4px a raw 5px drag quantizes to 4, and the
+        // setting itself posts no commit (view state, no protocol).
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        sandbox.__sent.length = 0;
+        gridInput().value = '4';
+        gridInput().dispatch('change', {});
+        await settled();
+        check('changing the grid size posts no commit — view state only',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 205, clientY: 100 });
+        check('grid-size 4 quantizes the drag to 4px steps', leftOf('btnB') === 204,
+            `x=${leftOf('btnB')}`);
+        endDrag();
+        ensureGrid8();
+
+        // Grid-only mode: quantize still applies, but no pull and no guides.
+        send({ type: 'load', data: snapSchema });
+        await settled();
+        sandbox.__sent.length = 0;
+        modeBtn().dispatch('click', {});
+        check('mode toggle switches to grid-only', /grid-only/.test(String(modeBtn().textContent)),
+            String(modeBtn().textContent));
+        await settled();
+        check('switching snap mode posts no commit — view state only',
+            !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        down('btnB', { clientX: 200, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 123, clientY: 100 });
+        check('grid-only mode does not pull to the edge', leftOf('btnB') === 120,
+            `x=${leftOf('btnB')} (lines mode gives 123)`);
+        check('grid-only mode renders no guides', guides().length === 0,
+            String(guides().length));
+        endDrag();
+        ensureLinesMode();
+
+        // Multi pull: the group moves as one block and its SHARED bbox edge
+        // pulls. btnT's left edge sits at non-grid 251: quantize alone lands
+        // the bbox right at 252 (dx=72), the pull corrects to 251 (dx=71), so
+        // M1 lands 91 and M2 lands 191 with offsets kept — neither is a
+        // multiple-of-8 move from its start. The shift+click that completes
+        // the group also starts the drag, so the mousemove follows it directly
+        // with no mouseup in between.
+        const multiSchema = {
+            ...schema,
+            controls: [
+                { id: 'btnM1', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 20, y: 40, width: 80, height: 25, text: 'M1', tabIndex: 0 } },
+                { id: 'btnM2', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 120, y: 100, width: 60, height: 25, text: 'M2', tabIndex: 1 } },
+                { id: 'btnT', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 251, y: 60, width: 50, height: 25, text: 'T', tabIndex: 2 } },
+            ],
+            analysis: { modelledCount: 3, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        };
+        send({ type: 'load', data: multiSchema });
+        await settled();
+        ctlNode('btnM1').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 20, clientY: 40 });
+        endDrag();
+        ctlNode('btnM2').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 120, clientY: 100 });
+        sandbox.window.dispatch('mousemove', { clientX: 190, clientY: 100 });
+        check('group pull moves the block with offsets kept',
+            leftOf('btnM2') === 191 && leftOf('btnM1') === 91,
+            `btnM1 x=${leftOf('btnM1')} btnM2 x=${leftOf('btnM2')} (grid alone gives 92/192)`);
+        check('group pull renders a guide', guides().length > 0, String(guides().length));
+        endDrag();
+
+        // Locked controls are not snap candidates (TLP/FLP children never
+        // reach snap at all: the types are unmodelled per B2, so anything
+        // unmodelled arrives locked and locked is excluded here). btnA drags
+        // toward the gauge's right edge (90) and bottom (38): dx=45 quantizes
+        // to 48 with no pull, so it lands (91,40) with no guides.
+        const lockSchema = {
+            ...snapSchema,
+            controls: [...snapSchema.controls,
+                { id: 'gauge1', type: 'ThirdParty.Widgets.Gauge', children: [], locked: true,
+                  lockedReason: 'Gauge is not one of the handled control types.',
+                  properties: { x: 10, y: 10, width: 80, height: 28 } }],
+        };
+        send({ type: 'load', data: lockSchema });
+        await settled();
+        ctlNode('btnA').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 43, clientY: 40 });
+        sandbox.window.dispatch('mousemove', { clientX: 88, clientY: 40 });
+        check('no pull toward a locked edge (lands quantized, not snapped)',
+            leftOf('btnA') === 91 && topOf('btnA') === 40,
+            `${leftOf('btnA')},${topOf('btnA')}`);
+        check('no guides toward a locked control', guides().length === 0,
+            String(guides().length));
+        endDrag();
+
+        // Resize pull: the east handle drags btnR's right edge to lblT's
+        // left edge at 150 (raw 109 quantizes to 112, pull wins at 110).
+        const resizeSchema = {
+            ...schema,
+            controls: [
+                { id: 'btnR', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                  properties: { x: 40, y: 40, width: 80, height: 25, text: 'R', tabIndex: 0 } },
+                { id: 'lblT', type: 'System.Windows.Forms.Label', children: [], locked: false,
+                  properties: { x: 150, y: 40, width: 60, height: 17, text: 'T', tabIndex: 1 } },
+            ],
+            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+        };
+        send({ type: 'load', data: resizeSchema });
+        await settled();
+        down('btnR', { clientX: 40, clientY: 40 });
+        endDrag();
+        const eHandle = ctlNode('btnR').querySelector('.handle.e');
+        check('east handle renders for the resize test', !!eHandle);
+        eHandle.dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 120, clientY: 40 });
+        sandbox.window.dispatch('mousemove', { clientX: 149, clientY: 40 });
+        check('resize pull snaps the moving edge to the sibling edge',
+            parseFloat(ctlNode('btnR').style.width) === 110,
+            `w=${ctlNode('btnR').style.width} (grid alone gives 112)`);
+        check('resize pull renders a guide', guides().length > 0, String(guides().length));
+        endDrag();
+        await settled();
+        {
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const last = commits[commits.length - 1];
+            const sent = last && last.data.controls.find((c) => c.id === 'btnR');
+            check('the resize commit carries the snapped width',
+                !!sent && sent.properties.width === 110,
+                sent ? JSON.stringify(sent.properties) : 'no commit');
+            sandbox.__sent.length = 0;
+        }
+
+        // Resize honors Alt-suppress too: raw delta, no pull, no guides.
+        send({ type: 'load', data: resizeSchema });
+        await settled();
+        down('btnR', { clientX: 40, clientY: 40 });
+        endDrag();
+        const eHandle2 = ctlNode('btnR').querySelector('.handle.e');
+        eHandle2.dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, clientX: 120, clientY: 40 });
+        sandbox.window.dispatch('mousemove', { clientX: 149, clientY: 40, altKey: true });
+        check('alt-held resize skips quantize and pull',
+            parseFloat(ctlNode('btnR').style.width) === 109,
+            `w=${ctlNode('btnR').style.width}`);
+        check('alt-held resize renders no guides', guides().length === 0,
+            String(guides().length));
+        endDrag();
+        await settled();
+        sandbox.__sent.length = 0;
     }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);

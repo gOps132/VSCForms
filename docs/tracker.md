@@ -38,7 +38,9 @@ Re-verify by reading `engine/src/TypeTable.cs`,
 - **Engine commands:** `parse`, `generate`, `ping`, `new` (project
   generation), `rename` (Designer File + code-behind member-access receivers
   only, ADR 0008).
-- **Canvas toolset:** drag, 8-handle resize, snap (grid + edges, toggleable),
+- **Canvas toolset:** drag, 8-handle resize, snap (grid-size setting + SnapLines
+  edges/centers/baselines with magnetic pull on move/resize/multi + Alt-suppress
+  + SnapLines/grid-only mode, all toggleable),
   multi-select + marquee (click-order dominant + Ctrl/Cmd+click toggle +
   Shift+marquee-add, align/distribute-to-dominant), `Cmd/Ctrl+D` duplicate, zoom
   (`Cmd/Ctrl`+wheel, `+/-`/`0`, Fit, 0.25–4.0), space/middle-drag pan, rulers,
@@ -114,9 +116,10 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D10 | Inspector Categorized + Alphabetical views | shipped | S | `spec-property-tabs.md` §§1–2 | Presentational sort/group toggle over flat rows (Flat/Categorized/Alphabetical buttons in the inspector; view state only, switching never commits so the file is byte-identical). Hardcoded per-property category table in canvas (`PROP_CATEGORIES`, VS `[Category]` values; unmapped → Misc); no engine table — categories never cross the protocol, same class as D1/D5. Live drag values look up inputs by id (index lookup breaks outside flat order). (#32) |
 | D11 | Click-order dominant selection + Ctrl+click + align-to-dominant | shipped | S | `spec-vs-parity.md` §1 | First-clicked member is the primary (`dominant` class + white handles in a group); align/same-size reference its edges/extents, not the group bbox; Ctrl/Cmd+click toggles membership (toggling off starts no drag); Shift+marquee adds, plain marquee replaces; locked never joins a group. View state only, no protocol change, no ADR. (#47) |
 
-P0 after #29 is clipboard (#3), grid-size setting, snapline baselines +
-Alt-suppress (`spec-vs-parity.md` §3) — everything else formerly listed there
-shipped (D1–D4, A4, C1/C3) or moved to D5–D10 above.
+P0 after #29 is fully shipped: clipboard (A2 #3), grid-size setting, snapline
+baselines + Alt-suppress, full edge/center pull on move/resize/multi, and the
+SnapLines/grid-only mode (`spec-vs-parity.md` §3, #49) — everything else
+formerly listed there shipped (D1–D4, A4, C1/C3) or moved to D5–D10 above.
 
 ## 3. Deliberately not planned (do not re-propose without an ADR)
 

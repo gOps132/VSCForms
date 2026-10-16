@@ -416,6 +416,8 @@ body { display: flex; flex-direction: column; }
 .guide { position: absolute; background: #f14c4c; z-index: 20; pointer-events: none; }
 .guide.v { width: 1px; top: 0; bottom: 0; }
 .guide.h { height: 1px; left: 0; right: 0; }
+/* Text baselines read blue against the red edge guides, like VS. */
+.guide.baseline { background: #4c9df1; }
 
 .drop-hint {
   position: absolute; border: 1px dashed var(--accent);
