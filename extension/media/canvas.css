@@ -71,6 +71,13 @@ body { display: flex; flex-direction: column; }
 .tool:active { cursor: grabbing; }
 .tool .swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--border); }
 .tool[disabled] { opacity: .4; cursor: not-allowed; }
+/* Task 4 (#50) sticky draw-to-create tool: the armed toolbox entry wears the
+   accent border so the pending pointer mode reads at a glance. View state only. */
+.tool.armed {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0,120,215,.25));
+  border-color: var(--accent);
+}
+.tool.armed:focus-visible { outline: 1px solid var(--accent); }
 
 .stage {
   position: relative;
@@ -148,6 +155,17 @@ body { display: flex; flex-direction: column; }
   border: 1px solid var(--vscode-focusBorder, #0a84ff);
   background: rgba(10, 132, 255, .12);
 }
+/* Task 4 (#50) draw-to-create rubber band: the sized control before commit.
+   Same positioning contract as the marquee (form units, above z-indexed
+   controls, never intercepting the pointer). */
+.draw-rect {
+  position: absolute; pointer-events: none; z-index: 5;
+  border: 1px dashed var(--vscode-focusBorder, #0a84ff);
+  background: rgba(10, 132, 255, .10);
+}
+/* Sticky pointer mode: the crosshair is the armed-tool affordance. The class
+   also backs the harness assertion (style.cursor alone is inline). */
+#canvas.armed, .canvas.armed { cursor: crosshair; }
 
 /* -------------------------------------------------------------- status bar row */
 .statusbar {

@@ -49,6 +49,15 @@
     let inspectorView = 'flat'; // 'flat' | 'categorized' | 'alphabetical'
     /** Filter text for the Controls toolbox. View state: never committed, never undoable. */
     let toolboxFilter = '';
+    /**
+     * Task 4 (#50) sticky draw-to-create tool: the simple type name armed by a
+     * single toolbox click, or null when the pointer is plain. View state — arming
+     * posts nothing, renders the `armed` class + crosshair, and reroutes the next
+     * canvas mousedown into beginDraw (click places, drag sizes). Sticky: placing
+     * keeps the arm so several controls land in a row; Escape or a second click
+     * on the same tool disarms. Cleared on document load like tab-order mode.
+     */
+    let armedTool = null;
     // No local undo stack: undo/redo is delegated to VS Code so the canvas and the text
     // editor share one history. See the keydown handler at the bottom of this file.
 
@@ -438,14 +447,43 @@
             t.title = `Add a ${name}`;
             t.draggable = true;
             t.dataset.simple = name;
+            // Keyboard access to the dblclick/Enter populate path below.
+            t.tabIndex = 0;
             const sw = el('span', 'swatch');
             sw.style.background = colour;
             t.appendChild(sw);
             t.appendChild(el('span', null, name));
             if (readOnly) t.setAttribute('disabled', '');
+            if (armedTool === name) t.classList.add('armed');
             t.addEventListener('dragstart', (e) => {
                 e.dataTransfer.setData('text/vscforms-control', name);
                 e.dataTransfer.effectAllowed = 'copy';
+            });
+            // Task 4 (#50) sticky tool: a single click arms the pointer (crosshair),
+            // a second click on the same tool disarms. Arming is view state — it
+            // posts nothing. Refused forms never arm (read-only when refused).
+            t.addEventListener('click', () => {
+                if (readOnly) return;
+                setArmedTool(armedTool === name ? null : name);
+            });
+            // Task 4 (#50) dblclick populates the active container at a cascade
+            // slot through the existing addControl commit path — never a drag.
+            t.addEventListener('dblclick', (e) => {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (readOnly) return;
+                populateTarget(name);
+            });
+            // Keyboard twin of dblclick: Enter on a focused tool populates.
+            // stopPropagation keeps the key from reaching the stage shortcuts.
+            t.addEventListener('keydown', (e) => {
+                if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (readOnly) return;
+                if (e.key === 'Enter') {
+                    if (typeof e.preventDefault === 'function') e.preventDefault();
+                    populateTarget(name);
+                } else if (e.key === 'Escape') {
+                    setArmedTool(null);
+                }
             });
             list.appendChild(t);
         }
@@ -493,6 +531,16 @@
         canvas.style.width = Math.max(schema.form.clientSize.width, 80) + 'px';
         canvas.style.height = Math.max(schema.form.clientSize.height, 60) + 'px';
         canvas.style.backgroundColor = schema.form.backColor || '';
+        // Task 4 (#50) sticky pointer: the crosshair is how the armed tool is
+        // visible. Class for CSS, inline cursor for the harness stand-in (which
+        // reads style, not stylesheets). View state only.
+        if (armedTool && !readOnly) {
+            canvas.classList.add('armed');
+            canvas.style.cursor = 'crosshair';
+        } else {
+            canvas.classList.remove('armed');
+            canvas.style.cursor = '';
+        }
         $('form-title-text').textContent = schema.form.name;
         $('form-size').textContent = `${schema.form.clientSize.width} x ${schema.form.clientSize.height}`;
 
@@ -694,6 +742,17 @@
             // Tab-order mode: assign the next TabIndex instead of selecting or dragging.
             // Locked and refused never reach here (guarded above).
             if (tabOrderMode) { setProp(c, 'tabIndex', tabOrderNext++); return; }
+
+            // Task 4 (#50) sticky draw-to-create: with a tool armed, mousedown
+            // anywhere — empty canvas or atop a control — starts a draw, never a
+            // select or a move. The clicked control only hints the target frame:
+            // a container means "draw inside it", a leaf means "draw beside it".
+            // The ancestor bubble guard above still applies, so one gesture draws once.
+            if (armedTool) {
+                e.preventDefault();
+                beginDraw(e, armedTool, c);
+                return;
+            }
 
             const extend = e.shiftKey || e.ctrlKey || e.metaKey;
             if (extend) {
@@ -2498,10 +2557,17 @@
     }
 
     // ------------------------------------------------------------ add/delete
-    function addControl(simple, x, y) {
-        if (readOnly) return;
-        const full = 'System.Windows.Forms.' + simple;
-        const defaults = {
+    /**
+     * Task 4 (#50) draw-to-create core. All adds — drop, draw, dblclick, Enter —
+     * funnel through createControl: designer name via allocateName (the duplicate
+     * kernel's uniqueId twin for fresh names), default size table, container clamp,
+     * one debounced commit. No schema change (plain ControlNode), no local undo
+     * stack (ADR 0004), never into a locked parent (invariant 4), never when
+     * refused. Snapping lives in the GESTURE (drop/draw/place), never here — the
+     * model stores plain x/y/width/height like a drag does.
+     */
+    function defaultControlSize(simple) {
+        return {
             Button: { w: 84, h: 27, text: 'Button' },
             Label: { w: 80, h: 17, text: 'Label' },
             TextBox: { w: 160, h: 23, text: '' },
@@ -2524,25 +2590,252 @@
             ListView: { w: 120, h: 97, text: '' },
             TreeView: { w: 120, h: 97, text: '' },
         }[simple] || { w: 100, h: 30, text: simple };
+    }
 
+    /**
+     * Resolve a container control to the list new children join. A TabControl
+     * never holds leaves directly — its pages do — so targeting one means its
+     * active page (the selected page or the page of the selection, else first).
+     * Locked targets refuse (invariant 4: writing their children writes them).
+     */
+    function resolveContainerTarget(c) {
+        if (!c || c.locked) return null;
+        if (findControl(c.id) !== c) return null;   // detached model: never guess
+        const simple = simpleName(c.type);
+        if (simple === 'TabControl') {
+            const pages = (c.children || []).filter((ch) =>
+                simpleName(ch.type) === 'TabPage' && !ch.locked && findControl(ch.id) === ch);
+            if (!pages.length) return null;
+            for (const p of pages) {
+                if (selection.has(p.id)
+                    || allControls(p.children).some((g) => selection.has(g.id))) return p;
+            }
+            return pages[0];
+        }
+        if (containerTypes().has(simple)) return c;
+        return null;
+    }
+
+    /**
+     * Where a new control lands. Priority: the clicked container (draw on a
+     * Panel draws inside it), else the drill-down scope, else the single
+     * selected container (VS dblclick-populates the selected container), else
+     * the form top level. A clicked leaf means "beside it": its own parent
+     * frame. Null is the top level, never an error.
+     */
+    function addTargetParent(clicked) {
+        if (!schema || readOnly) return null;
+        if (clicked) {
+            const t = resolveContainerTarget(clicked);
+            if (t) return t;
+            const p = parentOf(clicked.id);
+            if (p && !p.locked && findControl(p.id) === p) {
+                return resolveContainerTarget(p) || null;
+            }
+            return null;
+        }
+        if (activeContainer) {
+            const ac = findControl(activeContainer.id);
+            if (ac && ac === activeContainer) {
+                const t = resolveContainerTarget(ac);
+                if (t) return t;
+            }
+        }
+        const sel = selected();
+        if (sel.length === 1) {
+            const t = resolveContainerTarget(sel[0]);
+            if (t) return t;
+        }
+        return null;
+    }
+
+    /** First free cascade slot in a frame: 8,8 stepping by GRID until unoccupied,
+     *  clamped so the default size always fits (container clamp, Task 2 #48). */
+    function cascadePos(parent, w, h) {
+        const fw = parent ? parent.properties.width : schema.form.clientSize.width;
+        const fh = parent ? parent.properties.height : schema.form.clientSize.height;
+        const sibs = parent ? (parent.children || []) : schema.controls;
+        const maxX = Math.max(0, fw - w), maxY = Math.max(0, fh - h);
+        for (let k = 0; k < 20; k++) {
+            const x = Math.min(8 + k * GRID, maxX), y = Math.min(8 + k * GRID, maxY);
+            if (!sibs.some((s) => s.properties.x === x && s.properties.y === y)) return { x, y };
+        }
+        return { x: Math.min(8, maxX), y: Math.min(8, maxY) };
+    }
+
+    /** Insert one control: the single write path behind drop/draw/dblclick/Enter. */
+    function createControl(simple, x, y, w, h, parent) {
+        if (!schema || readOnly) return null;
+        if (parent && (parent.locked || findControl(parent.id) !== parent)) parent = null;
+        const d = defaultControlSize(simple);
+        const ww = Math.max(2, Math.round(w !== undefined ? w : d.w));
+        const hh = Math.max(2, Math.round(h !== undefined ? h : d.h));
+        const fw = parent ? parent.properties.width : schema.form.clientSize.width;
+        const fh = parent ? parent.properties.height : schema.form.clientSize.height;
+        const xx = Math.min(Math.max(Math.round(x), 0), Math.max(0, fw - ww));
+        const yy = Math.min(Math.max(Math.round(y), 0), Math.max(0, fh - hh));
         const node = {
             id: allocateName(simple),
-            type: full,
+            type: 'System.Windows.Forms.' + simple,
             children: [],
             locked: false,
             properties: {
-                x: Math.max(0, Math.round(x)),
-                y: Math.max(0, Math.round(y)),
-                width: defaults.w, height: defaults.h,
-                text: defaults.text,
+                x: xx, y: yy, width: ww, height: hh,
+                text: d.text,
                 tabIndex: schema.analysis.modelledCount,
             },
         };
-        schema.controls.push(node);
+        if (parent) parent.children.push(node);
+        else schema.controls.push(node);
         schema.analysis.modelledCount += 1;
+        recomputeCoverage();
         selection = new Set([node.id]);
         clickOrder = [node.id];
         commit();
+        return node;
+    }
+
+    function addControl(simple, x, y) {
+        if (readOnly) return;
+        createControl(simple, x, y, undefined, undefined, addTargetParent(null));
+    }
+
+    /** Pointer position in FORM units: getBoundingClientRect is scaled pixels,
+     *  so the scale divides out here, exactly like formDelta for drags. */
+    function canvasFormPoint(clientX, clientY) {
+        const box = $('canvas').getBoundingClientRect();
+        const k = view.scale || 1;
+        return { x: (clientX - box.left) / k, y: (clientY - box.top) / k };
+    }
+
+    /**
+     * Snap a default-size placement at a parent-relative point: grid quantize,
+     * then the Task 3 magnetic pull (edges/centers plus the text baseline for
+     * Label/TextBox/Button) with live guides. Alt suppresses everything —
+     * callers pass it through from the gesture event. Returns the corrected
+     * point; guides render as a side effect, cleared by the gesture end.
+     */
+    function snapPlacePoint(simple, rx, ry, parent, origin, suppressed) {
+        const d = defaultControlSize(simple);
+        let px = suppressed ? Math.round(rx) : snapTo(rx);
+        let py = suppressed ? Math.round(ry) : snapTo(ry);
+        if (!suppressed && view.snap && view.snapMode === 'lines') {
+            const full = 'System.Windows.Forms.' + simple;
+            const bl = baselineOf({ type: full, properties: { y: py, font: undefined } });
+            const sn = snapMoveRect(px, py, d.w, d.h, bl, new Set(), parent, origin);
+            px += sn.dx; py += sn.dy;
+            renderSnapGuides(sn.guides);
+        }
+        return { x: px, y: py };
+    }
+
+    /** Dblclick/Enter populate: cascade slot in the target parent, same commit. */
+    function populateTarget(simple) {
+        if (!schema || readOnly) return null;
+        const parent = addTargetParent(null);
+        const d = defaultControlSize(simple);
+        const pos = cascadePos(parent, d.w, d.h);
+        return createControl(simple, pos.x, pos.y, d.w, d.h, parent);
+    }
+
+    /** Arm/disarm the sticky tool. View state: re-renders the tool + canvas
+     *  chrome and posts nothing, so arming never dirties the file. */
+    function setArmedTool(simple) {
+        if (readOnly && simple) return;
+        armedTool = simple;
+        renderToolbox();
+        renderCanvas();
+        if (simple) renderStatus(simple + ' armed — click or drag on the form; Esc to cancel', 'ok');
+        else if (selection.size) renderStatusForSelection();
+        else renderStatus('Ready.', 'ok');
+    }
+
+    /**
+     * Task 4 (#50) draw-to-create: the armed pointer gesture. Mousedown anchors
+     * (quantized when snapping), mousemove sizes a rubber band with the Task 3
+     * resize pull on the moving edges (dir follows the pointer side, so upward
+     * drags pull the west/north edges with the far edge fixed), mouseup commits:
+     * a tiny gesture places the default size (with the move pull at the anchor),
+     * a real rect creates it verbatim. Sticky — the arm survives the commit.
+     * Container clamp applies to the rect; locked/refused never reach here.
+     */
+    function beginDraw(e, simple, clicked) {
+        if (!schema || readOnly) return;
+        const parent = addTargetParent(clicked || null);
+        const origin = frameOrigin(parent);
+        const frame = parent
+            ? { w: parent.properties.width, h: parent.properties.height }
+            : { w: schema.form.clientSize.width, h: schema.form.clientSize.height };
+        const box = $('canvas').getBoundingClientRect();
+        const k = view.scale || 1;
+        let ax = (e.clientX - box.left) / k - origin.x;
+        let ay = (e.clientY - box.top) / k - origin.y;
+        if (!e.altKey && view.snap) { ax = snapTo(ax); ay = snapTo(ay); }
+        else { ax = Math.round(ax); ay = Math.round(ay); }
+        ax = Math.min(Math.max(ax, 0), Math.max(0, frame.w - 2));
+        ay = Math.min(Math.max(ay, 0), Math.max(0, frame.h - 2));
+
+        const canvas = $('canvas');
+        const band = el('div', 'draw-rect');
+        band.style.zIndex = '1000';
+        band.style.left = (ax + origin.x) + 'px';
+        band.style.top = (ay + origin.y) + 'px';
+        band.style.width = '2px';
+        band.style.height = '2px';
+        canvas.appendChild(band);
+        let last = { x: ax, y: ay, w: 0, h: 0 };
+
+        function move(ev) {
+            const fx = (ev.clientX - box.left) / k - origin.x;
+            const fy = (ev.clientY - box.top) / k - origin.y;
+            const suppressed = !!ev.altKey;
+            let x = Math.min(ax, fx), y = Math.min(ay, fy);
+            let w = Math.abs(fx - ax), h = Math.abs(fy - ay);
+            let guides = [];
+            if (!suppressed && view.snap) {
+                const g = view.gridSize > 0 ? view.gridSize : GRID;
+                const q = (v) => Math.round(v / g) * g;
+                x = q(x); y = q(y);
+                w = Math.max(2, q(w)); h = Math.max(2, q(h));
+                if (view.snapMode === 'lines') {
+                    const dir = (fx >= ax ? 'e' : 'w') + (fy >= ay ? 's' : 'n');
+                    const sn = snapResizeRect(x, y, w, h, dir, new Set(), parent, origin);
+                    x = sn.x; y = sn.y;
+                    w = Math.max(2, sn.w); h = Math.max(2, sn.h);
+                    guides = sn.guides;
+                }
+            } else {
+                x = Math.round(x); y = Math.round(y);
+                w = Math.max(0, Math.round(w)); h = Math.max(0, Math.round(h));
+            }
+            if (x < 0) { w += x; x = 0; }
+            if (y < 0) { h += y; y = 0; }
+            if (x + w > frame.w) w = Math.max(2, frame.w - x);
+            if (y + h > frame.h) h = Math.max(2, frame.h - y);
+            last = { x, y, w, h };
+            band.style.left = (x + origin.x) + 'px';
+            band.style.top = (y + origin.y) + 'px';
+            band.style.width = Math.max(w, 2) + 'px';
+            band.style.height = Math.max(h, 2) + 'px';
+            renderSnapGuides(guides);
+        }
+        function up(ev) {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+            const r = last;
+            band.remove();
+            clearGuides();
+            if (r.w < 4 && r.h < 4) {
+                const d = defaultControlSize(simple);
+                const placed = snapPlacePoint(simple, ax, ay, parent, origin, !!(ev && ev.altKey));
+                createControl(simple, placed.x, placed.y, d.w, d.h, parent);
+            } else {
+                createControl(simple, r.x, r.y,
+                    Math.max(2, Math.round(r.w)), Math.max(2, Math.round(r.h)), parent);
+            }
+        }
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
     }
 
     /**
@@ -2630,6 +2923,14 @@
         canvas.addEventListener('mousedown', (e) => {
             if (e.target !== canvas) return;      // started on a control
             if (e.button !== 0) return;
+            // Task 4 (#50): with a tool armed, empty-canvas mousedown draws the
+            // new control — it never exits the drill scope (the draw targets it)
+            // and never starts a marquee. Refused forms never arm, so no guard here.
+            if (armedTool && !readOnly && !tabOrderMode) {
+                e.preventDefault();
+                beginDraw(e, armedTool, null);
+                return;
+            }
             // Click on empty canvas exits active container
             if (activeContainer) {
                 activeContainer = null;
@@ -2773,15 +3074,41 @@
         canvasWrap.addEventListener('dragover', (e) => {
             if (readOnly) return;
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+            // Task 4 (#50) live snap on toolbox drag: show the Task 3 guides for
+            // the default-size rect at the pointer, before any drop. View state —
+            // dragover posts nothing. Alt suppresses like a move.
+            try {
+                const simple = e.dataTransfer && typeof e.dataTransfer.getData === 'function'
+                    ? e.dataTransfer.getData('text/vscforms-control') : null;
+                if (!simple || !schema) return;
+                if (!HANDLED.some(([n]) => n === simple)) return;
+                const parent = addTargetParent(null);
+                const origin = frameOrigin(parent);
+                const fp = canvasFormPoint(e.clientX, e.clientY);
+                snapPlacePoint(simple, fp.x - 20 - origin.x, fp.y - 10 - origin.y,
+                    parent, origin, !!e.altKey);
+            } catch { /* foreign drag payloads never produce guides */ }
         });
+        const leaveGuides = () => clearGuides();
+        canvasWrap.addEventListener('dragleave', leaveGuides);
         canvasWrap.addEventListener('drop', (e) => {
             if (readOnly) return;
             const simple = e.dataTransfer.getData('text/vscforms-control');
             if (!simple) return;
             e.preventDefault();
-            const box = $('canvas').getBoundingClientRect();
-            addControl(simple, e.clientX - box.left - 20, e.clientY - box.top - 10);
+            clearGuides();
+            // Scale-correct form point (the old raw subtraction drifted at any
+            // zoom), then the same quantize+pull as an armed click-place so a
+            // drop and a draw-click agree. createControl clamps to the frame.
+            const parent = addTargetParent(null);
+            const origin = frameOrigin(parent);
+            const fp = canvasFormPoint(e.clientX, e.clientY);
+            const placed = snapPlacePoint(simple, fp.x - 20 - origin.x, fp.y - 10 - origin.y,
+                parent, origin, !!e.altKey);
+            clearGuides();
+            const d = defaultControlSize(simple);
+            createControl(simple, placed.x, placed.y, d.w, d.h, parent);
         });
     }
 
@@ -2837,6 +3164,8 @@
                 // A new document means fresh view state; reset silently so the
                 // 'Ready' / 'changed on disk' message below survives.
                 setTabOrderMode(false, false);
+                armedTool = null;
+                clearGuides();
                 renderAll();
                 renderStatus(
                     msg.type === 'externalChange'
@@ -2941,7 +3270,18 @@
             // felt: without it there is no way out of a selection short of clicking again.
             // D6: F2 renames the single selected control through the existing rename path.
             if (e.key === 'F2') { e.preventDefault(); beginOutlineRename(); return; }
+            // Task 4 (#50) Enter adds the armed tool at a cascade slot in the
+            // target parent (dblclick without a pointer). Plain Enter only — Ctrl
+            // is untouched — and refused forms never arm, so there is nothing to add.
+            if (e.key === 'Enter' && armedTool && !(e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                populateTarget(armedTool);
+                return;
+            }
             if (e.key === 'Escape') {
+                // The sticky tool disarms first; the existing exit/clear below
+                // still runs, so one Escape both disarms and deselects.
+                if (armedTool) setArmedTool(null);
                 if (tabOrderMode) setTabOrderMode(false);
                 if (activeContainer) {
                     activeContainer = null;

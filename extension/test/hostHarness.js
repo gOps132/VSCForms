@@ -2955,6 +2955,201 @@ setTimeout(async () => {
         await settled();
         sandbox.__sent.length = 0;
     }
+
+    // ---- Task 4 (#50): draw-to-create + dblclick-populate + Enter-add + live snap on toolbox drag
+    // Sticky pointer tool (VS toolbox click arms, crosshair, click places / drag sizes),
+    // dblclick populates the active container, Enter adds, toolbox dragover shows Task 3
+    // snap guides. Canvas-only: all adds travel addControl -> commit, no schema change,
+    // no undo stack, locked/refused never written.
+    {
+        const toolFor = (simple) => ids.toolbox.querySelectorAll('.tool')
+            .find((t) => t.dataset.simple === simple);
+        const canvasArmed = () => canvasEl.classList.contains('armed')
+            || canvasEl.style.cursor === 'crosshair';
+        const guides = () => canvasEl.querySelectorAll('.guide');
+        const drawRect = () => canvasEl.querySelector('.draw-rect');
+        const endDraw = () => { sandbox.window.dispatch('mouseup', {}); mirrorScale(); };
+        const snapToggle = () => ids['status-tools'].querySelector('.snap-toggle');
+        const modeBtn = () => ids['status-tools'].querySelector('.snap-mode-toggle');
+        const gridInput = () => ids['status-tools'].querySelector('.grid-size');
+        if (snapToggle() && /off/.test(String(snapToggle().textContent))) snapToggle().dispatch('click', {});
+        if (modeBtn() && /grid-only/.test(String(modeBtn().textContent))) modeBtn().dispatch('click', {});
+        if (gridInput() && gridInput().value !== '8') { gridInput().value = '8'; gridInput().dispatch('change', {}); }
+
+        // Single click arms the sticky tool: armed class + crosshair, no commit (view state).
+        send({ type: 'load', data: schema });
+        await settled();
+        sandbox.__sent.length = 0;
+        toolFor('Button').dispatch('click', {});
+        check('toolbox click arms the sticky tool', toolFor('Button').classList.contains('armed'));
+        check('armed canvas shows a crosshair', canvasArmed());
+        await settled();
+        check('arming posts no commit — view state only', !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        // Clicking the same tool again disarms (toggle).
+        toolFor('Button').dispatch('click', {});
+        check('clicking the armed tool again disarms it', !toolFor('Button').classList.contains('armed')
+            && !canvasArmed());
+
+        // Click-to-place with the sticky tool: default size at the anchor, tool stays armed.
+        // Anchor (24,24): the default Button 84x27 sits clear of every Task 3
+        // candidate (right 108 vs txtName left 96 is 12 off), so no pull corrects it.
+        send({ type: 'load', data: schema });
+        await settled();
+        toolFor('Button').dispatch('click', {});
+        sandbox.__sent.length = 0;
+        canvasEl.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 24, clientY: 24 });
+        sandbox.window.dispatch('mousemove', { clientX: 25, clientY: 25 });
+        check('draw shows a live rubber band while sizing', !!drawRect());
+        endDraw();
+        await settled();
+        {
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const added = commits.length && commits[commits.length - 1].data.controls
+                .find((x) => x.type.endsWith('.Button') && x.id !== 'btnSubmit');
+            check('click-to-place adds through addControl', !!added, added ? added.id : 'not added');
+            check('click-to-place lands the design-time default 84x27',
+                !!added && added.properties.width === 84 && added.properties.height === 27,
+                added ? `${added.properties.width}x${added.properties.height}` : 'n/a');
+            check('click-to-place lands at the anchor', !!added && added.properties.x === 24 && added.properties.y === 24,
+                added ? `${added.properties.x},${added.properties.y}` : 'n/a');
+            check('the tool stays armed after placing (sticky)', !!toolFor('Button') && toolFor('Button').classList.contains('armed'));
+            check('placing posts exactly one commit', commits.length === 1, String(commits.length));
+        }
+        // Escape disarms.
+        stage.dispatch('keydown', { key: 'Escape', preventDefault() { } });
+        check('Escape disarms the tool', !canvasArmed());
+
+        // Drag-to-size: the rubber band becomes the control rect (16,16 -> 96,56 = 80x40).
+        // The right edge lands exactly on txtName's left edge (96), so Task 3 pull holds
+        // it there and a live guide renders mid-gesture.
+        send({ type: 'load', data: schema });
+        await settled();
+        toolFor('Button').dispatch('click', {});
+        sandbox.__sent.length = 0;
+        canvasEl.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 16, clientY: 16 });
+        sandbox.window.dispatch('mousemove', { clientX: 96, clientY: 56 });
+        check('drag-to-size renders a live guide at the matched edge', guides().length > 0,
+            String(guides().length));
+        endDraw();
+        await settled();
+        {
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const added = commits.length && commits[commits.length - 1].data.controls
+                .find((x) => x.type.endsWith('.Button') && x.id !== 'btnSubmit');
+            check('drag-to-size creates the drawn rect, not the default size',
+                !!added && added.properties.width === 80 && added.properties.height === 40,
+                added ? `${added.properties.width}x${added.properties.height}` : 'n/a');
+            check('drawn rect lands at the drag anchor', !!added && added.properties.x === 16 && added.properties.y === 16,
+                added ? `${added.properties.x},${added.properties.y}` : 'n/a');
+        }
+        stage.dispatch('keydown', { key: 'Escape', preventDefault() { } });
+
+        // Double-click populates the ACTIVE container (drill-down scope), parent-relative.
+        {
+            const nest = JSON.parse(JSON.stringify(schema));
+            nest.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [],
+                locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+            send({ type: 'load', data: nest });
+            await settled();
+            ctlNode('pnlWrap').dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+            check('drill-down entered for the populate test',
+                /Entered pnlWrap/.test(String(ids.status.textContent)), String(ids.status.textContent));
+            sandbox.__sent.length = 0;
+            toolFor('Button').dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+            await settled();
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const pnl = commits.length && commits[commits.length - 1].data.controls.find((c) => c.id === 'pnlWrap');
+            const kid = pnl && pnl.children && pnl.children[0];
+            check('toolbox dblclick populates the active container, not the form top level',
+                !!kid && kid.type.endsWith('.Button'), kid ? JSON.stringify([kid.id, kid.type]) : 'no child');
+            check('populated child lands parent-relative inside the container',
+                !!kid && kid.properties.x === 8 && kid.properties.y === 8,
+                kid ? `${kid.properties.x},${kid.properties.y}` : 'n/a');
+        }
+
+        // Enter adds through the same populate path (armed tool, active container scope).
+        {
+            const nest = JSON.parse(JSON.stringify(schema));
+            nest.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [],
+                locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+            send({ type: 'load', data: nest });
+            await settled();
+            ctlNode('pnlWrap').dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+            toolFor('Label').dispatch('click', {});
+            sandbox.__sent.length = 0;
+            stage.dispatch('keydown', { key: 'Enter', preventDefault() { } });
+            await settled();
+            const commits = sandbox.__sent.filter((m) => m.type === 'commit');
+            const pnl = commits.length && commits[commits.length - 1].data.controls.find((c) => c.id === 'pnlWrap');
+            const kid = pnl && pnl.children && pnl.children[0];
+            check('Enter adds the armed tool into the active container',
+                !!kid && kid.type.endsWith('.Label'), kid ? JSON.stringify([kid.id, kid.type]) : 'no child');
+            check('Enter-add keeps the tool armed (sticky)', !!toolFor('Label') && toolFor('Label').classList.contains('armed'));
+        }
+        stage.dispatch('keydown', { key: 'Escape', preventDefault() { } });
+
+        // Toolbox drag shows live Task 3 snap guides on dragover, before any drop.
+        {
+            const snapSchema = {
+                ...schema,
+                controls: [
+                    { id: 'btnA', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                      properties: { x: 43, y: 40, width: 80, height: 25, text: 'A', tabIndex: 0 } },
+                    { id: 'btnB', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                      properties: { x: 200, y: 100, width: 60, height: 25, text: 'B', tabIndex: 1 } },
+                ],
+                analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+            };
+            send({ type: 'load', data: snapSchema });
+            await settled();
+            sandbox.__sent.length = 0;
+            // Pointer at (143,50): default Button 84x27 lands left=123 (btnA right edge)
+            // top=40 (btnA top), so both axes match and guides render.
+            stage.dispatch('dragover', {
+                clientX: 143, clientY: 50,
+                dataTransfer: { getData: (k) => (k === 'text/vscforms-control' ? 'Button' : '') },
+                preventDefault() { },
+            });
+            check('toolbox dragover renders live snap guides', guides().length > 0,
+                String(guides().length));
+            check('dragover posts no commit — guides are view state',
+                !sandbox.__sent.some((m) => m.type === 'commit'),
+                JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        }
+
+        // Refused forms: no arming, no populate, no guides, no commits.
+        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+        await settled();
+        {
+            sandbox.__sent.length = 0;
+            toolFor('Button').dispatch('click', {});
+            check('refused form does not arm the tool', !toolFor('Button').classList.contains('armed') && !canvasArmed());
+            toolFor('Button').dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
+            stage.dispatch('keydown', { key: 'Enter', preventDefault() { } });
+            stage.dispatch('drop', {
+                clientX: 40, clientY: 40,
+                dataTransfer: { getData: (k) => (k === 'text/vscforms-control' ? 'Button' : '') },
+                preventDefault() { },
+            });
+            canvasEl.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 16, clientY: 16 });
+            sandbox.window.dispatch('mousemove', { clientX: 96, clientY: 56 });
+            endDraw();
+            stage.dispatch('dragover', {
+                clientX: 143, clientY: 50,
+                dataTransfer: { getData: (k) => (k === 'text/vscforms-control' ? 'Button' : '') },
+                preventDefault() { },
+            });
+            check('refused dragover renders no guides', guides().length === 0, String(guides().length));
+            await settled();
+            check('refused form posts no commit for any Task 4 gesture',
+                !sandbox.__sent.some((m) => m.type === 'commit'),
+                JSON.stringify(sandbox.__sent.map((m) => m.type)));
+        }
+        send({ type: 'load', data: schema });
+        await settled();
+        sandbox.__sent.length = 0;
+    }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);

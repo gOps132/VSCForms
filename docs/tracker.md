@@ -42,7 +42,10 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   edges/centers/baselines with magnetic pull on move/resize/multi + Alt-suppress
   + SnapLines/grid-only mode, all toggleable),
   multi-select + marquee (click-order dominant + Ctrl/Cmd+click toggle +
-  Shift+marquee-add, align/distribute-to-dominant), `Cmd/Ctrl+D` duplicate, zoom
+  Shift+marquee-add, align/distribute-to-dominant),
+  toolbox draw-to-create (sticky armed tool + crosshair, click-place/drag-size
+  with live snap guides, dblclick/Enter populate, dragover guides),
+  `Cmd/Ctrl+D` duplicate, zoom
   (`Cmd/Ctrl`+wheel, `+/-`/`0`, Fit, 0.25–4.0), space/middle-drag pan, rulers,
   zoom bar, Escape deselect, tab-strip activation, drill-down selection for
   nested containers, coverage banner (never hideable), locked boxes with
@@ -115,6 +118,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D9 | Object selector dropdown (jump to hidden/buried control) | shipped | S | `spec-property-tabs.md` §7 | Pathed flat list over all controls; change → select() only, no commit; locked select-readable alone. (#37) |
 | D10 | Inspector Categorized + Alphabetical views | shipped | S | `spec-property-tabs.md` §§1–2 | Presentational sort/group toggle over flat rows (Flat/Categorized/Alphabetical buttons in the inspector; view state only, switching never commits so the file is byte-identical). Hardcoded per-property category table in canvas (`PROP_CATEGORIES`, VS `[Category]` values; unmapped → Misc); no engine table — categories never cross the protocol, same class as D1/D5. Live drag values look up inputs by id (index lookup breaks outside flat order). (#32) |
 | D11 | Click-order dominant selection + Ctrl+click + align-to-dominant | shipped | S | `spec-vs-parity.md` §1 | First-clicked member is the primary (`dominant` class + white handles in a group); align/same-size reference its edges/extents, not the group bbox; Ctrl/Cmd+click toggles membership (toggling off starts no drag); Shift+marquee adds, plain marquee replaces; locked never joins a group. View state only, no protocol change, no ADR. (#47) |
+| D12 | Draw-to-create + dblclick-populate + Enter-add + live snap on toolbox drag | shipped | S | `spec-vs-parity.md` §1 | Sticky armed tool (toolbox click toggles, `armed` class + crosshair, Esc disarms, arming posts nothing); click places the default size, drag sizes the rect (live rubber band + Task 3 resize pull on the moving edges, container clamp); dblclick/Enter populate the cascade slot in the drill scope else the selected container else the form (TabControl resolves to its active page); dragover renders live guides and drop lands snapped scale-correct. All adds share the one createControl commit path (designer names, coverage); locked/refused never written. View state + existing path, no schema change, no ADR. (#50) |
 
 P0 after #29 is fully shipped: clipboard (A2 #3), grid-size setting, snapline
 baselines + Alt-suppress, full edge/center pull on move/resize/multi, and the
