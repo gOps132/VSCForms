@@ -569,7 +569,10 @@ setTimeout(async () => {
 
         ctlNode('btnSubmit').dispatch('mousedown',
             { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
-        sandbox.window.dispatch('mousemove', { clientX: 100 + 40 * s, clientY: 100 + 24 * s });
+        // Drag up-left, away from the frame walls: the container clamp (Task 2,
+        // #48) pins moves at the parent frame, so a delta running past the
+        // bottom-right edge would assert the clamp, not the zoom math.
+        sandbox.window.dispatch('mousemove', { clientX: 100 - 40 * s, clientY: 100 - 24 * s });
         check(`a drag at ${label} moves live style during mousemove`,
             leftOf('btnSubmit') !== x0,
             `live left is ${leftOf('btnSubmit')}; start was ${x0}`);
@@ -581,8 +584,8 @@ setTimeout(async () => {
         // Tolerate the 8px grid snap; what must hold is that the result is the FORM delta and
         // not the SCREEN delta, which differ by exactly `s`.
         check(`a drag at ${label} moves by the pointer delta in form units`,
-            Math.abs(dx - 40) <= 8 && Math.abs(dy - 24) <= 8,
-            `moved ${dx},${dy}; expected ~40,24. A scaled-rect bug gives ${(40 * s).toFixed(1)},${(24 * s).toFixed(1)}`);
+            Math.abs(dx + 40) <= 8 && Math.abs(dy + 24) <= 8,
+            `moved ${dx},${dy}; expected ~-40,-24. A scaled-rect bug gives ${(-40 * s).toFixed(1)},${(-24 * s).toFixed(1)}`);
     }
 
     // ---- nudge is in FORM units, never screen pixels
@@ -758,11 +761,14 @@ setTimeout(async () => {
         send({ type: 'load', data: nestedDrag });
         nestWrap().dispatch('mousedown',
             { preventDefault() { }, stopPropagation() { }, clientX: 100, clientY: 100 });
-        sandbox.window.dispatch('mousemove', { clientX: 140, clientY: 140 });
+        // (+40,+24): stays clear of the container clamp walls (Task 2, #48 —
+        // pnlWrap 200x150 in a 292x196 form pins at x=92,y=46), so this asserts
+        // the carry-along, not the clamp.
+        sandbox.window.dispatch('mousemove', { clientX: 140, clientY: 124 });
         sandbox.window.dispatch('mouseup', {});
         mirrorScale();
         check('dragging a container moves the container',
-            nestPos('pnlWrap') === '50,50', nestPos('pnlWrap'));
+            nestPos('pnlWrap') === '50,34', nestPos('pnlWrap'));
         check('the child rides along: its relative coordinates are untouched',
             nestPos('btnIn') === '5,5', nestPos('btnIn'));
 
@@ -807,33 +813,55 @@ setTimeout(async () => {
         sandbox.__sent.length = 0;
     }
 
-    // ---- D4 keyboard jump + resize (same TextChanges as drag / resize-handle)
+    // ---- D4 keyboard move/resize (VS SizeControl semantics, Task 2 #48).
+    // Plain arrows move by GRID; Ctrl/Cmd is the 1px fine step (the old GRID*5
+    // jump was inverted). Shift resizes with the same step rule — Right/Down
+    // grow, Left/Up shrink, top-left anchored — the same TextChanges a
+    // drag/resize-handle emits.
     send({ type: 'load', data: schema });
     sandbox.__sent.length = 0;
     {
         const keyNode = (id) => canvasEl.querySelectorAll('.ctl').find((n) => n.dataset.id === id);
-        // Ctrl+arrow jumps one ruler-major-tick (GRID*5 = 40).
+        // Plain arrow moves by GRID; ctrl+arrow moves by the 1px fine step.
         const x0 = leftOf('btnSubmit'), y0 = topOf('btnSubmit');
-        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', ctrlKey: true, preventDefault() { } });
-        check('ctrl+arrow jumps by the major tick', leftOf('btnSubmit') - x0 === 40 && topOf('btnSubmit') === y0,
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        check('plain arrow moves by GRID', leftOf('btnSubmit') - x0 === 8 && topOf('btnSubmit') === y0,
             `moved ${leftOf('btnSubmit') - x0},${topOf('btnSubmit') - y0}`);
-        // Shift+arrow resizes east/south edges, top-left anchored.
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', ctrlKey: true, preventDefault() { } });
+        check('ctrl+arrow moves by the 1px fine step, not the old GRID*5 jump',
+            leftOf('btnSubmit') - x0 === 9 && topOf('btnSubmit') === y0,
+            `moved ${leftOf('btnSubmit') - x0},${topOf('btnSubmit') - y0}`);
+        // Shift+arrow resizes all four ways, top-left anchored (VS SizeControl).
         const w0 = parseFloat(keyNode('btnSubmit').style.width);
         const h0 = parseFloat(keyNode('btnSubmit').style.height);
+        const xa = leftOf('btnSubmit'), ya = topOf('btnSubmit');
         keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', shiftKey: true, preventDefault() { } });
-        check('shift+arrow grows width, keeps position',
-            parseFloat(keyNode('btnSubmit').style.width) === w0 + 8 && leftOf('btnSubmit') === x0 + 40,
+        check('shift+right grows width, keeps position',
+            parseFloat(keyNode('btnSubmit').style.width) === w0 + 8 && leftOf('btnSubmit') === xa,
             `w=${keyNode('btnSubmit').style.width} x=${leftOf('btnSubmit')}`);
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowLeft', shiftKey: true, preventDefault() { } });
+        check('shift+left shrinks width back, keeps position (west)',
+            parseFloat(keyNode('btnSubmit').style.width) === w0 && leftOf('btnSubmit') === xa,
+            `w=${keyNode('btnSubmit').style.width} x=${leftOf('btnSubmit')}`);
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowDown', shiftKey: true, preventDefault() { } });
+        check('shift+down grows height, keeps position',
+            parseFloat(keyNode('btnSubmit').style.height) === h0 + 8 && topOf('btnSubmit') === ya,
+            `h=${keyNode('btnSubmit').style.height} y=${topOf('btnSubmit')}`);
+        keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowUp', shiftKey: true, preventDefault() { } });
+        check('shift+up shrinks height back, keeps position (north)',
+            parseFloat(keyNode('btnSubmit').style.height) === h0 && topOf('btnSubmit') === ya,
+            `h=${keyNode('btnSubmit').style.height} y=${topOf('btnSubmit')}`);
+        // Ctrl+Shift resizes by the fine step too.
         keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowDown', shiftKey: true, ctrlKey: true, preventDefault() { } });
-        check('ctrl+shift+arrow resizes by the jump size',
-            parseFloat(keyNode('btnSubmit').style.height) === h0 + 40,
+        check('ctrl+shift+arrow resizes by 1px, not the old jump',
+            parseFloat(keyNode('btnSubmit').style.height) === h0 + 1,
             `h=${keyNode('btnSubmit').style.height}`);
         await settled();
         const kc = sandbox.__sent.filter((m) => m.type === 'commit');
         check('keyboard gestures debounce to one commit', kc.length === 1, String(kc.length));
         const ksent = kc.length && kc[0].data.controls.find((c) => c.id === 'btnSubmit');
-        check('commit carries jumped position and resized size',
-            !!ksent && ksent.properties.x === x0 + 40 && ksent.properties.width === w0 + 8 && ksent.properties.height === h0 + 40,
+        check('commit carries moved position and resized size',
+            !!ksent && ksent.properties.x === x0 + 9 && ksent.properties.width === w0 && ksent.properties.height === h0 + 1,
             ksent ? JSON.stringify(ksent.properties) : 'no commit');
         // Locked controls ignore arrows entirely.
         const lx0 = parseFloat(keyNode('ThirdPartyGauge').style.left);
@@ -842,6 +870,114 @@ setTimeout(async () => {
         check('locked control ignores move and resize keys',
             parseFloat(keyNode('ThirdPartyGauge').style.left) === lx0,
             String(keyNode('ThirdPartyGauge').style.left));
+    }
+
+    // ---- Task 2 (#48): drag/nudge clamps to the parent frame + MinimumSize floor.
+    // A control lives inside its container: moves stop at the frame walls
+    // (0..frame-size, one shared delta so a group never splits), and shrinking
+    // stops at max(2, minimumSize when the schema surfaces one).
+    {
+        const keyNode = (id) => canvasEl.querySelectorAll('.ctl').find((n) => n.dataset.id === id);
+        const posOf = (id) => `${parseFloat(keyNode(id).style.left)},${parseFloat(keyNode(id).style.top)}`;
+        const sizeOf = (id) => `${parseFloat(keyNode(id).style.width)}x${parseFloat(keyNode(id).style.height)}`;
+
+        // Nudge stops at the frame walls: btnEdge sits 8px shy of the form's
+        // right/bottom (form 292x196, control 84x27 -> walls x=208, y=169).
+        const edgeSchema = JSON.parse(JSON.stringify(schema));
+        edgeSchema.controls.push({ id: 'btnEdge', type: 'System.Windows.Forms.Button', children: [], locked: false,
+            properties: { x: 200, y: 161, width: 84, height: 27, text: 'Edge', tabIndex: 4 } });
+        send({ type: 'load', data: edgeSchema });
+        await settled();
+        keyNode('btnEdge').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        check('nudge stops at the frame right wall', posOf('btnEdge') === '208,161', posOf('btnEdge'));
+        keyNode('btnEdge').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        check('a nudge fully into the wall moves nothing', posOf('btnEdge') === '208,161', posOf('btnEdge'));
+        keyNode('btnEdge').dispatch('keydown', { key: 'ArrowDown', preventDefault() { } });
+        check('nudge stops at the frame bottom wall', posOf('btnEdge') === '208,169', posOf('btnEdge'));
+        // ... and at zero on the west/north sides.
+        const zeroSchema = JSON.parse(JSON.stringify(schema));
+        zeroSchema.controls.push({ id: 'btnZero', type: 'System.Windows.Forms.Button', children: [], locked: false,
+            properties: { x: 4, y: 4, width: 84, height: 27, text: 'Zero', tabIndex: 4 } });
+        send({ type: 'load', data: zeroSchema });
+        await settled();
+        keyNode('btnZero').dispatch('keydown', { key: 'ArrowLeft', preventDefault() { } });
+        check('nudge stops at x=0', posOf('btnZero') === '0,4', posOf('btnZero'));
+        keyNode('btnZero').dispatch('keydown', { key: 'ArrowUp', preventDefault() { } });
+        check('nudge stops at y=0', posOf('btnZero') === '0,0', posOf('btnZero'));
+        // A nudge fully into the wall posts no commit: nothing changed, so the
+        // file stays byte-identical (no generate at all). Flush the previous
+        // move's debounced commit first, so only the blocked nudge is observed.
+        await settled();
+        sandbox.__sent.length = 0;
+        keyNode('btnZero').dispatch('keydown', { key: 'ArrowLeft', preventDefault() { } });
+        await settled();
+        check('a fully-blocked nudge posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),
+            JSON.stringify(sandbox.__sent.map((m) => m.type)));
+
+        // Drag clamps the same way: flinging btnEdge far past the corner lands
+        // exactly on it, and the debounced commit carries the clamped geometry.
+        send({ type: 'load', data: edgeSchema });
+        await settled();
+        sandbox.__sent.length = 0;
+        keyNode('btnEdge').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 200, clientY: 160 });
+        sandbox.window.dispatch('mousemove', { clientX: 900, clientY: 800 });
+        sandbox.window.dispatch('mouseup', {});
+        check('a drag past the corner lands on the frame walls', posOf('btnEdge') === '208,169', posOf('btnEdge'));
+        await settled();
+        const dc = sandbox.__sent.filter((m) => m.type === 'commit').pop();
+        const dsent = dc && dc.data.controls.find((c) => c.id === 'btnEdge');
+        check('the drag commit carries the clamped position',
+            !!dsent && dsent.properties.x === 208 && dsent.properties.y === 169,
+            dsent ? JSON.stringify(dsent.properties) : 'no commit');
+
+        // Nested controls clamp to their container frame, not the form: btnIn
+        // lives in 200x150 pnlWrap, so its walls are x=120, y=125.
+        const nestClamp = JSON.parse(JSON.stringify(schema));
+        nestClamp.controls.push({ id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+            { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+              properties: { x: 116, y: 121, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+        ], locked: false, properties: { x: 10, y: 10, width: 200, height: 150, tabIndex: 1 } });
+        send({ type: 'load', data: nestClamp });
+        await settled();
+        keyNode('btnIn').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        check('nested nudge stops at the container right wall', posOf('btnIn') === '120,121', posOf('btnIn'));
+        keyNode('btnIn').dispatch('keydown', { key: 'ArrowDown', preventDefault() { } });
+        check('nested nudge stops at the container bottom wall', posOf('btnIn') === '120,125', posOf('btnIn'));
+
+        // A group drag clamps as one block: txtName (180 wide, wall x=112) binds
+        // dx first and btnSubmit (wall y=169) binds dy first; both keep offsets.
+        send({ type: 'load', data: schema });
+        await settled();
+        keyNode('txtName').dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 96, clientY: 78 });
+        sandbox.window.dispatch('mouseup', {});
+        keyNode('btnSubmit').dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 96, clientY: 154 });
+        sandbox.window.dispatch('mousemove', { clientX: 900, clientY: 900 });
+        sandbox.window.dispatch('mouseup', {});
+        check('group drag clamps as a block, keeping offsets',
+            posOf('txtName') === '112,93' && posOf('btnSubmit') === '112,169',
+            posOf('txtName') + ' / ' + posOf('btnSubmit'));
+
+        // MinimumSize floor: shrinking stops at max(2, minimumSize) — the 2px DOM
+        // floor where the schema surfaces none (the engine parses none today, so
+        // the canvas honors the field opportunistically; no schema change).
+        const minSchema = JSON.parse(JSON.stringify(schema));
+        minSchema.controls.push({ id: 'btnMin', type: 'System.Windows.Forms.Button', children: [], locked: false,
+            properties: { x: 10, y: 10, width: 84, height: 27, text: 'Min', tabIndex: 4,
+                minimumSize: { width: 50, height: 20 } } });
+        send({ type: 'load', data: minSchema });
+        await settled();
+        for (let i = 0; i < 5; i++) keyNode('btnMin').dispatch('keydown', { key: 'ArrowLeft', shiftKey: true, preventDefault() { } });
+        check('shift+left shrink stops at minimumSize.width', sizeOf('btnMin') === '50x27', sizeOf('btnMin'));
+        for (let i = 0; i < 5; i++) keyNode('btnMin').dispatch('keydown', { key: 'ArrowUp', shiftKey: true, preventDefault() { } });
+        check('shift+up shrink stops at minimumSize.height', sizeOf('btnMin') === '50x20', sizeOf('btnMin'));
+        // And the plain 2px floor where no MinimumSize is surfaced.
+        send({ type: 'load', data: schema });
+        await settled();
+        for (let i = 0; i < 12; i++) keyNode('btnSubmit').dispatch('keydown', { key: 'ArrowLeft', shiftKey: true, preventDefault() { } });
+        check('shrink without a MinimumSize still floors at 2px', sizeOf('btnSubmit') === '2x27', sizeOf('btnSubmit'));
+        await settled();
+        sandbox.__sent.length = 0;
     }
 
     // ---- A4 tab-order mode: badges + click-to-assign, Esc exits

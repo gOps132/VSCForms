@@ -728,9 +728,11 @@
             if (c.locked || readOnly) return;
             // GRID is FORM units. A nudge must never be "8 screen pixels" — at 50% zoom that
             // would be a 16px move, and the control would drift off its grid.
-            // Ctrl/Cmd jumps one ruler-major-tick (GRID*5); Shift resizes instead of moving
-            // (VS parity — Shift used to mean 2x nudge).
-            const step = (e.ctrlKey || e.metaKey) ? GRID * 5 : GRID;
+            // VS parity (SizeControl commands, #48): plain arrows move by GRID; Ctrl/Cmd is
+            // the 1px fine step (the old GRID*5 jump was inverted). Shift resizes with the
+            // same step — Right/Down grow, Left/Up shrink, top-left anchored. Ctrl+Shift
+            // resizes by the fine step.
+            const step = (e.ctrlKey || e.metaKey) ? 1 : GRID;
             const many = selected();
             // dragRoots, like a drag: nudging a container already carries its children.
             const nudgeTarget = dragRoots(many.length > 1 && many.some((m) => m.id === c.id) ? many : [c]);
@@ -743,7 +745,7 @@
             if (!d) return;
             e.preventDefault();
             if (e.shiftKey) for (const t of nudgeTarget) keyResize(t, d[0] * step, d[1] * step);
-            else for (const t of nudgeTarget) nudge(t, d[0] * step, d[1] * step);
+            else nudgeGroup(nudgeTarget, d[0] * step, d[1] * step);
         });
 
         parent.appendChild(node);
@@ -1187,21 +1189,72 @@
         }, 220);
     }
 
-    function nudge(c, dx, dy) {
-        c.properties.x += dx;
-        c.properties.y += dy;
+    /**
+     * Keyboard nudge over dragRoots: ONE shared delta for the group (a container already
+     * carries its children), clamped through every member's parent frame so a
+     * multi-selection moves as one block and never splits at an edge. Fully blocked =
+     * no model touch and no commit, so hammering an arrow at a wall never dirties the
+     * file (byte-identity on untouched).
+     */
+    function nudgeGroup(targets, dx, dy) {
+        const cl = clampMoveDelta(targets.map(clampItem), dx, dy);
+        if (cl.dx === 0 && cl.dy === 0) return;
+        for (const t of targets) { t.properties.x += cl.dx; t.properties.y += cl.dy; }
         renderStatusForSelection();
         commit();
     }
 
     /**
-     * Keyboard resize (Shift+arrows): the east/south edges move with the top-left corner
-     * anchored — the same TextChanges a resize-handle drag emits (Size args only, never
-     * Location). Minimum extent 2, matching beginResize.
+     * Clamp a shared move delta so every member lands inside its own parent frame (a
+     * control lives inside its container — VS containment). `items` are position
+     * snapshots so a drag clamps its TOTAL delta from the gesture start, not the last
+     * mousemove. Axes are independent and each takes the tightest room across the
+     * group.
+     */
+    function clampMoveDelta(items, dx, dy) {
+        let cx = dx, cy = dy;
+        for (const it of items) {
+            cx = clampAxis(cx, it.x, it.w, it.fw);
+            cy = clampAxis(cy, it.y, it.h, it.fh);
+        }
+        return { dx: Math.round(cx), dy: Math.round(cy) };
+    }
+    /** Limit `d` so `pos + d` stays within [0, max(0, frame - size)]. */
+    function clampAxis(d, pos, size, frame) {
+        return Math.min(Math.max(d, -pos), Math.max(0, frame - size) - pos);
+    }
+    /** Snapshot a control for clampMoveDelta: current position over its parent frame. */
+    function clampItem(c) {
+        const f = parentFrame(c);
+        return {
+            x: c.properties.x, y: c.properties.y,
+            w: c.properties.width, h: c.properties.height, fw: f.w, fh: f.h,
+        };
+    }
+
+    /**
+     * Minimum resize extent: the modelled MinimumSize when the schema surfaces one,
+     * else the 2px DOM floor. The engine does not parse MinimumSize today, so this is
+     * opportunistic — a control carrying `properties.minimumSize = {width, height}` is
+     * honored, everything else floors at 2. No schema change.
+     */
+    function minExtent(c) {
+        const ms = (c.properties && c.properties.minimumSize) || {};
+        return {
+            w: Math.max(2, Number.isFinite(ms.width) ? Math.round(ms.width) : 0),
+            h: Math.max(2, Number.isFinite(ms.height) ? Math.round(ms.height) : 0),
+        };
+    }
+
+    /**
+     * Keyboard resize (Shift+arrows): VS SizeControl semantics — Right/Down grow the
+     * east/south edges, Left/Up shrink them, top-left anchored. The same TextChanges a
+     * resize-handle drag emits (Size args only, never Location).
      */
     function keyResize(c, dx, dy) {
-        c.properties.width = Math.max(Math.round(c.properties.width + dx), 2);
-        c.properties.height = Math.max(Math.round(c.properties.height + dy), 2);
+        const min = minExtent(c);
+        if (dx) c.properties.width = Math.max(Math.round(c.properties.width + dx), min.w);
+        if (dy) c.properties.height = Math.max(Math.round(c.properties.height + dy), min.h);
         renderStatusForSelection();
         commit();
     }
@@ -1571,11 +1624,19 @@
             // Divide the scale out FIRST, then snap in form space. Snapping in screen space
             // drifts at fractional zoom and pulls controls off the grid.
             const { dx, dy } = formDelta(ev, origin);
-            const stepX = snapTo(dx);
-            const stepY = snapTo(dy);
+            // Container clamp (#48): one shared delta, limited so every root lands inside
+            // its own parent frame. Clamped from the gesture START — clamping per-mousemove
+            // would stick at the wall and never come back.
+            const cl = clampMoveDelta(groupStart.map((s) => {
+                const f = parentFrame(s.g);
+                return {
+                    x: s.x, y: s.y,
+                    w: s.g.properties.width, h: s.g.properties.height, fw: f.w, fh: f.h,
+                };
+            }), snapTo(dx), snapTo(dy));
             for (const s of groupStart) {
-                s.g.properties.x = s.x + stepX;
-                s.g.properties.y = s.y + stepY;
+                s.g.properties.x = s.x + cl.dx;
+                s.g.properties.y = s.y + cl.dy;
                 const n = nodeFor(s.g.id);
                 if (n) {
                     n.style.left = s.g.properties.x + 'px';
@@ -1599,15 +1660,16 @@
 
     function beginResize(e, c, node, dir) {
         e.preventDefault();
+        const min = minExtent(c);
         const o = { x: c.properties.x, y: c.properties.y, w: c.properties.width, h: c.properties.height };
         function move(ev) {
             // Same rule as drag: form units in, form units out.
             const { dx, dy } = formDelta(ev, { mx: e.clientX, my: e.clientY });
             let { x, y, w, h } = o;
-            if (dir.includes('e')) w = Math.max(o.w + dx, 2);
-            if (dir.includes('s')) h = Math.max(o.h + dy, 2);
-            if (dir.includes('w')) { w = Math.max(o.w - dx, 2); x = o.x + (o.w - w); }
-            if (dir.includes('n')) { h = Math.max(o.h - dy, 2); y = o.y + (o.h - h); }
+            if (dir.includes('e')) w = Math.max(o.w + dx, min.w);
+            if (dir.includes('s')) h = Math.max(o.h + dy, min.h);
+            if (dir.includes('w')) { w = Math.max(o.w - dx, min.w); x = o.x + (o.w - w); }
+            if (dir.includes('n')) { h = Math.max(o.h - dy, min.h); y = o.y + (o.h - h); }
             c.properties.x = Math.round(x); c.properties.y = Math.round(y);
             c.properties.width = Math.round(w); c.properties.height = Math.round(h);
             const live = nodeFor(c.id);
