@@ -52,7 +52,10 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   reasons, rename field, items list editor, single-selection size/location
   readout (X/Y + W×H in the status bar, form units), dblclick in-place Text edit,
   same-size / center-in-form arrange ops, keyboard jump + resize, tab-order mode,
-  Bring to Front / Send to Back (z-order: array order is paint order, index 0 = front).
+  Bring to Front / Send to Back (z-order: array order is paint order, index 0 = front),
+   inspector bold+Reset (edited-since-load rows bold, Reset deletes the model key),
+   multi-select common-props intersection (agreed or blank, geometry stays on group ops),
+   hardcoded description pane, read-only Events note (A3 still missing).
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -119,6 +122,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D10 | Inspector Categorized + Alphabetical views | shipped | S | `spec-property-tabs.md` §§1–2 | Presentational sort/group toggle over flat rows (Flat/Categorized/Alphabetical buttons in the inspector; view state only, switching never commits so the file is byte-identical). Hardcoded per-property category table in canvas (`PROP_CATEGORIES`, VS `[Category]` values; unmapped → Misc); no engine table — categories never cross the protocol, same class as D1/D5. Live drag values look up inputs by id (index lookup breaks outside flat order). (#32) |
 | D11 | Click-order dominant selection + Ctrl+click + align-to-dominant | shipped | S | `spec-vs-parity.md` §1 | First-clicked member is the primary (`dominant` class + white handles in a group); align/same-size reference its edges/extents, not the group bbox; Ctrl/Cmd+click toggles membership (toggling off starts no drag); Shift+marquee adds, plain marquee replaces; locked never joins a group. View state only, no protocol change, no ADR. (#47) |
 | D12 | Draw-to-create + dblclick-populate + Enter-add + live snap on toolbox drag | shipped | S | `spec-vs-parity.md` §1 | Sticky armed tool (toolbox click toggles, `armed` class + crosshair, Esc disarms, arming posts nothing); click places the default size, drag sizes the rect (live rubber band + Task 3 resize pull on the moving edges, container clamp); dblclick/Enter populate the cascade slot in the drill scope else the selected container else the form (TabControl resolves to its active page); dragover renders live guides and drop lands snapped scale-correct. All adds share the one createControl commit path (designer names, coverage); locked/refused never written. View state + existing path, no schema change, no ADR. (#50) |
+| D13 | Inspector bold+Reset, multi common-props, description pane, Events read-only | shipped | S | `spec-property-tabs.md` §§3–4 | Edited-since-load rows bold (`changed` class; recency, not defaultness — no per-type WinForms default table exists canvas-side); Reset deletes the model key and commits (geometry never resets, locked/refused never). Multi-select shows intersection rows only, each under existing single-select gating so every row keeps its INSERT path (agreed value or blank/indeterminate; geometry stays on the group ops; one edit writes all members, one commit). Hardcoded description pane (focus-driven, survives re-render). Events is a read-only note naming the A3 gap — wiring display needs the engine parse step (`spec-property-tabs.md` §4), full scaffolding the #28 ADR. Known engine limit: `generate` deletes scalar statements for no prop but Items, so resetting an already-stated colour/Font is answered "No changes to write". (#51) |
 
 P0 after #29 is fully shipped: clipboard (A2 #3), grid-size setting, snapline
 baselines + Alt-suppress, full edge/center pull on move/resize/multi, and the

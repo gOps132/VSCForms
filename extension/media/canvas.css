@@ -541,3 +541,22 @@ body { display: flex; flex-direction: column; }
   margin: 10px 0 2px; font-size: 10px; text-transform: uppercase;
   color: var(--muted); font-weight: 600;
 }
+
+/* Task 5 (#51) inspector parity: VS bolds edited (non-default) values. Here
+   `changed` marks values edited since the last load — the canvas holds no
+   per-type WinForms default table (e.g. Label AutoSize defaults true), so it
+   never claims defaultness, only edit recency. Cleared on every load. */
+.field.changed > label { font-weight: 700; color: var(--fg); }
+.field.changed .row > label { font-weight: 700; color: var(--fg); }
+.prop-reset { margin-top: 2px; }
+.inspector-description {
+  margin-top: 8px; padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted); line-height: 1.4;
+  min-height: 28px;
+}
+.events-readonly {
+  font-size: 11px; color: var(--muted); line-height: 1.4;
+  padding: 4px 6px; margin: 2px 0 6px;
+  border: 1px solid var(--border); border-radius: 2px;
+}

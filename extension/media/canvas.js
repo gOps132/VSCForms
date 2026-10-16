@@ -39,6 +39,17 @@
     /** Filter text for properties in inspector. */
     let inspectorFilter = '';
     /**
+     * Task 5 (#51) edited-since-load keys per control id. VS bolds non-default
+     * values; the canvas holds no per-type WinForms default table (Label
+     * AutoSize defaults true, Button TextAlign MiddleCenter, …), so `changed`
+     * marks edit recency instead — never defaultness. Marked in setProp and
+     * the geometry gesture paths, cleared on every load/externalChange.
+     */
+    let changedProps = new Map();
+    /** Task 5 (#51) description pane: the last focused property label, so a
+     *  re-render (every commit re-renders) keeps the pane text. */
+    let describedProp = null;
+    /**
      * Inspector sort mode. Pure VIEW state like the toolbox filter: switching views
      * re-renders the inspector only, never touches `schema` and never posts a commit
      * (renderInspector builds DOM; commit happens only on field change). Same change
@@ -1264,7 +1275,7 @@
     function nudgeGroup(targets, dx, dy) {
         const cl = clampMoveDelta(targets.map(clampItem), dx, dy);
         if (cl.dx === 0 && cl.dy === 0) return;
-        for (const t of targets) { t.properties.x += cl.dx; t.properties.y += cl.dy; }
+        for (const t of targets) { t.properties.x += cl.dx; t.properties.y += cl.dy; markChanged(t, 'x'); markChanged(t, 'y'); }
         renderStatusForSelection();
         commit();
     }
@@ -1318,8 +1329,8 @@
      */
     function keyResize(c, dx, dy) {
         const min = minExtent(c);
-        if (dx) c.properties.width = Math.max(Math.round(c.properties.width + dx), min.w);
-        if (dy) c.properties.height = Math.max(Math.round(c.properties.height + dy), min.h);
+        if (dx) { c.properties.width = Math.max(Math.round(c.properties.width + dx), min.w); markChanged(c, 'width'); }
+        if (dy) { c.properties.height = Math.max(Math.round(c.properties.height + dy), min.h); markChanged(c, 'height'); }
         renderStatusForSelection();
         commit();
     }
@@ -1342,8 +1353,8 @@
             for (const c of s) {
                 const p = c.properties;
                 const frame = parentFrame(c);
-                if (kind === 'center-form-h') p.x = Math.round((frame.w - p.width) / 2);
-                else p.y = Math.round((frame.h - p.height) / 2);
+                if (kind === 'center-form-h') { p.x = Math.round((frame.w - p.width) / 2); markChanged(c, 'x'); }
+                else { p.y = Math.round((frame.h - p.height) / 2); markChanged(c, 'y'); }
             }
             commit();
             renderCanvas();
@@ -1357,8 +1368,8 @@
         if (kind === 'same-w' || kind === 'same-h' || kind === 'same-both') {
             const ref = (dominant() || s[0]).properties;
             for (const c of s) {
-                if (kind === 'same-w' || kind === 'same-both') c.properties.width = ref.width;
-                if (kind === 'same-h' || kind === 'same-both') c.properties.height = ref.height;
+                if (kind === 'same-w' || kind === 'same-both') { c.properties.width = ref.width; markChanged(c, 'width'); }
+                if (kind === 'same-h' || kind === 'same-both') { c.properties.height = ref.height; markChanged(c, 'height'); }
             }
             commit();
             renderCanvas();
@@ -1387,12 +1398,12 @@
         for (const c of s) {
             const p = c.properties;
             switch (kind) {
-                case 'left': p.x = dp.x; break;
-                case 'right': p.x = dp.x + dp.width - p.width; break;
-                case 'hcenter': p.x = Math.round(dp.x + (dp.width - p.width) / 2); break;
-                case 'top': p.y = dp.y; break;
-                case 'bottom': p.y = dp.y + dp.height - p.height; break;
-                case 'vcenter': p.y = Math.round(dp.y + (dp.height - p.height) / 2); break;
+                case 'left': p.x = dp.x; markChanged(c, 'x'); break;
+                case 'right': p.x = dp.x + dp.width - p.width; markChanged(c, 'x'); break;
+                case 'hcenter': p.x = Math.round(dp.x + (dp.width - p.width) / 2); markChanged(c, 'x'); break;
+                case 'top': p.y = dp.y; markChanged(c, 'y'); break;
+                case 'bottom': p.y = dp.y + dp.height - p.height; markChanged(c, 'y'); break;
+                case 'vcenter': p.y = Math.round(dp.y + (dp.height - p.height) / 2); markChanged(c, 'y'); break;
             }
         }
         commit();
@@ -1459,6 +1470,7 @@
         for (let i = 1; i < sorted.length - 1; i++) {
             cursor += step;
             sorted[i].properties[axis] = Math.round(cursor);
+            markChanged(sorted[i], axis);
             cursor += sorted[i].properties[extentAxis];
         }
     }
@@ -1717,6 +1729,7 @@
             for (const s of groupStart) {
                 s.g.properties.x = s.x + cl.dx;
                 s.g.properties.y = s.y + cl.dy;
+                markChanged(s.g, 'x'); markChanged(s.g, 'y');
                 const n = nodeFor(s.g.id);
                 if (n) {
                     n.style.left = s.g.properties.x + 'px';
@@ -1772,6 +1785,10 @@
             }
             c.properties.x = Math.round(x); c.properties.y = Math.round(y);
             c.properties.width = Math.round(w); c.properties.height = Math.round(h);
+            if (dir.includes('e') || dir.includes('w')) markChanged(c, 'width');
+            if (dir.includes('s') || dir.includes('n')) markChanged(c, 'height');
+            if (dir.includes('w')) markChanged(c, 'x');
+            if (dir.includes('n')) markChanged(c, 'y');
             const live = nodeFor(c.id);
             if (live) {
                 live.style.left = c.properties.x + 'px';
@@ -2045,17 +2062,21 @@
         if (sel.length === 0) {
             renderFormInspector(box);
             applyInspectorView(box);
+            decorateInspectorRows(box, null);
+            renderInspectorDescription(box, `${schema.form.name} (Form) — focus a row to read its description.`);
             applyInspectorFilter();
             return;
         }
         if (sel.length > 1) {
-            // A shared X/Y/Width/Height would be a lie unless every selected control happens
-            // to agree, so a multi-selection shows only what is genuinely common plus the
-            // operations that act on the group.
+            // Task 5 (#51): common-property intersection rows (agreed values
+            // show, divergent show blank) plus the operations that act on the
+            // group. Geometry stays on the group ops, never as rows.
             box.appendChild(el('h3', null, `${sel.length} controls selected`));
+            renderMultiProps(box, sel);
             for (const [label, fn] of alignActions()) {
                 box.appendChild(el('button', null, label)).addEventListener('click', fn);
             }
+            renderInspectorDescription(box, `${sel.length} controls selected — focus a row to read its description.`);
             applyInspectorFilter();
             return;
         }
@@ -2279,7 +2300,15 @@
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));
         }
 
+        // Task 5 (#51): read-only Events (A3 stays missing), then bold+Reset
+        // decoration over the built rows, then the description pane. Neither
+        // div is a .field row, so the D10 regroup and filter ignore them.
+        renderEventsSection(box);
+
         applyInspectorView(box);
+        // After the regroup: rows moved, so decoration and the pane land last.
+        decorateInspectorRows(box, c);
+        renderInspectorDescription(box, `${simple} ${c.id} — focus a row to read its description.`);
         applyInspectorFilter();
     }
 
@@ -2310,6 +2339,11 @@
             schema.form.backColor = v;
             commit();
         }));
+        // Task 5 (#51): form rows get descriptions only — no dirty tracking on
+        // the form (its edits assign schema.form directly, never via setProp).
+        // NOTE: the pane is appended by the renderInspector caller, AFTER
+        // applyInspectorView — the regroup appends moved rows at the end, so a
+        // pane appended here would end up mid-box in Categorized/Alphabetical.
     }
 
     /**
@@ -2393,7 +2427,28 @@
         }
     }
 
-    function setProp(c, key, value) { c.properties[key] = value; commit(); }
+    function setProp(c, key, value) {
+        markChanged(c, key);
+        c.properties[key] = value;
+        commit();
+    }
+
+    /**
+     * Task 5 (#51) edit-recency mark. Render-time only: commit() re-renders
+     * first, so decorateInspectorRows picks the class up on the next paint.
+     * Geometry gestures mark here too (they mutate properties directly, never
+     * through setProp).
+     */
+    function markChanged(c, key) {
+        if (!c || !key) return;
+        let set = changedProps.get(c.id);
+        if (!set) { set = new Set(); changedProps.set(c.id, set); }
+        set.add(key);
+    }
+    function isChanged(id, key) {
+        const set = changedProps.get(id);
+        return !!set && set.has(key);
+    }
 
     function boolField(label, value, disabled, onChange) {
         const f = el('div', 'field');
@@ -2404,6 +2459,9 @@
         box.type = 'checkbox';
         box.id = id;
         box.checked = !!value;
+        // Task 5 (#51) multi-select divergence: null renders the indeterminate
+        // dash, never a checked/unchecked claim about the group.
+        if (value === null || value === undefined) box.indeterminate = true;
         box.disabled = !!disabled;
         const lab = el('label', null, label);
         lab.setAttribute('for', id);
@@ -2449,7 +2507,8 @@
         f.appendChild(lab);
         const i = document.createElement('input');
         i.id = id;
-        i.type = 'number'; i.value = String(value); i.disabled = !!disabled;
+        // Task 5 (#51): null is the multi-select divergent blank, never "null".
+        i.type = 'number'; i.value = (value === null || value === undefined) ? '' : String(value); i.disabled = !!disabled;
         i.addEventListener('change', () => {
             const v = parseInt(i.value, 10);
             if (!Number.isNaN(v)) onChange(v);
@@ -2466,7 +2525,8 @@
         f.appendChild(lab);
         const i = document.createElement('input');
         i.id = id;
-        i.type = 'text'; i.value = value; i.disabled = !!disabled;
+        // Task 5 (#51): null is the multi-select divergent blank, never "null".
+        i.type = 'text'; i.value = (value === null || value === undefined) ? '' : value; i.disabled = !!disabled;
         i.addEventListener('change', () => onChange(i.value));
         f.appendChild(i);
         return f;
@@ -2553,6 +2613,285 @@
             }
         } else if (sel.length === 0) {
             updateFormInspectorValues();
+        }
+    }
+
+    // ------------------------------------------------- Task 5 (#51) inspector
+    /**
+     * Task 5 (#51) VS parity: bold+Reset, multi common-props, description
+     * pane, Events read-only. View-only: bold/Reset ride the existing
+     * setProp/commit/generate path, multi rows reuse the *Field builders, the
+     * pane is text, and Events is a note — no schema/protocol change, no ADR.
+     */
+
+    /**
+     * Hardcoded per-property descriptions (VS `[Description]` equivalent).
+     * The engine cannot load .NET attributes (type resolution is purely
+     * syntactic), so these live here next to PROP_CATEGORIES. Keys are the
+     * inspector field labels, NOT schema keys. Every offered label must have
+     * an entry; showDescription falls back to the pane default text.
+     */
+    const PROP_DESCRIPTIONS = {
+        'X': 'Distance from the left edge of the parent, in form units.',
+        'Y': 'Distance from the top edge of the parent, in form units.',
+        'Width': 'Control width, in form units. Drag, nudge, or type an exact value.',
+        'Height': 'Control height, in form units. Drag, nudge, or type an exact value.',
+        'AutoSize': 'Grow or shrink to fit the caption. Labels default to on.',
+        'Text': 'The caption shown on the control. Disabled for types that render no text.',
+        'Title (Text)': 'The form title shown in the title bar.',
+        'BackColor': 'Background colour. Default restores the system colour.',
+        'ForeColor': 'Colour of the caption text.',
+        'Font size': 'Font size in points. Commits through the same path as the Font dialog.',
+        'Bold': 'Bold caption text.',
+        'Italic': 'Italic caption text.',
+        'Font editor': 'Edit family, size and style in a dialog. Same value as the inline rows.',
+        'TextAlign': 'Where the caption sits inside the control.',
+        'BorderStyle': 'The edge drawn around the control.',
+        'Checked': 'Whether the control starts checked.',
+        'Enabled': 'Unchecked greys the control out at runtime.',
+        'Visible': 'Unchecked hides the control at runtime; it stays visible here.',
+        'TabIndex': 'Focus order when the user presses Tab. Tab-order mode assigns these by click.',
+        'Multiline': 'Allow more than one line of text.',
+        'ReadOnly': 'Text can be selected and copied, but not edited.',
+        'MaxLength': 'Most characters the text may hold. 32767 is effectively unlimited.',
+        'PasswordChar': 'Mask character, e.g. *. Empty means plain text.',
+        'ScrollBars': 'Which scroll bars the text box shows.',
+        'Minimum': 'Lowest value of the range.',
+        'Maximum': 'Highest value of the range.',
+        'Value': 'Current value of the range.',
+        'SelectedIndex': 'Which item starts selected. -1 selects nothing.',
+        'SelectedItem': 'The selected item text. Empty means none.',
+        'DropDownStyle': 'DropDown allows typing; DropDownList restricts to the list.',
+        'Items': 'The list entries. Add, edit, or remove them here.',
+        'Name': 'The control name. Renaming posts a rename message, never a schema commit.',
+    };
+
+    /** Inspector label -> schema property key. Geometry and Name have no Reset:
+     *  geometry has no unset state, and Name travels by rename message. */
+    const PROP_KEY = {
+        'X': 'x', 'Y': 'y', 'Width': 'width', 'Height': 'height',
+        'Text': 'text', 'TabIndex': 'tabIndex', 'AutoSize': 'autoSize',
+        'Enabled': 'enabled', 'Visible': 'visible',
+        'BackColor': 'backColor', 'ForeColor': 'foreColor',
+        'Checked': 'checked', 'TextAlign': 'textAlign', 'BorderStyle': 'borderStyle',
+        'Font size': 'font', 'Bold': 'font', 'Italic': 'font',
+        'SelectedIndex': 'selectedIndex', 'SelectedItem': 'selectedItem',
+        'DropDownStyle': 'dropDownStyle',
+        'Multiline': 'multiline', 'ReadOnly': 'readOnly', 'MaxLength': 'maxLength',
+        'PasswordChar': 'passwordChar', 'ScrollBars': 'scrollBars',
+        'Minimum': 'minimum', 'Maximum': 'maximum', 'Value': 'value',
+    };
+    const NO_RESET_KEYS = new Set(['x', 'y', 'width', 'height']);
+
+    /** Show one property's description in the pane (VS description pane). */
+    function showDescription(label) {
+        if (label) describedProp = label;
+        const ins = $('inspector');
+        const pane = ins && ins.querySelector('.inspector-description');
+        if (!pane) return;
+        const key = label || describedProp;
+        pane.textContent = (key && PROP_DESCRIPTIONS[key])
+            || pane.dataset.defaultText || '';
+    }
+    /** The pane itself: plain text at the inspector bottom, rebuilt every
+     *  render (renderInspector rebuilds the box) with the last label kept. */
+    function renderInspectorDescription(box, defaultText) {
+        const d = el('div', 'inspector-description', '');
+        d.dataset.defaultText = defaultText;
+        d.textContent = (describedProp && PROP_DESCRIPTIONS[describedProp]) || defaultText;
+        box.appendChild(d);
+    }
+    function wireRowDescription(row, label) {
+        if (!row || !label || !PROP_DESCRIPTIONS[label]) return;
+        const attach = (n) => {
+            if (n) n.addEventListener('focus', () => showDescription(label));
+        };
+        attach(row.querySelector('input'));
+        attach(row.querySelector('select'));
+    }
+
+    /**
+     * Bold + Reset over already-built single-select rows. Post-pass so the
+     * ~30 single-select call sites stay untouched: every row carries
+     * dataset.prop, which maps to a schema key via PROP_KEY.
+     *
+     * Reset DELETES the key from the model and commits through the existing
+     * generate diff (the Items DELETE block is the engine precedent). Two
+     * deliberate limits: geometry rows bold but never reset (no unset state),
+     * and disabled rows (locked/refused) get neither — a Reset there would
+     * imply writability we have promised never to exercise (invariant 4).
+     *
+     * Engine honesty note: generate replaces/inserts scalar statements but
+     * never deletes them (only Items blocks and whole controls). Resetting a
+     * colour/Font the file already states is therefore a model-side delete
+     * the engine answers with "No changes to write" until scalar-delete
+     * support lands — visible in the status line, never a corruption.
+     */
+    function decorateInspectorRows(box, c) {
+        const rows = box.querySelectorAll('.field');
+        for (const f of rows) {
+            const label = f.dataset && f.dataset.prop;
+            if (!label) continue;
+            wireRowDescription(f, label);
+            if (!c) continue;
+            const key = PROP_KEY[label];
+            if (!key || !isChanged(c.id, key)) continue;
+            f.classList.add('changed');
+            if (NO_RESET_KEYS.has(key)) continue;
+            const main = f.querySelector('input') || f.querySelector('select');
+            if (main && main.disabled) continue;
+            if (f.querySelector('.prop-reset')) continue;
+            const b = el('button', 'prop-reset', 'Reset');
+            b.title = 'Reset: delete this value from the model and commit';
+            b.addEventListener('click', () => {
+                delete c.properties[key];
+                commit();
+            });
+            f.appendChild(b);
+        }
+        const itemsEd = box.querySelector('.items-editor');
+        if (itemsEd) {
+            for (const n of itemsEd.querySelectorAll('input')) {
+                n.addEventListener('focus', () => showDescription('Items'));
+            }
+        }
+    }
+
+    /**
+     * Events section (A3 stays missing). The schema carries no wirings —
+     * parse preserves `+=` lines byte-identical without surfacing them, and
+     * surfacing them needs the engine parse step from spec-property-tabs §4
+     * (a separate change). So this section states the gap read-only: no
+     * inputs, no buttons, no scaffold, nothing that writes. Full scaffolding
+     * (wiring + Form1.cs stub) needs the #28 ADR, like rename needed 0008.
+     */
+    function renderEventsSection(box) {
+        box.appendChild(el('h4', 'inspector-section', 'Events'));
+        const n = el('div', 'events-readonly',
+            'Event wirings (e.g. Click += …) live in the Designer file and are '
+            + 'preserved untouched. Wiring display and handler scaffolding are not '
+            + 'modelled yet (A3) — nothing here writes the file, by design.');
+        box.appendChild(n);
+    }
+
+    /**
+     * Multi-select common properties (VS SelectedObjects intersection). A row
+     * is offered only when EVERY member admits it under the same gating the
+     * single-select renderer uses — never a new row class, so every offered
+     * row rides an existing INSERT path (SCHEMA.md rule: no unwired rows).
+     * Agreed values show; divergent show blank (checkboxes indeterminate).
+     * One edit writes all members, one debounced commit. Geometry stays on
+     * the group ops (align/same-size/center): absolute X/Y rows would fight
+     * them. Locked members or a refused form offer ops only, as before.
+     */
+    function multiCandidates() {
+        const btnAlign = ['Button', 'Label', 'CheckBox', 'RadioButton'];
+        const fontOf = (c) => c.properties.font || {};
+        return [
+            { label: 'Text', key: 'text', applies: (s) => !NO_TEXT.has(s),
+              get: (c) => c.properties.text ?? '',
+              set: (c, v) => { c.properties.text = v; } },
+            { label: 'Enabled', key: 'enabled', applies: () => true,
+              get: (c) => c.properties.enabled !== false, kind: 'bool',
+              set: (c, v) => { c.properties.enabled = v; } },
+            { label: 'Visible', key: 'visible', applies: () => true,
+              get: (c) => c.properties.visible !== false, kind: 'bool',
+              set: (c, v) => { c.properties.visible = v; } },
+            { label: 'BackColor', key: 'backColor', applies: () => true, kind: 'color',
+              get: (c) => c.properties.backColor ?? '',
+              set: (c, v) => { c.properties.backColor = v; } },
+            { label: 'ForeColor', key: 'foreColor', applies: () => true, kind: 'color',
+              get: (c) => c.properties.foreColor ?? '',
+              set: (c, v) => { c.properties.foreColor = v; } },
+            { label: 'Checked', key: 'checked', applies: (s) => s === 'CheckBox' || s === 'RadioButton', kind: 'bool',
+              get: (c) => !!c.properties.checked,
+              set: (c, v) => { c.properties.checked = v; } },
+            { label: 'TextAlign', key: 'textAlign', applies: (s) => btnAlign.includes(s),
+              options: ['TopLeft', 'TopCenter', 'TopRight', 'MiddleLeft', 'MiddleCenter', 'MiddleRight', 'BottomLeft', 'BottomCenter', 'BottomRight'],
+              get: (c) => c.properties.textAlign || 'MiddleLeft',
+              set: (c, v) => { c.properties.textAlign = v; } },
+            { label: 'TextAlign', key: 'textAlign', applies: (s) => s === 'TextBox',
+              options: ['Left', 'Center', 'Right'],
+              get: (c) => c.properties.textAlign || 'Left',
+              set: (c, v) => { c.properties.textAlign = v; } },
+            { label: 'BorderStyle', key: 'borderStyle',
+              applies: (s) => ['Label', 'TextBox', 'Panel', 'PictureBox', 'DataGridView', 'ListView', 'TreeView'].includes(s),
+              options: ['None', 'FixedSingle', 'Fixed3D'],
+              get: (c) => c.properties.borderStyle || 'None',
+              set: (c, v) => { c.properties.borderStyle = v; } },
+            { label: 'AutoSize', key: 'autoSize', applies: (s) => btnAlign.includes(s), kind: 'bool',
+              get: (c) => !!c.properties.autoSize,
+              set: (c, v) => { c.properties.autoSize = v; } },
+            { label: 'Font size', key: 'font', applies: (s) => HAS_FONT.has(s), kind: 'num',
+              get: (c) => fontOf(c).size ?? 9,
+              set: (c, v) => { c.properties.font = Object.assign({}, fontOf(c), { size: v }); } },
+            { label: 'Bold', key: 'font', applies: (s) => HAS_FONT.has(s), kind: 'bool',
+              get: (c) => !!fontOf(c).bold,
+              set: (c, v) => { c.properties.font = Object.assign({}, fontOf(c), { bold: v }); } },
+            { label: 'Italic', key: 'font', applies: (s) => HAS_FONT.has(s), kind: 'bool',
+              get: (c) => !!fontOf(c).italic,
+              set: (c, v) => { c.properties.font = Object.assign({}, fontOf(c), { italic: v }); } },
+            { label: 'TabIndex', key: 'tabIndex', applies: () => true, kind: 'num',
+              get: (c) => c.properties.tabIndex ?? 0,
+              set: (c, v) => { c.properties.tabIndex = v; } },
+            { label: 'Multiline', key: 'multiline', applies: (s) => s === 'TextBox', kind: 'bool',
+              get: (c) => !!c.properties.multiline,
+              set: (c, v) => { c.properties.multiline = v; } },
+            { label: 'ReadOnly', key: 'readOnly', applies: (s) => s === 'TextBox', kind: 'bool',
+              get: (c) => !!c.properties.readOnly,
+              set: (c, v) => { c.properties.readOnly = v; } },
+            { label: 'MaxLength', key: 'maxLength', applies: (s) => s === 'TextBox', kind: 'num',
+              get: (c) => c.properties.maxLength ?? 32767,
+              set: (c, v) => { c.properties.maxLength = v; } },
+            { label: 'PasswordChar', key: 'passwordChar', applies: (s) => s === 'TextBox',
+              get: (c) => c.properties.passwordChar ?? '',
+              set: (c, v) => { c.properties.passwordChar = v ? v.slice(0, 1) : ''; } },
+            { label: 'ScrollBars', key: 'scrollBars', applies: (s) => s === 'TextBox',
+              options: ['None', 'Horizontal', 'Vertical', 'Both'],
+              get: (c) => c.properties.scrollBars || 'None',
+              set: (c, v) => { c.properties.scrollBars = v; } },
+            { label: 'Minimum', key: 'minimum', applies: (s) => ['TrackBar', 'ProgressBar', 'NumericUpDown'].includes(s), kind: 'num',
+              get: (c) => c.properties.minimum ?? 0,
+              set: (c, v) => { c.properties.minimum = v; } },
+            { label: 'Maximum', key: 'maximum', applies: (s) => ['TrackBar', 'ProgressBar', 'NumericUpDown'].includes(s), kind: 'num',
+              get: (c) => c.properties.maximum ?? 100,
+              set: (c, v) => { c.properties.maximum = v; } },
+            { label: 'Value', key: 'value', applies: (s) => ['TrackBar', 'ProgressBar', 'NumericUpDown'].includes(s), kind: 'num',
+              get: (c) => c.properties.value ?? 0,
+              set: (c, v) => { c.properties.value = v; } },
+            { label: 'SelectedIndex', key: 'selectedIndex', applies: (s) => s === 'ComboBox' || s === 'ListBox', kind: 'num',
+              get: (c) => c.properties.selectedIndex ?? -1,
+              set: (c, v) => { c.properties.selectedIndex = v; } },
+            { label: 'SelectedItem', key: 'selectedItem', applies: (s) => s === 'ComboBox' || s === 'ListBox',
+              get: (c) => c.properties.selectedItem ?? '',
+              set: (c, v) => { c.properties.selectedItem = v; } },
+            { label: 'DropDownStyle', key: 'dropDownStyle', applies: (s) => s === 'ComboBox',
+              options: ['Simple', 'DropDown', 'DropDownList'],
+              get: (c) => c.properties.dropDownStyle || 'DropDown',
+              set: (c, v) => { c.properties.dropDownStyle = v; } },
+        ];
+    }
+    function renderMultiProps(box, sel) {
+        if (readOnly || sel.some((c) => c.locked)) return;
+        const simples = sel.map((c) => simpleName(c.type));
+        for (const cand of multiCandidates()) {
+            if (!simples.every(cand.applies)) continue;
+            const vals = sel.map(cand.get);
+            const agreed = vals.every((v) => v === vals[0]) ? vals[0] : null;
+            const applyAll = (v) => {
+                for (const m of sel) { markChanged(m, cand.key); cand.set(m, v); }
+                commit();
+            };
+            let row;
+            if (cand.options) row = selectField(cand.label, agreed, cand.options, false, applyAll);
+            else if (cand.kind === 'bool') row = boolField(cand.label, agreed, false, applyAll);
+            else if (cand.kind === 'num') row = numField(cand.label, agreed, false, applyAll);
+            else if (cand.kind === 'color') row = colorField(cand.label, agreed === null ? '' : agreed, false, applyAll);
+            else row = strField(cand.label, agreed, false, applyAll);
+            if (agreed === null) row.title = 'Selected controls disagree — editing sets every member.';
+            else if (sel.some((m) => isChanged(m.id, cand.key))) row.classList.add('changed');
+            wireRowDescription(row, cand.label);
+            box.appendChild(row);
         }
     }
 
@@ -3161,6 +3500,10 @@
                 readOnly = schema.analysis.refuses.length > 0;
                 selection = new Set();
                 clickOrder = [];
+                // Task 5 (#51): a fresh document is a fresh baseline — edited
+                // marks and the described row belong to the previous model.
+                changedProps = new Map();
+                describedProp = null;
                 // A new document means fresh view state; reset silently so the
                 // 'Ready' / 'changed on disk' message below survives.
                 setTabOrderMode(false, false);

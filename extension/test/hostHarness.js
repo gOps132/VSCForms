@@ -3150,6 +3150,164 @@ setTimeout(async () => {
         await settled();
         sandbox.__sent.length = 0;
     }
+
+    // ---- Task 5 (#51): inspector bold+Reset, multi common-props, description pane, Events read-only
+    // changed = edited since load (the canvas holds no per-type WinForms default
+    // table, so it never claims defaultness). Reset deletes the key from the
+    // model and commits through generate; geometry bolds but never resets.
+    send({ type: 'load', data: schema });
+    await settled();
+    {
+        const fieldRow = (label) => ids.inspector.querySelectorAll('.field')
+            .find((f) => f.dataset && f.dataset.prop === label);
+        const shiftClick = (id) => ctlNode(id).dispatch('mousedown',
+            { preventDefault() { }, stopPropagation() { }, shiftKey: true, clientX: 10, clientY: 10 });
+        const endGesture = () => { sandbox.window.dispatch('mouseup', {}); mirrorScale(); };
+
+        // changed marking + Reset on a single selection
+        clickBtn('btnSubmit');
+        await settled();
+        const textInput = insInputs().find((i) => i.id === 'fText');
+        textInput.value = 'Changed!';
+        textInput.dispatch('change', {});
+        // commit() re-renders synchronously, so the class is already present
+        const textRow = fieldRow('Text');
+        check('an edited row gets the changed class', !!textRow && textRow.classList.contains('changed'));
+        const resetBtn = textRow && textRow.querySelector('.prop-reset');
+        check('a changed row offers Reset', !!resetBtn);
+        check('an unedited row offers no Reset', !fieldRow('Enabled').querySelector('.prop-reset'));
+        check('the X row never offers Reset (geometry has no unset state)',
+            !fieldRow('X').querySelector('.prop-reset'));
+        sandbox.__sent.length = 0;
+        resetBtn.dispatch('click', {});
+        await settled();
+        const resetCommits = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('Reset posts a commit', resetCommits.length === 1, String(resetCommits.length));
+        const resetSent = resetCommits.length && resetCommits[0].data.controls.find((c) => c.id === 'btnSubmit');
+        check('Reset deletes the prop from the model via the commit',
+            !!resetSent && !('text' in resetSent.properties),
+            resetSent ? JSON.stringify(resetSent.properties) : 'no commit');
+
+        // geometry bolds without Reset: one nudge marks X changed, still no button
+        send({ type: 'load', data: schema });
+        await settled();
+        clickBtn('btnSubmit');
+        ctlNode('btnSubmit').dispatch('keydown', { key: 'ArrowRight', preventDefault() { } });
+        const xRow = fieldRow('X');
+        check('a nudge marks the X row changed', !!xRow && xRow.classList.contains('changed'));
+        check('the changed X row still offers no Reset', !!xRow && !xRow.querySelector('.prop-reset'));
+        await settled();
+        sandbox.__sent.length = 0;
+
+        // multi-select intersection: TextBox + Button share Text/Enabled/...;
+        // Text diverges ('' vs 'Submit') so the row shows blank
+        send({ type: 'load', data: schema });
+        await settled();
+        clickBtn('txtName');
+        shiftClick('btnSubmit');
+        endGesture();
+        await settled();
+        const multiText = insInputs().find((i) => i.id === 'fText');
+        check('multi-select shows the common Text row', !!multiText);
+        check('a divergent value shows blank, never one member\'s value',
+            !!multiText && multiText.value === '', multiText ? JSON.stringify(multiText.value) : 'no row');
+        const multiEnabled = insInputs().find((i) => i.id === 'fEnabled');
+        check('an agreed value shows (both Enabled)',
+            !!multiEnabled && multiEnabled.checked === true,
+            multiEnabled ? String(multiEnabled.checked) : 'no row');
+        check('Multiline is not offered to a TextBox+Button group',
+            !insInputs().some((i) => i.id === 'fMultiline'));
+        // one edit writes every member, one commit
+        sandbox.__sent.length = 0;
+        multiText.value = 'Both';
+        multiText.dispatch('change', {});
+        await settled();
+        const multiCommits = sandbox.__sent.filter((m) => m.type === 'commit');
+        check('a multi edit posts exactly one commit', multiCommits.length === 1,
+            String(multiCommits.length));
+        const mc = multiCommits.length && multiCommits[0].data.controls;
+        check('a multi edit writes every member',
+            !!mc && mc.find((c) => c.id === 'txtName').properties.text === 'Both'
+                && mc.find((c) => c.id === 'btnSubmit').properties.text === 'Both',
+            mc ? JSON.stringify(mc.map((c) => [c.id, c.properties.text])) : 'no commit');
+
+        // divergent checkbox renders indeterminate, never a false claim
+        const chkSchema = { ...schema,
+            controls: [
+                { id: 'chkA', type: 'System.Windows.Forms.CheckBox', children: [], locked: false,
+                  properties: { x: 10, y: 10, width: 110, height: 19, text: 'A', tabIndex: 0, checked: true } },
+                { id: 'chkB', type: 'System.Windows.Forms.CheckBox', children: [], locked: false,
+                  properties: { x: 10, y: 40, width: 110, height: 19, text: 'B', tabIndex: 1 } },
+            ],
+            analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] } };
+        send({ type: 'load', data: chkSchema });
+        await settled();
+        clickBtn('chkA');
+        shiftClick('chkB');
+        endGesture();
+        await settled();
+        const chkRow = fieldRow('Checked');
+        const chkBox = chkRow && chkRow.querySelector('input');
+        check('a divergent checkbox row is offered', !!chkBox);
+        check('a divergent checkbox is indeterminate, not unchecked',
+            !!chkBox && chkBox.indeterminate === true, chkBox ? String(chkBox.indeterminate) : 'no box');
+        check('same-type groups keep their other common rows',
+            !!fieldRow('Text'), 'Text row missing for the CheckBox pair');
+
+        // description pane: focusing a row shows its hardcoded text
+        send({ type: 'load', data: schema });
+        await settled();
+        clickBtn('btnSubmit');
+        await settled();
+        const pane = () => ids.inspector.querySelector('.inspector-description');
+        check('a description pane is offered', !!pane());
+        check('the pane defaults to selection help',
+            !!pane() && /focus a row/.test(String(pane().textContent)), pane() && pane().textContent);
+        insInputs().find((i) => i.id === 'fText').dispatch('focus', {});
+        check('focusing Text shows its hardcoded description',
+            !!pane() && /caption/i.test(String(pane().textContent)), pane() && pane().textContent);
+
+        // Events: read-only note, no scaffold
+        const events = () => ids.inspector.querySelector('.events-readonly');
+        check('an Events section is offered', !!events());
+        check('Events names the A3 gap instead of scaffolding',
+            !!events() && /A3/.test(String(events().textContent)), events() && events().textContent);
+        check('Events offers no inputs (read-only)',
+            !!events() && events().querySelectorAll('input').length === 0);
+        check('Events offers no buttons (no scaffold)',
+            !!events() && events().querySelectorAll('button').length === 0);
+        check('Events offers no dropdowns (no scaffold)',
+            !!events() && events().querySelectorAll('select').length === 0);
+
+        // locked and refused rows imply no writability: no Reset anywhere
+        clickBtn('ThirdPartyGauge');
+        await settled();
+        check('a locked control offers no Reset',
+            ids.inspector.querySelectorAll('.prop-reset').length === 0,
+            String(ids.inspector.querySelectorAll('.prop-reset').length));
+        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+        await settled();
+        clickBtn('btnSubmit');
+        await settled();
+        check('a refused form offers no Reset',
+            ids.inspector.querySelectorAll('.prop-reset').length === 0);
+
+        // form inspector gets the pane too (descriptions only, no dirty marks)
+        send({ type: 'load', data: schema });
+        await settled();
+        check('the form inspector offers the description pane', !!pane());
+        // multi-selection keeps no view toggle (rows stay flat, as before)
+        clickBtn('txtName');
+        shiftClick('btnSubmit');
+        endGesture();
+        await settled();
+        check('multi-selection still offers no view toggle',
+            !ids.inspector.querySelectorAll('button').some((b) => String(b.textContent || '') === 'Categorized'));
+
+        send({ type: 'load', data: schema });
+        await settled();
+        sandbox.__sent.length = 0;
+    }
     console.log('\n' + (failures ? failures + ' FAILURE(S)' : 'canvas harness: all passed'));
     process.exit(failures ? 1 : 0);
 }, 400);
