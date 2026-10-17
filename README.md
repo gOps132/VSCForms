@@ -239,6 +239,8 @@ VSCForms is faithful to the WinForms **design-time serializer**. It does not rep
 node extension/test/hostHarness.js  # Canvas DOM: rendering, locked boxes, coverage
 node test/e2e.js                    # Canvas → host → engine → file
 node test/run-integration.js        # Real VS Code (needs display)
+node test/run-cdp-probe.js          # Trusted undo/redo input via CDP (needs display)
+npm run ux:capture                  # Live designer canvas capture (dark/light screenshots via CDP)
 ./scripts/run-windows-layout.sh     # Layout tier: schema vs runtime Bounds (Windows only)
 ```
 

@@ -8,6 +8,7 @@ engine/obj/
 example/bin/
 example/obj/
 dist/
+out/
 
 # VS Code integration-test harness (downloads a whole VS Code build)
 .vscode-test/

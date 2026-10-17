@@ -135,7 +135,8 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "build:engine": "node ../scripts/publish-engine.js",
-    "package:all": "node ../scripts/package-all.js"
+    "package:all": "node ../scripts/package-all.js",
+    "ux:capture": "node ../scripts/capture-designer-ux.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

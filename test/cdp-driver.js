@@ -170,4 +170,32 @@ async function readInput(port, selector) {
     `);
 }
 
-module.exports = { sendUndo, sendRedo, focusCanvas, snapshotCanvas, insertText, readInput };
+/** Capture a screenshot via CDP Page.captureScreenshot; returns a Buffer. */
+async function captureScreenshot(port, options = {}) {
+    const c = await pageClient(port, true);
+    try {
+        const params = { format: options.format || 'png' };
+        if (options.clip) params.clip = options.clip;
+        if (typeof options.quality === 'number') params.quality = options.quality;
+        if (typeof options.fromSurface === 'boolean') params.fromSurface = options.fromSurface;
+        if (typeof options.captureBeyondViewport === 'boolean') params.captureBeyondViewport = options.captureBeyondViewport;
+        const res = await c.send('Page.captureScreenshot', params);
+        if (!res || !res.data) throw new Error('captureScreenshot returned no image data');
+        return Buffer.from(res.data, 'base64');
+    } finally {
+        c.close();
+    }
+}
+
+module.exports = {
+    sendUndo,
+    sendRedo,
+    focusCanvas,
+    snapshotCanvas,
+    insertText,
+    readInput,
+    captureScreenshot,
+    webviewEval,
+    webviewSession,
+};
+
