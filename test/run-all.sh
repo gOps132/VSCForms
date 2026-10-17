@@ -41,6 +41,13 @@ node extension/test/hostHarness.js || FAIL=1
 step "end-to-end"
 node test/e2e.js || FAIL=1
 
+step "UX metrics verification"
+if [ -f out/ux-snapshots/dom-metrics.json ]; then
+  npm run --silent ux:verify || FAIL=1
+else
+  echo "  (skipping verify: no snapshot present — run npm run ux:capture to capture)"
+fi
+
 # Real VS Code. Needs a display and the bundled engine, so it is opt-out via
 # VSCFORMS_SKIP_INTEGRATION=1 and skips cleanly on a headless machine.
 step "integration (real VS Code)"

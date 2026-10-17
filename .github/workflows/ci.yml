@@ -65,6 +65,34 @@ jobs:
           ./test/verify-generator.sh
           ./test/verify-rename.sh
 
+  # UI/UX canvas verification tier: boots real VS Code under headless Xvfb,
+  # captures Dark and Light theme screenshots and DOM metrics, validates
+  # layout/styling integrity, and uploads visual artifacts.
+  ux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: build engine (Debug)
+        run: dotnet build engine -c Debug -v q --nologo
+      - run: npm --prefix extension ci
+      - run: npm --prefix extension run compile
+      - name: capture designer canvas UX (xvfb)
+        run: xvfb-run -a npm run ux:capture
+      - name: verify UX metrics integrity
+        run: npm run ux:verify
+      - name: upload UX snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ux-snapshots
+          path: out/ux-snapshots/
+
   # The only tier that can prove VSCForms is SEMANTICALLY correct, not merely valid.
   #
   # Instantiates the real form and compares each control's runtime bounds against the Form
