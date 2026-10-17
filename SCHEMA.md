@@ -217,6 +217,34 @@ Two shapes are worth stating because they are the ones that would otherwise be s
 half-made project. `name` is validated as a C# identifier and rejected if it is a reserved word:
 `dotnet new class` succeeds and yields a project that cannot compile.
 
+### `wireEvent` and `unwireEvent` — event scaffolding (ADR 0011)
+
+Wires or unwires an event on a control, generating or reusing a handler method stub in the sibling
+hand-written `Form1.cs`. Like `rename`, this is a separate engine command, never a schema commit.
+
+```ts
+{ "id": 6, "cmd": "wireEvent", "path": "/abs/Form1.Designer.cs",
+  "controlId": "btnGo", "eventName": "Click", "handlerName": "btnGo_Click" }
+
+{ "id": 6, "ok": true, "changed": true,
+  "codeBehind": "/abs/Form1.cs",
+  "targetLine": 24, "targetColumn": 9,
+  "createdMethod": true }
+
+{ "id": 7, "cmd": "unwireEvent", "path": "/abs/Form1.Designer.cs",
+  "controlId": "btnGo", "eventName": "Click" }
+
+{ "id": 7, "ok": true, "changed": true,
+  "codeBehind": "/abs/Form1.cs" }
+```
+
+`errorKind`: `not-found`, `no-code-behind`, `unparsable-code-behind`, `locked`, `refused`, `bad-event`.
+
+The boundary is [ADR 0011](docs/adr/0011-event-scaffolding-boundary.md): the Designer File receives the
+`+=` wiring statement in its observed dialect; `Form1.cs` receives the empty method stub before its
+closing brace (reused if a method with that name already exists). `unwireEvent` removes the `+=` wiring
+from the Designer file and leaves `Form1.cs` untouched to avoid deleting user logic.
+
 Response:
 
 ```
