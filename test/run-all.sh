@@ -42,8 +42,10 @@ step "end-to-end"
 node test/e2e.js || FAIL=1
 
 step "UX metrics verification"
-if [ -f out/ux-snapshots/dom-metrics.json ]; then
-  npm run --silent ux:verify || FAIL=1
+if [ "${VSCFORMS_SKIP_UX:-0}" = "1" ]; then
+  echo "  SKIP  VSCFORMS_SKIP_UX=1"
+elif [ -f out/ux-snapshots/dom-metrics.json ]; then
+  node scripts/verify-ux.js || FAIL=1
 else
   echo "  (skipping verify: no snapshot present — run npm run ux:capture to capture)"
 fi

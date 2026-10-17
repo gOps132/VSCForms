@@ -83,9 +83,9 @@ jobs:
       - run: npm --prefix extension ci
       - run: npm --prefix extension run compile
       - name: capture designer canvas UX (xvfb)
-        run: xvfb-run -a npm run ux:capture
+        run: xvfb-run -a node scripts/capture-designer-ux.js
       - name: verify UX metrics integrity
-        run: npm run ux:verify
+        run: node scripts/verify-ux.js
       - name: upload UX snapshots
         if: always()
         uses: actions/upload-artifact@v4
