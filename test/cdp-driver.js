@@ -187,6 +187,85 @@ async function captureScreenshot(port, options = {}) {
     }
 }
 
+/**
+ * Extract complete DOM layout, computed styles, and accessibility attributes from the designer webview.
+ * @param {number} port CDP port
+ * @returns {Promise<object>} structured metrics manifest
+ */
+async function extractDomMetrics(port) {
+    const json = await webviewEval(port, `
+        const canvas = d.getElementById('canvas');
+        const formBounds = canvas ? canvas.getBoundingClientRect() : null;
+        const controls = [...d.querySelectorAll('#canvas .ctl')].map((el) => {
+            const rect = el.getBoundingClientRect();
+            const cs = window.getComputedStyle(el);
+            const a11y = {
+                role: el.getAttribute('role') || el.tagName.toLowerCase(),
+                tabIndex: el.tabIndex,
+                ariaLabel: el.getAttribute('aria-label'),
+                ariaDisabled: el.getAttribute('aria-disabled'),
+                ariaHidden: el.getAttribute('aria-hidden'),
+                ariaSelected: el.getAttribute('aria-selected'),
+            };
+            return {
+                id: el.dataset.id || el.id,
+                type: el.dataset.type || (el.className.match(/\\bt-([a-z0-9]+)/) || [])[1] || 'unknown',
+                isLocked: el.classList.contains('locked'),
+                bounds: {
+                    x: Math.round(rect.x),
+                    y: Math.round(rect.y),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height),
+                },
+                layout: {
+                    left: el.style.left || '',
+                    top: el.style.top || '',
+                    width: el.style.width || '',
+                    height: el.style.height || '',
+                },
+                styles: {
+                    color: cs.color,
+                    backgroundColor: cs.backgroundColor,
+                    borderColor: cs.borderColor,
+                    borderWidth: cs.borderWidth,
+                    borderStyle: cs.borderStyle,
+                    fontFamily: cs.fontFamily,
+                    fontSize: cs.fontSize,
+                    fontWeight: cs.fontWeight,
+                    lineHeight: cs.lineHeight,
+                    zIndex: cs.zIndex,
+                    opacity: cs.opacity,
+                    visibility: cs.visibility,
+                },
+                a11y,
+            };
+        });
+
+        const statusEl = d.getElementById('status');
+        const bannerEl = d.querySelector('.banner:not(.hidden)');
+
+        return JSON.stringify({
+            timestamp: new Date().toISOString(),
+            canvas: {
+                width: canvas ? canvas.offsetWidth : 0,
+                height: canvas ? canvas.offsetHeight : 0,
+                bounds: formBounds ? {
+                    x: Math.round(formBounds.x),
+                    y: Math.round(formBounds.y),
+                    width: Math.round(formBounds.width),
+                    height: Math.round(formBounds.height),
+                } : null,
+            },
+            statusText: statusEl ? statusEl.textContent.trim() : '',
+            banner: bannerEl ? bannerEl.textContent.trim() : null,
+            controlCount: controls.length,
+            controls,
+        });
+    `);
+
+    return JSON.parse(json);
+}
+
 module.exports = {
     sendUndo,
     sendRedo,
@@ -195,7 +274,9 @@ module.exports = {
     insertText,
     readInput,
     captureScreenshot,
+    extractDomMetrics,
     webviewEval,
     webviewSession,
 };
+
 

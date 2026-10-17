@@ -73,7 +73,8 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   runtime tree, which the tier reports as control-not-found. (#43)
 - **UI/UX Canvas Capture (`npm run ux:capture`):** Automated VS Code test-electron runner
   with CDP integration (`scripts/capture-designer-ux.js`, `test/cdp-driver.js`) capturing
-  high-res Dark and Light theme designer canvas snapshots to `out/ux-snapshots/`. (#53)
+  high-res Dark and Light theme designer canvas snapshots and structured DOM, computed styles,
+  and accessibility metrics (`dom-metrics.json`) to `out/ux-snapshots/`. (#53, #54)
 
 ## 2. Gaps to implement
 

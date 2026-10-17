@@ -111,6 +111,14 @@ async function main() {
         }
         console.log(`[ux-capture] Canvas state (Dark): ${canvasSummary}`);
 
+        // Extract DOM and accessibility metrics
+        console.log('[ux-capture] Extracting DOM, style, and accessibility metrics...');
+        const metrics = await D.extractDomMetrics(port);
+        metrics.fixture = fixture;
+        const metricsPath = path.join(outDir, 'dom-metrics.json');
+        fs.writeFileSync(metricsPath, JSON.stringify(metrics, null, 2));
+        console.log(`[ux-capture] Saved metrics manifest to ${metricsPath} (${metrics.controlCount} controls)`);
+
         await sleep(800);
         const darkBg = await D.webviewEval(port, 'return window.getComputedStyle(d.body).backgroundColor');
         console.log(`[ux-capture] Dark body bg: ${darkBg}`);
