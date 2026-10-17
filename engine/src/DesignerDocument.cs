@@ -588,6 +588,10 @@ public sealed class DesignerDocument
             && ti.Right is LiteralExpressionSyntax til && til.Token.Value is int tiv)
             p.TabIndex = tiv;
 
+        if (cs.Properties.TryGetValue("TabStop", out var ts)
+            && ts.Right is LiteralExpressionSyntax tsl && tsl.Token.Value is bool tsb)
+            p.TabStop = tsb;
+
         if (cs.Properties.TryGetValue("Visible", out var v) && v.Right is LiteralExpressionSyntax vl)
             p.Visible = vl.Token.Value is true;
 

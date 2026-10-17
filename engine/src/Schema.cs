@@ -54,6 +54,7 @@ public sealed class ControlProperties
     // appearance — present only for un-locked controls
     [JsonPropertyName("text")] public string? Text { get; set; }
     [JsonPropertyName("tabIndex")] public int? TabIndex { get; set; }
+    [JsonPropertyName("tabStop")] public bool? TabStop { get; set; }
     [JsonPropertyName("backColor")] public string? BackColor { get; set; }
     [JsonPropertyName("foreColor")] public string? ForeColor { get; set; }
     [JsonPropertyName("visible")] public bool? Visible { get; set; }

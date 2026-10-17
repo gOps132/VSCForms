@@ -1787,11 +1787,26 @@ setTimeout(async () => {
     check('F2 on a refused form posts nothing', sandbox.__sent.length === 0,
         JSON.stringify(sandbox.__sent.map((m) => m.type)));
     {
+        // Task 6 (#52) lifted the D6 reorder omission for STEP order: unlocked rows
+        // carry one-slot ▲▼ buttons riding the A1 move; locked rows get none
+        // (invariant 4), and rows are still never draggable — outline order is
+        // stepped, never faked, and drag-reparent stays a canvas gesture.
+        send({ type: 'load', data: outlineSchema });
+        await settled();
         const panel = wb.querySelector('.outline');
-        const btns = panel ? panel.querySelectorAll('button') : [];
-        check('outline offers no buttons (no up/down/reparent actions)', btns.length === 0,
-            'got ' + btns.length);
-        check('outline rows are not draggable — drag-reparent is omitted, never faked',
+        const rowBtns = (r) => (r && r.children ? r.children.filter((c) => c.tagName === 'BUTTON') : []);
+        const stepBtns = (id) => rowBtns(outlineRow(id)).filter((b) =>
+            b.classList.contains('outline-step-fwd') || b.classList.contains('outline-step-back'));
+        check('unlocked outline rows offer exactly the two step buttons',
+            stepBtns('btnTop').length === 2 && stepBtns('btnIn').length === 2,
+            'btnTop=' + stepBtns('btnTop').length + ' btnIn=' + stepBtns('btnIn').length);
+        check('outline rows offer no other buttons (no reparent actions)',
+            outlineRows().every((r) => rowBtns(r).length
+                === (r.dataset.id === 'GaugeX' ? 0 : 2)),
+            'got ' + outlineRows().map((r) => r.dataset.id + ':' + rowBtns(r).length).join(','));
+        check('a locked outline row offers no step buttons', stepBtns('GaugeX').length === 0,
+            'got ' + stepBtns('GaugeX').length);
+        check('outline rows are not draggable — drag-reparent stays a canvas gesture',
             outlineRows().every((r) => !r.draggable),
             'a draggable row would fake drag-reparent');
     }
@@ -3303,6 +3318,207 @@ setTimeout(async () => {
         await settled();
         check('multi-selection still offers no view toggle',
             !ids.inspector.querySelectorAll('button').some((b) => String(b.textContent || '') === 'Categorized'));
+
+        // ---- Task 6 (#52): containers drag-reparent + TabPage targeting + TabStop + step-order
+        setZoomNow();
+        {
+            const t6down = (id, extra) => ctlNode(id).dispatch('mousedown',
+                Object.assign({ preventDefault() { }, stopPropagation() { }, clientX: 10, clientY: 10 }, extra || {}));
+            const t6move = (x, y) => sandbox.window.dispatch('mousemove', { clientX: x, clientY: y });
+            const t6up = () => { sandbox.window.dispatch('mouseup', {}); mirrorScale(); };
+            const t6Target = () => canvasEl.querySelectorAll('.ctl.drop-target').map((n) => n.dataset.id);
+            const lastCommit = () => sandbox.__sent.filter((m) => m.type === 'commit').slice(-1)[0];
+            const t6Schema = {
+                schemaVersion: 1,
+                form: { name: 'T6Form', text: 'T6', clientSize: { width: 400, height: 300 }, className: 'T6Form' },
+                controls: [
+                    { id: 'btnTop', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                      properties: { x: 10, y: 10, width: 80, height: 25, text: 'Top', tabIndex: 0 } },
+                    { id: 'pnlWrap', type: 'System.Windows.Forms.Panel', children: [
+                        { id: 'btnIn', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                          properties: { x: 5, y: 5, width: 80, height: 25, text: 'In', tabIndex: 0 } },
+                    ], locked: false, properties: { x: 10, y: 50, width: 200, height: 150, tabIndex: 1 } },
+                    { id: 'pnlLock', type: 'System.Windows.Forms.Panel', children: [], locked: true,
+                      lockedReason: 'Panel is locked in this test.',
+                      properties: { x: 220, y: 220, width: 150, height: 60 } },
+                    { id: 'tabMain', type: 'System.Windows.Forms.TabControl', children: [
+                        { id: 'pgA', type: 'System.Windows.Forms.TabPage', children: [], locked: false,
+                          properties: { x: 4, y: 22, width: 162, height: 170, text: 'A', tabIndex: 0 } },
+                        { id: 'pgB', type: 'System.Windows.Forms.TabPage', children: [], locked: false,
+                          properties: { x: 4, y: 22, width: 162, height: 170, text: 'B', tabIndex: 1 } },
+                    ], locked: false, properties: { x: 220, y: 10, width: 170, height: 200, tabIndex: 2 } },
+                    { id: 'btnFree', type: 'System.Windows.Forms.Button', children: [], locked: false,
+                      properties: { x: 10, y: 220, width: 80, height: 25, text: 'Free', tabIndex: 3 } },
+                ],
+                analysis: { modelledCount: 6, unmodelledCount: 1, coveragePercent: 85.71, refuses: [], warnings: [] },
+            };
+
+            // Hover over a container highlights it as the drop target.
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            sandbox.__sent.length = 0;
+            t6down('btnFree', { clientX: 10, clientY: 220 });
+            t6move(58, 100);
+            check('drag hover highlights the target container',
+                JSON.stringify(t6Target()) === JSON.stringify(['pnlWrap']), JSON.stringify(t6Target()));
+            check('drag hover highlights nothing else',
+                t6Target().length === 1, JSON.stringify(t6Target()));
+            t6move(300, 270);
+            check('hovering empty canvas clears the highlight', t6Target().length === 0,
+                JSON.stringify(t6Target()));
+            t6up();
+            await settled();
+            check('dropping on empty canvas does not reparent',
+                (() => {
+                    const c = lastCommit();
+                    return !!c && c.data.controls.some((x) => x.id === 'btnFree');
+                })(), 'btnFree left the top level');
+
+            // Drop inside the panel reparents with coordinate conversion:
+            // form (58,100) minus panel origin (10,50) = parent-relative (48,50).
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            sandbox.__sent.length = 0;
+            t6down('btnFree', { clientX: 10, clientY: 220 });
+            t6move(58, 100);
+            t6up();
+            await settled();
+            {
+                const c = lastCommit();
+                const top = c ? c.data.controls : [];
+                const pnl = top.find((x) => x.id === 'pnlWrap');
+                const moved = pnl && pnl.children.find((x) => x.id === 'btnFree');
+                check('dropping inside a panel reparents the control',
+                    !!moved, c ? JSON.stringify(top.map((x) => x.id)) : 'no commit');
+                check('the reparented control keeps its file-space point (coordinate conversion)',
+                    !!moved && moved.properties.x === 48 && moved.properties.y === 50,
+                    moved ? JSON.stringify(moved.properties) : 'not reparented');
+                check('the highlight clears on drop', t6Target().length === 0,
+                    JSON.stringify(t6Target()));
+            }
+
+            // Drop onto a TabPage parents to that page, not the TabControl.
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            sandbox.__sent.length = 0;
+            t6down('btnFree', { clientX: 10, clientY: 220 });
+            t6move(250, 100);
+            check('hovering a tab page highlights the page',
+                JSON.stringify(t6Target()) === JSON.stringify(['pgA']), JSON.stringify(t6Target()));
+            t6up();
+            await settled();
+            {
+                const c = lastCommit();
+                const tab = c ? c.data.controls.find((x) => x.id === 'tabMain') : null;
+                const pgA = tab && tab.children.find((x) => x.id === 'pgA');
+                const moved = pgA && pgA.children.find((x) => x.id === 'btnFree');
+                check('dropping onto a TabPage parents to the page',
+                    !!moved, c ? JSON.stringify(tab.children.map((x) => [x.id, (x.children || []).map((g) => g.id)])) : 'no commit');
+                check('TabPage coordinates convert through both offsets (tab + page)',
+                    !!moved && moved.properties.x === 26 && moved.properties.y === 68,
+                    moved ? JSON.stringify(moved.properties) : 'not reparented');
+            }
+
+            // A locked container is never a target: no highlight, no reparent.
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            sandbox.__sent.length = 0;
+            t6down('btnFree', { clientX: 10, clientY: 220 });
+            t6move(250, 240);
+            check('a locked container never highlights', t6Target().length === 0,
+                JSON.stringify(t6Target()));
+            t6up();
+            await settled();
+            {
+                const c = lastCommit();
+                check('dropping onto a locked container does not reparent',
+                    !!c && c.data.controls.some((x) => x.id === 'btnFree'),
+                    c ? JSON.stringify(c.data.controls.map((x) => x.id)) : 'no commit');
+            }
+
+            // TabStop: inspector checkbox, committed through the scalar path.
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            t6down('btnTop');
+            t6up();
+            await settled();
+            {
+                const row = ids.inspector.querySelectorAll('.field')
+                    .find((f) => f.dataset && f.dataset.prop === 'TabStop');
+                const box = row && row.querySelector('input');
+                check('the inspector offers a TabStop checkbox', !!box && box.type === 'checkbox',
+                    row ? 'row without a checkbox' : 'no TabStop row');
+                sandbox.__sent.length = 0;
+                if (box) {
+                    box.checked = false;
+                    box.dispatch('change', {});
+                    await settled();
+                    const c = lastCommit();
+                    const sent = c && c.data.controls.find((x) => x.id === 'btnTop');
+                    check('unchecking TabStop commits tabStop:false',
+                        !!sent && sent.properties.tabStop === false,
+                        sent ? JSON.stringify(sent.properties) : 'no commit');
+                }
+            }
+
+            // Multi-select offers the shared TabStop row.
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            t6down('btnTop');
+            t6up();
+            t6down('btnFree', { shiftKey: true });
+            t6up();
+            await settled();
+            check('multi-select offers the shared TabStop row',
+                ids.inspector.querySelectorAll('.field')
+                    .some((f) => f.dataset && f.dataset.prop === 'TabStop'));
+
+            // Outline step buttons: one position per click, one commit, via A1.
+            send({ type: 'load', data: t6Schema });
+            await settled();
+            {
+                const wb = sandbox.document.querySelector('.workbench');
+                const rows = () => wb.querySelectorAll('.outline-row');
+                const row = (id) => rows().find((n) => n.dataset.id === id);
+                const stepBtn = (id, cls) => {
+                    const r = row(id);
+                    return r && r.querySelectorAll('button').find((b) => b.classList.contains(cls));
+                };
+                check('outline rows offer step forward/backward buttons',
+                    !!stepBtn('btnFree', 'outline-step-fwd') && !!stepBtn('btnFree', 'outline-step-back'),
+                    'step buttons missing on btnFree row');
+                check('a locked outline row offers no step buttons',
+                    row('pnlLock') && row('pnlLock').querySelectorAll('button').length === 0,
+                    'locked row offers buttons');
+                sandbox.__sent.length = 0;
+                const fwdBtn = stepBtn('btnFree', 'outline-step-fwd');
+                const backBtn = stepBtn('btnFree', 'outline-step-back');
+                if (fwdBtn) fwdBtn.dispatch('click', {});
+                await settled();
+                const fwd = lastCommit();
+                check('step forward moves exactly one position toward the front',
+                    !!fwd && fwd.data.controls.map((x) => x.id).join(',') === 'btnTop,pnlWrap,pnlLock,btnFree,tabMain',
+                    fwd ? JSON.stringify(fwd.data.controls.map((x) => x.id)) : 'no commit');
+                if (backBtn) backBtn.dispatch('click', {});
+                await settled();
+                const back = lastCommit();
+                check('step backward restores the position',
+                    !!back && back.data.controls.map((x) => x.id).join(',') === 'btnTop,pnlWrap,pnlLock,tabMain,btnFree',
+                    back ? JSON.stringify(back.data.controls.map((x) => x.id)) : 'no commit');
+            }
+
+            // Refused forms stay read-only: no step buttons, no highlight tracking.
+            send({ type: 'load', data: { ...t6Schema,
+                analysis: { ...t6Schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
+            await settled();
+            {
+                const wb = sandbox.document.querySelector('.workbench');
+                check('a refused form offers no step buttons',
+                    wb.querySelectorAll('.outline-step-fwd').length === 0
+                    && wb.querySelectorAll('.outline-step-back').length === 0,
+                    'step buttons on a refused form');
+            }
+        }
 
         send({ type: 'load', data: schema });
         await settled();

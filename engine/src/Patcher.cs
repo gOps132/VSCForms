@@ -91,10 +91,19 @@ public sealed class Patcher
             DeleteControl(id, cs);
         }
 
+        // --- reparents --------------------------------------------------------
+        // A control present on both sides but under a different parent moves its
+        // `Controls.Add` line to the new parent's group (ADR 0010). A refused
+        // reparent fails the whole generate, like an ambiguous z-order; a group
+        // that cannot be moved safely is left alone, silently.
+        var reparentRefusal = ApplyReparents(incoming, incomingById, parentMap);
+        if (reparentRefusal is not null)
+            return PatchResult.Refused(reparentRefusal, "ambiguous-order");
+
         // --- z-order ----------------------------------------------------------
         // Same ids, different order => MOVE (ADR 0009). Relocates the Controls.Add lines
         // verbatim — never delete+insert, which would destroy unmodelled properties.
-        var ambiguous = ApplyReorders(incoming, incomingById);
+        var ambiguous = ApplyReorders(incoming, incomingById, _reparentTouched);
         if (ambiguous is not null)
             return PatchResult.Refused(ambiguous, "ambiguous-order");
 
@@ -135,7 +144,15 @@ public sealed class Patcher
         if (_moveChanges.Count > 0 && !VerifyReorders(_source.WithChanges(accepted)))
         {
             Console.Error.WriteLine("  z-order move failed verification; moves dropped");
-            accepted = Accept(_changes.Where(c => !_moveChanges.Any(m => m.Span.Equals(c.Span) && m.NewText == c.NewText)));
+            accepted = Accept(_changes.Where(c => !IsMoveChange(c)));
+        }
+
+        // Same proof for reparents: a wrong parent is never written. Either family of
+        // moves can be dropped independently; the property edits still apply.
+        if (_reparentChanges.Count > 0 && !VerifyReparents(_source.WithChanges(accepted)))
+        {
+            Console.Error.WriteLine("  reparent move failed verification; reparents dropped");
+            accepted = Accept(_changes.Where(c => !IsMoveChange(c) && !IsReparentChange(c)));
         }
 
         // MF_DEBUG=1 prints every emitted span; kept permanently because "what exactly did
@@ -231,6 +248,20 @@ public sealed class Patcher
             Replace(en.Right.Span, (p.Enabled ?? true) ? "true" : "false");
         else if (p.Enabled is false && !cs.Properties.ContainsKey("Enabled"))
             InsertProperty(cs, id, "Enabled", "false");
+
+        // TabStop. The designer default is true, so only `false` is ever inserted —
+        // the same shape as Enabled/Visible. A stated value the schema does not carry
+        // cannot happen through our own parse (which always surfaces it); the null
+        // guard keeps such a line byte-identical instead of flipping it to true.
+        if (cs.Properties.TryGetValue("TabStop", out var tsp) && tsp.Right is LiteralExpressionSyntax)
+        {
+            if (CurrentBool(tsp) != p.TabStop && p.TabStop is not null)
+                Replace(tsp.Right.Span, p.TabStop.Value ? "true" : "false");
+        }
+        else if (p.TabStop is false && !cs.Properties.ContainsKey("TabStop"))
+        {
+            InsertProperty(cs, id, "TabStop", "false");
+        }
 
         // BackColor. Only the VALUES are replaced, never the type name: a file that writes
         // `Color.FromArgb(...)` must keep writing `Color.FromArgb(...)`. Rewriting it to a
@@ -1050,6 +1081,161 @@ public sealed class Patcher
         if (fieldStmt is not null) Replace(WholeLineSpan(fieldStmt.Span), "");
     }
 
+    // ------------------------------------------------- reparent (container move)
+
+    /// <summary>
+    /// Sibling groups a reparent touched this commit, so the z-order phase leaves them
+    /// alone (ADR 0010: two encodings over the same Add lines could overlap).
+    /// </summary>
+    private readonly HashSet<string> _reparentTouched = new(StringComparer.Ordinal);
+
+    /// <summary>Reparent changes, tracked separately so a failed verification can drop them.</summary>
+    private readonly List<TextChange> _reparentChanges = new();
+    private readonly List<(string Id, string Target)> _reparented = new();
+
+    private bool IsMoveChange(TextChange c) =>
+        _moveChanges.Any(m => m.Span.Equals(c.Span) && m.NewText == c.NewText);
+
+    private bool IsReparentChange(TextChange c) =>
+        _reparentChanges.Any(m => m.Span.Equals(c.Span) && m.NewText == c.NewText);
+
+    /// <summary>
+    /// Drag-reparent (Task 6, ADR 0010): a control present in both file and schema but under
+    /// a different parent moves its `Controls.Add` line to the new parent's group. Unlike a
+    /// z-order move the line cannot travel verbatim — the receiver names the old parent — so
+    /// the old line is deleted whole and a new line is emitted after the target group's last
+    /// `Add`, with the receiver swapped and everything else (indentation, child-argument
+    /// spelling, `this.` dialect) copied from the old line. The property block, init line
+    /// and field declaration are untouched, so unmodelled properties survive: this is a move,
+    /// never delete+insert of the control.
+    ///
+    /// Returns a refusal message when the moved control's own `Add` is duplicated (no single
+    /// statement to relocate — the 0009 precedent), or null. Anything else unsafe is skipped
+    /// SILENTLY, emitting nothing: a locked control is never cut, a locked container is never
+    /// rewritten through (moving a child out of one would rewrite its membership), and a
+    /// control with no `Add` line or no safe anchor takes no part.
+    /// </summary>
+    private string? ApplyReparents(FormSchema incoming, Dictionary<string, ControlNode> incomingById,
+        Dictionary<string, string> parentMap)
+    {
+        var fileParent = new Dictionary<string, string>(StringComparer.Ordinal);
+        var addsByChild = new Dictionary<string, int>(StringComparer.Ordinal);
+        var groupAnchor = new Dictionary<string, ExpressionStatementSyntax>(StringComparer.Ordinal);
+        ExpressionStatementSyntax? lastAdd = null;
+        foreach (var rec in _doc.AddRecords())
+        {
+            var key = GroupKey(rec.Container, _doc.Controls);
+            fileParent.TryAdd(rec.Child, key);
+            addsByChild[rec.Child] = addsByChild.GetValueOrDefault(rec.Child) + 1;
+            groupAnchor[key] = rec.Stmt;
+            lastAdd = rec.Stmt;
+        }
+
+        var moves = new List<(string Id, string From, string To)>();
+        foreach (var (id, node) in incomingById)
+        {
+            if (!_doc.Controls.TryGetValue(id, out var cs) || cs.AddCall is null) continue;
+            if (node.Locked || !TypeTable.IsHandled(cs.Type)) continue;   // SAFETY: never cut
+            if (!fileParent.TryGetValue(id, out var from)) continue;      // never staged
+            parentMap.TryGetValue(id, out var parentId);
+            if (parentId is not null && !_doc.Controls.ContainsKey(parentId)) continue; // never guess
+            var to = parentId ?? "";
+            if (from == to) continue;
+            // A locked container is never rewritten through, in either direction.
+            if ((from != "" && IsLockedForMove(from, incomingById))
+                || (to != "" && IsLockedForMove(to, incomingById))) continue;
+            moves.Add((id, from, to));
+        }
+        moves.Sort((a, b) => StringComparer.Ordinal.Compare(a.Id, b.Id));
+
+        var text = _source.ToString();
+        foreach (var (id, from, to) in moves)
+        {
+            // The required refusal: a duplicated Add for the moved control has no single
+            // statement to relocate, so the whole generate is refused, like 0009.
+            if (addsByChild.GetValueOrDefault(id) != 1)
+                return $"ambiguous reparent of {id}: its Controls.Add appears {addsByChild.GetValueOrDefault(id)} times; remove the duplication and retry";
+            var cs = _doc.Controls[id];
+            var delSpan = WholeLineSpan(cs.AddCall!.Span);
+            if (delSpan.End > text.Length || text[delSpan.End - 1] != '\n') continue; // last line: no safe anchor
+            if (!groupAnchor.TryGetValue(to, out var anchor)) anchor = lastAdd;
+            if (anchor is null) continue;
+
+            var newLine = ReparentedAddLine(cs, anchor, id, to);
+            if (newLine is null) continue;
+            void Emit(TextChange c) { _changes.Add(c); _reparentChanges.Add(c); }
+            Emit(new TextChange(delSpan, ""));
+            var anchorLine = WholeLineSpan(anchor.Span);
+            Emit(new TextChange(new TextSpan(anchorLine.End, 0), newLine));
+            _reparented.Add((id, to));
+            _reparentTouched.Add(from);
+            _reparentTouched.Add(to);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Builds the new `Add` line for a reparent: the old line's indentation and child-argument
+    /// spelling are kept verbatim (the file's dialect survives), only the receiver is swapped
+    /// to the new parent — or to the form's own `Controls` collection for the top level.
+    /// `TabPages` is preserved only for the shape that actually uses it (a TabPage moving
+    /// between TabControls in a file that already writes `TabPages.Add`); the form has no
+    /// `TabPages` collection, so a move to the top level always writes `Controls`.
+    /// </summary>
+    private string? ReparentedAddLine(DesignerDocument.ControlSyntax cs,
+        ExpressionStatementSyntax anchor, string id, string to)
+    {
+        var oldLine = AddLineText(cs.AddCall!);
+        var addAt = oldLine.IndexOf(".Add(", StringComparison.Ordinal);
+        if (addAt < 0) return null;
+        // Indent is the line's leading whitespace (an Add is always a whole line);
+        // the collection word is the last dotted segment before `.Add(`.
+        var rawHead = oldLine[..addAt];
+        int ni = 0;
+        while (ni < rawHead.Length && (rawHead[ni] == ' ' || rawHead[ni] == '\t')) ni++;
+        var indent = rawHead[..ni];
+        var head = rawHead.Trim();
+        var lastDot = head.LastIndexOf('.');
+        var oldWord = lastDot < 0 ? head : head[(lastDot + 1)..];
+        if (oldWord is not ("Controls" or "TabPages")) return null;
+        var tail = oldLine[(addAt + ".Add(".Length)..].Trim();
+        if (tail.EndsWith(";", StringComparison.Ordinal)) tail = tail[..^1].TrimEnd();
+        if (!tail.EndsWith(")", StringComparison.Ordinal)) return null;
+        var childArg = tail[..^1];
+        if (string.IsNullOrWhiteSpace(childArg)) return null;
+
+        var collWord = "Controls";
+        if (oldWord == "TabPages" && to != ""
+            && _doc.Controls.TryGetValue(to, out var tcs)
+            && TypeTable.SimpleName(tcs.Type) == "TabControl"
+            && TypeTable.SimpleName(cs.Type) == "TabPage")
+            collWord = "TabPages";
+        var receiver = to == "" ? $"{ControlsThis}Controls" : $"{This}{to}";
+        // The form collection is the receiver itself, not a member of it:
+        // `this.Controls.Add(x)`, never `this.Controls.Controls.Add(x)`.
+        return to == ""
+            ? $"{indent}{receiver}.Add({childArg});{_eol}"
+            : $"{indent}{receiver}.{collWord}.Add({childArg});{_eol}";
+    }
+
+    /// <summary>
+    /// Re-parses the patched text and checks every reparented control landed under its target
+    /// parent. A mismatch means the encoding above is wrong — the caller drops the reparents
+    /// rather than writing a patch it cannot account for.
+    /// </summary>
+    private bool VerifyReparents(SourceText trial)
+    {
+        DesignerDocument doc;
+        try { doc = DesignerDocument.Parse(trial); }
+        catch { return false; }
+        var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var rec in doc.AddRecords())
+            parents[rec.Child] = GroupKey(rec.Container, doc.Controls);
+        foreach (var (id, to) in _reparented)
+            if (!parents.TryGetValue(id, out var got) || got != to) return false;
+        return true;
+    }
+
     // ------------------------------------------------------- z-order (reorder)
 
     /// <summary>
@@ -1064,7 +1250,8 @@ public sealed class Patcher
     /// is never cut, and a group whose Add lines are interleaved with other statements is
     /// left alone. Skipping is safe; guessing is not.
     /// </summary>
-    private string? ApplyReorders(FormSchema incoming, Dictionary<string, ControlNode> incomingById)
+    private string? ApplyReorders(FormSchema incoming, Dictionary<string, ControlNode> incomingById,
+        HashSet<string>? skipGroups = null)
     {
         // Target order per sibling group from the incoming schema: "" is top level.
         var incomingGroups = new List<(string Key, List<string> Ids)> { ("", incoming.Controls.Select(c => c.Id).ToList()) };
@@ -1091,6 +1278,11 @@ public sealed class Patcher
 
         foreach (var (key, wanted) in incomingGroups)
         {
+            // A group that gained or lost a member to a reparent this same commit keeps
+            // its file order: the reparent's delete+insert spans already cover that
+            // group's lines, and a second encoding over the same range could overlap
+            // them. The reorder is picked up by the next commit. (ADR 0010.)
+            if (skipGroups is not null && skipGroups.Contains(key)) continue;
             var refusal = ApplyReorder(key, wanted, fileGroups.GetValueOrDefault(key) ?? new(), incomingById);
             if (refusal is not null) return refusal;
         }

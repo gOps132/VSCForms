@@ -409,6 +409,19 @@ body { display: flex; flex-direction: column; }
 
 .ctl.readonly { cursor: default; opacity: .75; }
 
+/* Task 6 (#52) drop-target highlight: the container a drag would reparent into.
+   A solid accent ring, distinct from the dotted selection ring, so hover target
+   and selection never read as the same thing. Pure view state. */
+.ctl.drop-target { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Task 6 (#52) outline step buttons: small, quiet, one slot per click. */
+.outline-step-fwd, .outline-step-back {
+  margin-left: 4px; padding: 0 4px; font-size: 10px; line-height: 1.4;
+  background: transparent; border: 1px solid var(--border); border-radius: 3px;
+  color: var(--muted); cursor: pointer;
+}
+.outline-step-fwd:hover, .outline-step-back:hover { color: inherit; border-color: var(--accent); }
+
 .handle {
   position: absolute; width: 7px; height: 7px;
   background: var(--bg); border: 1px solid var(--accent); z-index: 5;

@@ -254,6 +254,7 @@
         'Font editor': 'Appearance',
         'TextAlign': 'Appearance', 'BorderStyle': 'Appearance', 'Checked': 'Appearance',
         'Enabled': 'Behavior', 'Visible': 'Behavior', 'TabIndex': 'Behavior',
+        'TabStop': 'Behavior',
         'Multiline': 'Behavior', 'ReadOnly': 'Behavior', 'MaxLength': 'Behavior',
         'PasswordChar': 'Behavior', 'ScrollBars': 'Behavior',
         'Minimum': 'Behavior', 'Maximum': 'Behavior', 'Value': 'Behavior',
@@ -835,14 +836,9 @@
                 node.insertBefore(label, node.firstChild);
             } else if (simple === 'TabControl') {
                 const strip = el('div', 'tab-strip');
-                const pages = (c.children || []).filter((ch) => simpleName(ch.type) === 'TabPage');
-                let activeId = pages.length > 0 ? pages[0].id : null;
-                for (const p of pages) {
-                    if (selection.has(p.id) || allControls(p.children).some((g) => selection.has(g.id))) {
-                        activeId = p.id;
-                        break;
-                    }
-                }
+                const pages = tabPagesOf(c);
+                const active = activeTabPage(c);
+                const activeId = active ? active.id : (pages.length > 0 ? pages[0].id : null);
                 for (const p of pages) {
                     const tabBtn = el('div', 'tab-item' + (p.id === activeId ? ' active' : ''));
                     tabBtn.textContent = p.properties.text || p.id;
@@ -1129,15 +1125,18 @@
 
     // ------------------------------------------------------- document outline
     /**
-     * D6 Document Outline (issue #34): a read-only hierarchy view over the schema tree.
+     * D6 Document Outline (issue #34): a hierarchy view over the schema tree.
      *
      * Containers nest (their children render indented inside the parent row); locked
      * controls appear with their reason and are never editable. Clicks reuse select(),
      * F2 renames through the existing `rename` command path (never a schema commit).
      *
-     * STRICTLY OUT OF SCOPE: drag-reparent and Z-order moves. Reorder is
-     * unrepresentable in id-diffed generate (A1), so the outline offers no reorder UI
-     * at all — omitted, never faked. No draggable rows, no up/down buttons.
+     * Task 6 (#52) binds the outline to A1: every unlocked row carries ▲▼ step
+     * buttons that move the control one z-order slot via stepControl/commit, so the
+     * outline order (schema order, front-first per ADR 0009) is editable, not just
+     * displayed. Locked rows and refused forms get no buttons (invariant 4).
+     * Outline DRAG-reparent stays omitted — a row drag has no file-space point to
+     * convert, so it would fake the canvas gesture; rows are never draggable.
      *
      * The panel is built with DOM calls here, not in the host HTML skeleton, so this
      * stays one merge-pass region. `outlineEl` is held module-side because the panel
@@ -1160,7 +1159,7 @@
         }
         outlineEl.innerHTML = '';
         outlineEl.appendChild(el('h3', null, 'Outline'));
-        outlineEl.appendChild(el('div', 'outline-hint', 'Click to select · F2 to rename'));
+        outlineEl.appendChild(el('div', 'outline-hint', 'Click to select · F2 to rename · ▲▼ step order'));
         const tree = el('div', 'outline-tree');
         tree.setAttribute('role', 'group');
         for (const c of schema.controls) appendOutlineRow(tree, c, 0);
@@ -1190,6 +1189,28 @@
             why.style.color = '#858585';
             why.style.fontSize = '11px';
             row.appendChild(why);
+        }
+        // Task 6 (#52) step-order buttons: one z-order slot per click, riding the
+        // A1 move through stepControl/commit. Never on locked rows (invariant 4:
+        // a Locked Control is never written) and never on refused forms — and the
+        // row itself is never draggable, so outline order is stepped, never faked.
+        if (!c.locked && !readOnly) {
+            const fwd = el('button', 'outline-step-fwd', '▲');
+            fwd.title = 'Move ' + c.id + ' one step toward the front';
+            fwd.setAttribute('aria-label', 'Move ' + c.id + ' toward front');
+            fwd.addEventListener('click', (e) => {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                stepControl(c.id, 'forward');
+            });
+            const back = el('button', 'outline-step-back', '▼');
+            back.title = 'Move ' + c.id + ' one step toward the back';
+            back.setAttribute('aria-label', 'Move ' + c.id + ' toward back');
+            back.addEventListener('click', (e) => {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                stepControl(c.id, 'backward');
+            });
+            row.appendChild(fwd);
+            row.appendChild(back);
         }
         row.addEventListener('mousedown', (e) => {
             // A mousedown on the open rename field must not reselect and destroy it.
@@ -1450,6 +1471,74 @@
     }
 
     /**
+     * Task 6 (#52) drag-reparent hit-test, in MODEL space (schema x/y plus ancestor
+     * offsets), never DOM rects: the harness stand-in has no layout engine, and a
+     * rect-based test would prove the stand-in rather than the canvas. Returns the
+     * deepest visible container whose frame holds the form-space point, or null.
+     *
+     * - Locked containers never hit (invariant 4), nor does anything in `exclude`
+     *   (the dragged roots and their descendants — a control cannot parent to
+     *   itself or to its own child).
+     * - A TabControl resolves to its active page (TabPage targeting): a point on
+     *   its strip/chrome still lands on the visible page. Hidden pages never hit.
+     * - Depth decides, ties go to the front-most sibling (lowest schema index —
+     *   index 0 is front per ADR 0009).
+     */
+    function containerFrameBox(c) {
+        const o = frameOrigin(parentOf(c.id));
+        return {
+            x: o.x + c.properties.x, y: o.y + c.properties.y,
+            w: c.properties.width, h: c.properties.height,
+        };
+    }
+    function depthOf(c) {
+        let d = 0, p = parentOf(c.id);
+        while (p) { d += 1; p = parentOf(p.id); }
+        return d;
+    }
+    function pointInBox(fx, fy, b) {
+        return fx >= b.x && fy >= b.y && fx <= b.x + b.w && fy <= b.y + b.h;
+    }
+    function reparentTargetAt(fx, fy, exclude) {
+        if (!schema) return null;
+        const flat = allControls(schema.controls);
+        const activeByTab = new Map();
+        for (const c of flat) {
+            if (simpleName(c.type) === 'TabControl') {
+                const a = activeTabPage(c);
+                if (a) activeByTab.set(c.id, a.id);
+            }
+        }
+        let best = null, bestDepth = -1, bestIdx = Infinity;
+        const consider = (c, idx) => {
+            const d = depthOf(c);
+            if (d > bestDepth || (d === bestDepth && idx < bestIdx)) {
+                best = c; bestDepth = d; bestIdx = idx;
+            }
+        };
+        flat.forEach((c, idx) => {
+            if (!c || exclude.has(c.id) || c.locked) return;
+            const simple = simpleName(c.type);
+            if (!containerTypes().has(simple)) return;
+            if (simple === 'TabControl') {
+                const aid = activeByTab.get(c.id);
+                const pg = aid ? findControl(aid) : null;
+                if (!pg || pg.locked || exclude.has(pg.id)) return;
+                if (pointInBox(fx, fy, containerFrameBox(pg))) { consider(pg, idx); return; }
+                if (pointInBox(fx, fy, containerFrameBox(c))) consider(pg, idx);
+                return;
+            }
+            if (simple === 'TabPage') {
+                const tab = parentOf(c.id);
+                if (tab && simpleName(tab.type) === 'TabControl'
+                    && activeByTab.get(tab.id) !== c.id) return; // hidden page
+            }
+            if (pointInBox(fx, fy, containerFrameBox(c))) consider(c, idx);
+        });
+        return best;
+    }
+
+    /**
      * Even out the gaps between the extremes along one axis. The two outermost controls stay
      * put; everything between them is repositioned so each gap is the same size.
      */
@@ -1500,14 +1589,69 @@
         for (const [list, members] of groups) {
             if (members.some((m) => list.indexOf(m) < 0)) continue;   // detached model: never guess
             const before = list.map((m) => m.id).join(',');
-            for (const m of members) list.splice(list.indexOf(m), 1);
             // Front is index 0, back is the end — the same order the file's Controls.Add
             // block and the Controls collection use (ADR 0009).
-            if (dir === 'front') list.unshift(...members);
-            else list.push(...members);
+            if (dir === 'front' || dir === 'back') {
+                for (const m of members) list.splice(list.indexOf(m), 1);
+                if (dir === 'front') list.unshift(...members);
+                else list.push(...members);
+            } else {
+                // Task 6 (#52) single step: one slot toward the front
+                // ('forward', lower index) or the back. A step against the
+                // wall changes nothing, so the `before` comparison below posts
+                // no commit and the file stays byte-identical.
+                stepMove(list, members, dir);
+            }
             if (list.map((m) => m.id).join(',') !== before) moved = true;
         }
         if (moved) commit();
+    }
+
+    /**
+     * Task 6 (#52) single-step z-order (the outline ▲▼ buttons). Each member moves
+     * exactly one slot, front-most first going forward so a block keeps its
+     * internal order, back-most first going back. Members already at the wall
+     * stay — the group still steps around them. Returns whether anything moved.
+     */
+    function stepMove(list, members, dir) {
+        const present = members.filter((m) => list.indexOf(m) >= 0);
+        if (!present.length) return false;
+        let moved = false;
+        if (dir === 'forward') {
+            const ordered = present.sort((a, b) => list.indexOf(a) - list.indexOf(b));
+            for (const m of ordered) {
+                const i = list.indexOf(m);
+                if (i <= 0) continue;
+                list.splice(i, 1);
+                list.splice(i - 1, 0, m);
+                moved = true;
+            }
+        } else {
+            const ordered = present.sort((a, b) => list.indexOf(b) - list.indexOf(a));
+            for (const m of ordered) {
+                const i = list.indexOf(m);
+                if (i < 0 || i >= list.length - 1) continue;
+                list.splice(i, 1);
+                list.splice(i + 1, 0, m);
+                moved = true;
+            }
+        }
+        return moved;
+    }
+
+    /**
+     * Task 6 (#52) outline step: move one control one slot in its own sibling
+     * list and commit, riding the A1 Controls.Add relocation like every other
+     * z-order op (one commit, one VS Code undo step). Locked controls and
+     * refused forms never reach here — they get no buttons.
+     */
+    function stepControl(id, dir) {
+        if (readOnly) return;
+        const c = findControl(id);
+        if (!c || c.locked || findControl(c.id) !== c) return;
+        const list = siblingList(c);
+        const before = list.map((m) => m.id).join(',');
+        if (stepMove(list, [c], dir) && list.map((m) => m.id).join(',') !== before) commit();
     }
 
     /** The sibling list a control reorders within: its parent's children, else top level. */
@@ -1694,6 +1838,30 @@
         const group = dragRoots(selection.size > 1 ? selected() : [c]);
         const groupStart = group.map((g) => ({ g, x: g.properties.x, y: g.properties.y }));
 
+        // Task 6 (#52) reparent tracking: the dragged roots plus every descendant,
+        // which can never be a drop target (a control cannot parent to itself or
+        // to its own child). The highlight is view state — it posts nothing.
+        const dragIds = new Set();
+        for (const s of groupStart) {
+            dragIds.add(s.g.id);
+            for (const d of allControls(s.g.children)) dragIds.add(d.id);
+        }
+        let dropTarget = null;
+        function setDropTarget(t) {
+            if ((dropTarget && t && dropTarget.id === t.id) || (!dropTarget && !t)) return;
+            dropTarget = t;
+            const canvas = $('canvas');
+            if (canvas) {
+                for (const n of Array.from(canvas.querySelectorAll('.drop-target'))) {
+                    n.classList.remove('drop-target');
+                }
+            }
+            if (t) {
+                const n = nodeFor(t.id);
+                if (n) n.classList.add('drop-target');
+            }
+        }
+
         function move(ev) {
             // Divide the scale out FIRST, then snap in form space. Snapping in screen space
             // drifts at fractional zoom and pulls controls off the grid.
@@ -1737,6 +1905,11 @@
                 }
             }
             renderSnapGuides(guides);
+            // Task 6 (#52): hover highlight. The pointer is converted to form units
+            // (scale-correct, like every other gesture) and hit-tested against the
+            // model — locked containers and the dragged subtree never highlight.
+            const fp = canvasFormPoint(ev.clientX, ev.clientY);
+            setDropTarget(reparentTargetAt(fp.x, fp.y, dragIds));
             updateInspectorValues();
             renderStatusForSelection();
         }
@@ -1744,7 +1917,42 @@
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
             clearGuides();
-            const moved = groupStart.some((s) => s.g.properties.x !== s.x || s.g.properties.y !== s.y);
+            // Task 6 (#52): drop reparents. The gesture settled in the OLD parent's
+            // frame, so each root's file-space point is converted into the new
+            // parent's frame and clamped into it — the same containment every other
+            // path enforces. The node is appended (back), which is where the engine
+            // appends the relocated `Controls.Add` (ADR 0010), so canvas and file
+            // agree. One debounced commit covers move + reparent: one undo step.
+            const target = dropTarget;
+            setDropTarget(null);
+            let reparented = false;
+            if (target && findControl(target.id) === target && !target.locked && !readOnly) {
+                const newOrigin = frameOrigin(target);
+                for (const s of groupStart) {
+                    const oldParent = parentOf(s.g.id);
+                    if (oldParent && oldParent.id === target.id) continue;
+                    // A locked container is never rewritten through, in either
+                    // direction (invariant 4): the control moves, but stays put.
+                    if ((oldParent && oldParent.locked) || target.locked) continue;
+                    const oldOrigin = frameOrigin(oldParent);
+                    const gx = oldOrigin.x + s.g.properties.x;
+                    const gy = oldOrigin.y + s.g.properties.y;
+                    const fw = target.properties.width, fh = target.properties.height;
+                    s.g.properties.x = Math.min(Math.max(Math.round(gx - newOrigin.x), 0),
+                        Math.max(0, fw - s.g.properties.width));
+                    s.g.properties.y = Math.min(Math.max(Math.round(gy - newOrigin.y), 0),
+                        Math.max(0, fh - s.g.properties.height));
+                    markChanged(s.g, 'x'); markChanged(s.g, 'y');
+                    const from = oldParent ? oldParent.children : schema.controls;
+                    const at = from.indexOf(s.g);
+                    if (at < 0) continue;   // detached model: never guess
+                    from.splice(at, 1);
+                    target.children.push(s.g);
+                    reparented = true;
+                }
+            }
+            const moved = reparented
+                || groupStart.some((s) => s.g.properties.x !== s.x || s.g.properties.y !== s.y);
             if (moved) commit();
         }
         window.addEventListener('mousemove', move);
@@ -2109,6 +2317,12 @@
             (v) => setProp(c, 'text', v)));
         box.appendChild(numField('TabIndex', c.properties.tabIndex ?? 0, appearanceBlocked,
             (v) => setProp(c, 'tabIndex', v)));
+        // Task 6 (#52) TabStop: the designer default is true, so an unset value
+        // renders checked — the same default-true shape as Enabled/Visible above.
+        // Commits through the scalar setProp path (with a TabStop INSERT for the
+        // first `false`, like Enabled); the engine patch is additive (SCHEMA.md).
+        box.appendChild(boolField('TabStop', c.properties.tabStop !== false, appearanceBlocked,
+            (v) => setProp(c, 'tabStop', v)));
 
         if (['Label', 'Button', 'CheckBox', 'RadioButton'].includes(simple)) {
             box.appendChild(boolField('AutoSize', !!c.properties.autoSize, appearanceBlocked,
@@ -2651,6 +2865,7 @@
         'Enabled': 'Unchecked greys the control out at runtime.',
         'Visible': 'Unchecked hides the control at runtime; it stays visible here.',
         'TabIndex': 'Focus order when the user presses Tab. Tab-order mode assigns these by click.',
+        'TabStop': 'Whether Tab stops on this control. Off skips it in the focus order.',
         'Multiline': 'Allow more than one line of text.',
         'ReadOnly': 'Text can be selected and copied, but not edited.',
         'MaxLength': 'Most characters the text may hold. 32767 is effectively unlimited.',
@@ -2670,7 +2885,7 @@
      *  geometry has no unset state, and Name travels by rename message. */
     const PROP_KEY = {
         'X': 'x', 'Y': 'y', 'Width': 'width', 'Height': 'height',
-        'Text': 'text', 'TabIndex': 'tabIndex', 'AutoSize': 'autoSize',
+        'Text': 'text', 'TabIndex': 'tabIndex', 'TabStop': 'tabStop', 'AutoSize': 'autoSize',
         'Enabled': 'enabled', 'Visible': 'visible',
         'BackColor': 'backColor', 'ForeColor': 'foreColor',
         'Checked': 'checked', 'TextAlign': 'textAlign', 'BorderStyle': 'borderStyle',
@@ -2834,6 +3049,9 @@
             { label: 'TabIndex', key: 'tabIndex', applies: () => true, kind: 'num',
               get: (c) => c.properties.tabIndex ?? 0,
               set: (c, v) => { c.properties.tabIndex = v; } },
+            { label: 'TabStop', key: 'tabStop', applies: () => true, kind: 'bool',
+              get: (c) => c.properties.tabStop !== false,
+              set: (c, v) => { c.properties.tabStop = v; } },
             { label: 'Multiline', key: 'multiline', applies: (s) => s === 'TextBox', kind: 'bool',
               get: (c) => !!c.properties.multiline,
               set: (c, v) => { c.properties.multiline = v; } },
@@ -2929,6 +3147,25 @@
             ListView: { w: 120, h: 97, text: '' },
             TreeView: { w: 120, h: 97, text: '' },
         }[simple] || { w: 100, h: 30, text: simple };
+    }
+
+    /**
+     * Task 6 (#52) drag-reparent targets. A TabControl never holds leaves directly
+     * (resolveContainerTarget), so its visible page — the selected page, the page
+     * holding the selection, else the first — is what a drop lands on. Extracted
+     * from the tab-strip renderer so render, drop and hit-test agree on which page
+     * that is; they must, or a drop would highlight one page and parent to another.
+     */
+    function tabPagesOf(tab) {
+        return (tab.children || []).filter((ch) => simpleName(ch.type) === 'TabPage');
+    }
+    function activeTabPage(tab) {
+        const pages = tabPagesOf(tab);
+        for (const p of pages) {
+            if (selection.has(p.id)
+                || allControls(p.children).some((g) => selection.has(g.id))) return p;
+        }
+        return pages.length ? pages[0] : null;
     }
 
     /**
@@ -3440,9 +3677,14 @@
             // Scale-correct form point (the old raw subtraction drifted at any
             // zoom), then the same quantize+pull as an armed click-place so a
             // drop and a draw-click agree. createControl clamps to the frame.
-            const parent = addTargetParent(null);
-            const origin = frameOrigin(parent);
+            //
+            // Task 6 (#52) TabPage targeting: a container under the pointer wins
+            // over the selection/drill default — a drop parents where it points,
+            // like VS. Locked containers never win (the hit-test excludes them).
             const fp = canvasFormPoint(e.clientX, e.clientY);
+            const hit = reparentTargetAt(fp.x, fp.y, new Set());
+            const parent = (hit && resolveContainerTarget(hit)) || addTargetParent(null);
+            const origin = frameOrigin(parent);
             const placed = snapPlacePoint(simple, fp.x - 20 - origin.x, fp.y - 10 - origin.y,
                 parent, origin, !!e.altKey);
             clearGuides();

@@ -96,6 +96,7 @@ interface ControlProperties {
   // --- appearance: modelled only when `locked === false` ---
   text?: string
   tabIndex?: number
+  tabStop?: boolean            // default true; off skips control in keyboard tab order
   backColor?: string           // CSS colour string, e.g. '#ff0000' or '' for default
   foreColor?: string           // CSS colour string, e.g. '#008000' or '' for default
   visible?: boolean

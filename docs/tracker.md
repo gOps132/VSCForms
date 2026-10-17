@@ -29,7 +29,7 @@ Re-verify by reading `engine/src/TypeTable.cs`,
 - **Read-only placeholders:** DataGridView, ListView, TreeView render as
   labelled boxes (name + type, no interior). Display-only by design.
 - **Properties wired end-to-end** (parse + patch + inspector, each with an
-  INSERT path): geometry, Text, TabIndex, Name, Enabled, Visible, BackColor,
+  INSERT path): geometry, Text, TabIndex, TabStop (additive), Name, Enabled, Visible, BackColor,
   ForeColor, Font (per-argument patch), Items (ComboBox/ListBox via
   `Add`/`AddRange`), TextBox Multiline/ReadOnly/MaxLength/PasswordChar/
   ScrollBars, leaf Minimum/Maximum/Value (TrackBar, ProgressBar,
@@ -45,6 +45,9 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   Shift+marquee-add, align/distribute-to-dominant),
   toolbox draw-to-create (sticky armed tool + crosshair, click-place/drag-size
   with live snap guides, dblclick/Enter populate, dragover guides),
+  containers drag-reparent (hover highlight, drop reparent with coordinate
+  conversion, TabPage targeting, locked/refused guards, one commit via ADR 0010),
+  Document Outline one-slot step-order buttons (▲▼, riding A1 move),
   `Cmd/Ctrl+D` duplicate, zoom
   (`Cmd/Ctrl`+wheel, `+/-`/`0`, Fit, 0.25–4.0), space/middle-drag pan, rulers,
   zoom bar, Escape deselect, tab-strip activation, drill-down selection for
@@ -123,6 +126,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D11 | Click-order dominant selection + Ctrl+click + align-to-dominant | shipped | S | `spec-vs-parity.md` §1 | First-clicked member is the primary (`dominant` class + white handles in a group); align/same-size reference its edges/extents, not the group bbox; Ctrl/Cmd+click toggles membership (toggling off starts no drag); Shift+marquee adds, plain marquee replaces; locked never joins a group. View state only, no protocol change, no ADR. (#47) |
 | D12 | Draw-to-create + dblclick-populate + Enter-add + live snap on toolbox drag | shipped | S | `spec-vs-parity.md` §1 | Sticky armed tool (toolbox click toggles, `armed` class + crosshair, Esc disarms, arming posts nothing); click places the default size, drag sizes the rect (live rubber band + Task 3 resize pull on the moving edges, container clamp); dblclick/Enter populate the cascade slot in the drill scope else the selected container else the form (TabControl resolves to its active page); dragover renders live guides and drop lands snapped scale-correct. All adds share the one createControl commit path (designer names, coverage); locked/refused never written. View state + existing path, no schema change, no ADR. (#50) |
 | D13 | Inspector bold+Reset, multi common-props, description pane, Events read-only | shipped | S | `spec-property-tabs.md` §§3–4 | Edited-since-load rows bold (`changed` class; recency, not defaultness — no per-type WinForms default table exists canvas-side); Reset deletes the model key and commits (geometry never resets, locked/refused never). Multi-select shows intersection rows only, each under existing single-select gating so every row keeps its INSERT path (agreed value or blank/indeterminate; geometry stays on the group ops; one edit writes all members, one commit). Hardcoded description pane (focus-driven, survives re-render). Events is a read-only note naming the A3 gap — wiring display needs the engine parse step (`spec-property-tabs.md` §4), full scaffolding the #28 ADR. Known engine limit: `generate` deletes scalar statements for no prop but Items, so resetting an already-stated colour/Font is answered "No changes to write". (#51) |
+| D14 | Containers: drag-reparent + TabPage targeting + TabStop + outline step-order | shipped | S–M | `spec-vs-parity.md` §1, `spec-features.md` §4 | Hover highlight, drop reparent with parent-relative coord conversion, TabPage active-page resolution, TabStop inspector checkbox (additive schema field, default true), outline step ▲▼ buttons via A1 Controls.Add move. Locked controls/containers never written; ambiguous-reparent refused. ADR 0010. (#52) |
 
 P0 after #29 is fully shipped: clipboard (A2 #3), grid-size setting, snapline
 baselines + Alt-suppress, full edge/center pull on move/resize/multi, and the

@@ -16,5 +16,11 @@ dist/
 *.log
 .DS_Store
 
+# Sandcastle host runner (root package.json tooling only)
+node_modules/
+.sandcastle/
+package.json
+package-lock.json
+
 # integration failure log
 test/.integration.log
