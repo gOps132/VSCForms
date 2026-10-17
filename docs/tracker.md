@@ -71,10 +71,11 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   Fixtures must stage their controls into a parent collection — a control that is
   never `Controls.Add`-ed parses as a top-level schema node but is absent from the
   runtime tree, which the tier reports as control-not-found. (#43)
-- **UI/UX Canvas Capture (`npm run ux:capture`):** Automated VS Code test-electron runner
-  with CDP integration (`scripts/capture-designer-ux.js`, `test/cdp-driver.js`) capturing
-  high-res Dark and Light theme designer canvas snapshots and structured DOM, computed styles,
-  and accessibility metrics (`dom-metrics.json`) to `out/ux-snapshots/`. (#53, #54)
+- **UI/UX Canvas Loop (`npm run ux:capture`, `npm run ux:verify`):** Automated VS Code test-electron runner
+  with CDP integration (`scripts/capture-designer-ux.js`, `scripts/verify-ux.js`, `test/cdp-driver.js`) capturing
+  high-res Dark and Light theme designer canvas snapshots, structured DOM, computed styles,
+  and accessibility metrics (`dom-metrics.json`) to `out/ux-snapshots/`, with review guidelines in
+  `docs/ui-ux-review.md`. (#53, #54, #55)
 
 ## 2. Gaps to implement
 

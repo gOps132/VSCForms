@@ -254,7 +254,7 @@ body { display: flex; flex-direction: column; }
 }
 
 /* Approximate WinForms look. NOT pixel parity — see CONTEXT.md. */
-.ctl.t-button  { background: linear-gradient(180deg,#3a3d41,#2e3134); border-radius: 2px; }
+.ctl.t-button  { background: var(--vscode-button-secondaryBackground, linear-gradient(180deg,#3a3d41,#2e3134)); border-radius: 2px; }
 .ctl.t-label   { background: transparent; border-color: transparent; overflow: visible; }
 .ctl.t-textbox { background: var(--vscode-input-background, #1e1e1e); }
 .ctl.t-checkbox,.ctl.t-radio { background: transparent; border-color: transparent; }
