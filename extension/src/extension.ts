@@ -240,6 +240,20 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                     break;
                 }
 
+                case 'wireEvent': {
+                    if (parsed.ok === false) return;
+                    const { id, event, handler } = msg.data as { id: string; event?: string; handler?: string };
+                    await this.doWireEvent(doc, post, id, event, handler);
+                    break;
+                }
+
+                case 'unwireEvent': {
+                    if (parsed.ok === false) return;
+                    const { id, event } = msg.data as { id: string; event: string };
+                    await this.doUnwireEvent(doc, post, id, event);
+                    break;
+                }
+
                 // Test seam. The webview is unreachable from the extension host API, so the
                 // integration suite cannot make the canvas post a commit by itself. This runs
                 // the SAME code path the canvas triggers — not a simulation of it — which is
@@ -406,6 +420,82 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
         const after = await engine.parse(designerPath);
         if (after.ok) await post('load', after.schema);
         return { ok: true, designerPath, codeBehind: res.codeBehind };
+    }
+
+    private async doWireEvent(
+        doc: DesignerDocument,
+        post: (type: string, data?: unknown) => Thenable<boolean> | Promise<boolean>,
+        id: string,
+        eventName?: string,
+        handlerName?: string,
+    ): Promise<{ ok: boolean; error?: string }> {
+        const designerPath = doc.uri.fsPath;
+        const cbPath = this.siblingCodeBehind(designerPath);
+        const beforeDesigner = doc.text;
+        const beforeCodeBehind = cbPath ? await this.readTextIfExists(cbPath) : undefined;
+
+        const res = await engine.wireEvent(designerPath, id, eventName, handlerName);
+        if (!res.ok) {
+            vscode.window.showErrorMessage(`Event wiring failed: ${res.error}`);
+            return { ok: false, error: res.error };
+        }
+
+        if (res.changed || res.createdMethod) {
+            const afterDesigner = Buffer.from(await vscode.workspace.fs.readFile(doc.uri)).toString('utf8');
+            doc.text = afterDesigner;
+            const afterCodeBehind = cbPath ? await this.readTextIfExists(cbPath) : undefined;
+            await this.fireEdit(
+                doc, post, `Wire ${id}.${eventName ?? 'event'}`, beforeDesigner, afterDesigner,
+                cbPath ? { path: cbPath, before: beforeCodeBehind, after: afterCodeBehind } : undefined);
+        }
+
+        if (res.codeBehind && res.targetLine) {
+            try {
+                const docCode = await vscode.workspace.openTextDocument(res.codeBehind);
+                const editor = await vscode.window.showTextDocument(docCode, {
+                    viewColumn: vscode.ViewColumn.Active,
+                    preserveFocus: false,
+                });
+                const line = Math.max(0, (res.targetLine ?? 1) - 1);
+                const col = Math.max(0, (res.targetColumn ?? 1) - 1);
+                const pos = new vscode.Position(line, col);
+                editor.selection = new vscode.Selection(pos, pos);
+                editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+            } catch { /* navigation failure is non-fatal */ }
+        }
+
+        if (res.changed) {
+            const fresh = await engine.parse(designerPath);
+            if (fresh.ok) await post('load', fresh.schema);
+        }
+
+        return { ok: true };
+    }
+
+    private async doUnwireEvent(
+        doc: DesignerDocument,
+        post: (type: string, data?: unknown) => Thenable<boolean> | Promise<boolean>,
+        id: string,
+        eventName: string,
+    ): Promise<{ ok: boolean; error?: string }> {
+        const designerPath = doc.uri.fsPath;
+        const beforeDesigner = doc.text;
+
+        const res = await engine.unwireEvent(designerPath, id, eventName);
+        if (!res.ok) {
+            vscode.window.showErrorMessage(`Event unwiring failed: ${res.error}`);
+            return { ok: false, error: res.error };
+        }
+
+        if (res.changed) {
+            const afterDesigner = Buffer.from(await vscode.workspace.fs.readFile(doc.uri)).toString('utf8');
+            doc.text = afterDesigner;
+            await this.fireEdit(doc, post, `Unwire ${id}.${eventName}`, beforeDesigner, afterDesigner);
+            const fresh = await engine.parse(designerPath);
+            if (fresh.ok) await post('load', fresh.schema);
+        }
+
+        return { ok: true };
     }
 
     /**

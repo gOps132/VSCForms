@@ -171,6 +171,43 @@ public static class Program
                 };
             }
 
+            case "wireEvent":
+            {
+                if (string.IsNullOrEmpty(req.Path))
+                    throw new DesignException("path is required", "bad-request");
+                if (string.IsNullOrEmpty(req.ControlId))
+                    throw new DesignException("controlId is required", "bad-request");
+
+                var wired = EventScaffolder.Wire(
+                    req.Path, req.ControlId, req.EventName, req.HandlerName, stderr);
+                return new Response
+                {
+                    Id = req.Id, Ok = true, Changed = wired.ChangedDesigner,
+                    CodeBehind = wired.CodeBehindPath,
+                    TargetLine = wired.TargetLine,
+                    TargetColumn = wired.TargetColumn,
+                    CreatedMethod = wired.CreatedMethod,
+                };
+            }
+
+            case "unwireEvent":
+            {
+                if (string.IsNullOrEmpty(req.Path))
+                    throw new DesignException("path is required", "bad-request");
+                if (string.IsNullOrEmpty(req.ControlId))
+                    throw new DesignException("controlId is required", "bad-request");
+                if (string.IsNullOrEmpty(req.EventName))
+                    throw new DesignException("eventName is required", "bad-request");
+
+                var unwired = EventScaffolder.Unwire(
+                    req.Path, req.ControlId, req.EventName, stderr);
+                return new Response
+                {
+                    Id = req.Id, Ok = true, Changed = unwired.ChangedDesigner,
+                    CodeBehind = unwired.CodeBehindPath,
+                };
+            }
+
             default:
                 throw new DesignException($"Unknown command '{req.Cmd}'", "bad-request");
         }

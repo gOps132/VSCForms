@@ -340,6 +340,42 @@
 
     function simpleName(t) { const i = t.lastIndexOf('.'); return i < 0 ? t : t.slice(i + 1); }
 
+    function defaultEvent(simple) {
+        switch (simple) {
+            case 'Button':
+            case 'Label':
+            case 'PictureBox':
+            case 'Panel':
+            case 'GroupBox':
+            case 'ProgressBar':
+            case 'TabPage':
+                return 'Click';
+            case 'TextBox':
+                return 'TextChanged';
+            case 'CheckBox':
+            case 'RadioButton':
+                return 'CheckedChanged';
+            case 'ComboBox':
+            case 'ListBox':
+            case 'TabControl':
+            case 'ListView':
+                return 'SelectedIndexChanged';
+            case 'TrackBar':
+                return 'Scroll';
+            case 'NumericUpDown':
+            case 'DateTimePicker':
+                return 'ValueChanged';
+            case 'DataGridView':
+                return 'CellContentClick';
+            case 'TreeView':
+                return 'AfterSelect';
+            case 'Form':
+                return 'Load';
+            default:
+                return 'Click';
+        }
+    }
+
     /**
      * Types where an empty caption is meaningless to a user looking at the canvas, so we
      * show a faint type name instead. Everything else renders genuinely empty, because
@@ -732,6 +768,7 @@
         if (isContainer) node.classList.add('t-container');
 
         node.addEventListener('mousedown', (e) => {
+            activeZone = 'canvas';
             if (e.target.classList.contains('handle')) return;
             // A mousedown on a nested control bubbles to every ancestor container's
             // node. Without this guard the ancestor collapses the selection to itself
@@ -797,7 +834,7 @@
                 renderStatus('Entered ' + c.id + ' — double-click outside or press Escape to exit', 'ok');
             } else {
                 select(c.id);
-                beginTextEdit(c, node);
+                post('wireEvent', { id: c.id, event: defaultEvent(simple) });
             }
         });
         node.addEventListener('keydown', (e) => {
@@ -907,8 +944,14 @@
         const simple = simpleName(c.type);
         if (c.locked || readOnly) return;
         if (containerTypes().has(simple) || NO_TEXT.has(simple)) return;
-        if (node.querySelector('.text-edit')) return;
-        select(c.id);
+        if (node && node.querySelector('.text-edit')) return;
+        if (!selection.has(c.id) || selection.size !== 1) {
+            select(c.id);
+            node = document.querySelector(`.ctl[data-id="${c.id}"]`)
+                || ($('canvas') && [...$('canvas').querySelectorAll('.ctl')].find(n => n.dataset && n.dataset.id === c.id))
+                || node;
+        }
+        if (!node) return;
         const input = el('input', 'text-edit');
         input.type = 'text';
         input.value = c.properties.text ?? '';
@@ -1143,6 +1186,7 @@
      * is created lazily on first render.
      */
     let outlineEl = null;
+    let activeZone = 'canvas';
     function renderOutline() {
         const wb = document.querySelector('.workbench');
         if (!wb || !schema) return;
@@ -1213,6 +1257,7 @@
             row.appendChild(back);
         }
         row.addEventListener('mousedown', (e) => {
+            activeZone = 'outline';
             // A mousedown on the open rename field must not reselect and destroy it.
             if (e.target && e.target.classList && e.target.classList.contains('outline-rename')) return;
             e.stopPropagation();
@@ -3520,6 +3565,12 @@
             e.preventDefault();
             beginMarquee(e);
         });
+
+        canvas.addEventListener('dblclick', (e) => {
+            if (e.target !== canvas) return;
+            if (readOnly || !schema) return;
+            post('wireEvent', { id: schema.form.name, event: 'Load' });
+        });
     }
 
     function beginPan(e, host) {
@@ -3853,8 +3904,30 @@
             }
             // Escape clears the selection and cancels any in-progress gesture. Its absence is
             // felt: without it there is no way out of a selection short of clicking again.
-            // D6: F2 renames the single selected control through the existing rename path.
-            if (e.key === 'F2') { e.preventDefault(); beginOutlineRename(); return; }
+            if (e.key === 'F2') {
+                e.preventDefault();
+                if (activeZone === 'outline') {
+                    beginOutlineRename();
+                    return;
+                }
+                if (selection.size === 1) {
+                    const selId = [...selection][0];
+                    const selCtrl = findControl(selId);
+                    if (selCtrl && !selCtrl.locked && !readOnly) {
+                        const simple = simpleName(selCtrl.type);
+                        if (!NO_TEXT.has(simple) && !containerTypes().has(simple)) {
+                            const ctlNode = document.querySelector(`.ctl[data-id="${selId}"]`)
+                                || ($('canvas') && [...$('canvas').querySelectorAll('.ctl')].find(n => n.dataset && n.dataset.id === selId));
+                            if (ctlNode) {
+                                beginTextEdit(selCtrl, ctlNode);
+                                return;
+                            }
+                        }
+                    }
+                }
+                beginOutlineRename();
+                return;
+            }
             // Task 4 (#50) Enter adds the armed tool at a cascade slot in the
             // target parent (dblclick without a pointer). Plain Enter only — Ctrl
             // is untouched — and refused forms never arm, so there is nothing to add.

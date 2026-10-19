@@ -100,6 +100,7 @@ export class EngineClient implements vscode.Disposable {
         cmd: string; path?: string; schema?: unknown;
         name?: string; parent?: string; template?: string; language?: string;
         from?: string; to?: string;
+        controlId?: string; eventName?: string; handlerName?: string;
     }): Promise<EngineResponse> {
         const id = this.nextId++;
         const child = this.ensure();
@@ -155,6 +156,37 @@ export class EngineClient implements vscode.Disposable {
         return { ok: true, codeBehind: res.codeBehind, referenceCount: res.referenceCount ?? 0 };
     }
 
+    /**
+     * Wire an event on a control or form. Scaffolds or reuses a handler stub in Form.cs
+     * and adds the += wiring statement in Form.Designer.cs (ADR 0011).
+     */
+    async wireEvent(filePath: string, controlId: string, eventName?: string, handlerName?: string): Promise<WireEventResult> {
+        const res = await this.send({ cmd: 'wireEvent', path: filePath, controlId, eventName, handlerName });
+        if (!res.ok) {
+            return { ok: false, error: res.error ?? 'wireEvent refused', errorKind: res.errorKind ?? 'internal' };
+        }
+        return {
+            ok: true,
+            changed: res.changed === true,
+            codeBehind: res.codeBehind,
+            targetLine: res.targetLine,
+            targetColumn: res.targetColumn,
+            createdMethod: res.createdMethod === true,
+        };
+    }
+
+    /**
+     * Unwire an event on a control or form. Surgically removes the += wiring from
+     * Form.Designer.cs while leaving Form.cs untouched (ADR 0011).
+     */
+    async unwireEvent(filePath: string, controlId: string, eventName: string): Promise<UnwireEventResult> {
+        const res = await this.send({ cmd: 'unwireEvent', path: filePath, controlId, eventName });
+        if (!res.ok) {
+            return { ok: false, error: res.error ?? 'unwireEvent failed', errorKind: res.errorKind ?? 'internal' };
+        }
+        return { ok: true, changed: res.changed === true, codeBehind: res.codeBehind };
+    }
+
     /** Locate the bundled engine, honouring platform-targeted packaging. */
     static resolveEnginePath(context: vscode.ExtensionContext): string {
         const override = vscode.workspace.getConfiguration('vscforms').get<string>('enginePath');
@@ -185,6 +217,7 @@ export interface EngineResponse {
     error?: string; errorKind?: string; changed?: boolean;
     projectDir?: string; solution?: string; designer?: string; windowsTargetingAdded?: boolean;
     codeBehind?: string; referenceCount?: number;
+    targetLine?: number; targetColumn?: number; createdMethod?: boolean;
 }
 
 export type ParsedResult = { ok: true; schema: FormSchema } | { ok: false; error: string; errorKind: string };
@@ -197,6 +230,14 @@ export type NewProjectResult = {
 
 export type RenameResult =
     | { ok: true; codeBehind?: string; referenceCount: number }
+    | { ok: false; error: string; errorKind: string };
+
+export type WireEventResult =
+    | { ok: true; changed: boolean; codeBehind?: string; targetLine?: number; targetColumn?: number; createdMethod: boolean }
+    | { ok: false; error: string; errorKind: string };
+
+export type UnwireEventResult =
+    | { ok: true; changed: boolean; codeBehind?: string }
     | { ok: false; error: string; errorKind: string };
 
 // ---------------------------------------------------------------- SCHEMA.md

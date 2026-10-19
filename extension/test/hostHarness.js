@@ -436,40 +436,49 @@ setTimeout(async () => {
     check('the refusal names the reason',
         /not a reference/.test(String(ids.status.textContent)), String(ids.status.textContent));
 
-    // ---- D2 in-place Text edit: dblclick overlay commits via the Text path
+    // ---- A3 default event double-click scaffolding (ADR 0011)
     send({ type: 'load', data: schema });
     {
         const node = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        sandbox.__sent.length = 0;
         node.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
-        const overlay = node.querySelector('.text-edit');
-        check('double-click opens a text overlay on a text-bearing control', !!overlay);
-        check('overlay starts from the current text', !!overlay && overlay.value === 'Submit',
-            overlay ? JSON.stringify(overlay.value) : 'no overlay');
-        // Locked controls never get an overlay.
+        const wireMsg = sandbox.__sent.find((m) => m.type === 'wireEvent');
+        check('double-click posts wireEvent for default event', !!wireMsg);
+        check('wireEvent carries control id and default Click event',
+            !!wireMsg && wireMsg.data.id === 'btnSubmit' && wireMsg.data.event === 'Click');
+
+        // Locked controls never wire events on double click.
+        sandbox.__sent.length = 0;
         const lockedNode = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'ThirdPartyGauge');
         lockedNode.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
-        check('locked control gets no text overlay', !lockedNode.querySelector('.text-edit'));
-        // NO_TEXT types have no Text to edit.
-        const noTextSchema = JSON.parse(JSON.stringify(schema));
-        noTextSchema.controls.push({ id: 'prgLoad', type: 'System.Windows.Forms.ProgressBar', children: [], locked: false,
-            properties: { x: 10, y: 150, width: 140, height: 20 } });
-        send({ type: 'load', data: noTextSchema });
-        const prg = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'prgLoad');
-        prg.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
-        check('NO_TEXT control gets no text overlay', !prg.querySelector('.text-edit'));
-        // Refused forms are read-only: no overlay.
-        send({ type: 'load', data: { ...schema, analysis: { ...schema.analysis, refuses: ['dock-anchor'], warnings: [] } } });
-        const roNode = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
-        roNode.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
-        check('refused form gets no text overlay', !roNode.querySelector('.text-edit'));
-        // Fresh editable model for the commit round trip.
-        send({ type: 'load', data: schema });
-        const ed = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
-        ed.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
-        const edOverlay = ed.querySelector('.text-edit');
+        check('locked control does not post wireEvent', !sandbox.__sent.some((m) => m.type === 'wireEvent'));
+
+        // Double-clicking canvas background wires Form Load event.
         sandbox.__sent.length = 0;
-        edOverlay.value = 'Go';
-        edOverlay.dispatch('keydown', { key: 'Enter', preventDefault() { }, stopPropagation() { } });
+        ids.canvas.dispatch('dblclick', { target: ids.canvas, preventDefault() { }, stopPropagation() { } });
+        const formWire = sandbox.__sent.find((m) => m.type === 'wireEvent');
+        check('double-clicking canvas background posts Form Load wireEvent',
+            !!formWire && formWire.data.id === 'SimpleDialog' && formWire.data.event === 'Load');
+    }
+
+    // ---- D2 in-place Text edit via F2: commits via the Text path
+    send({ type: 'load', data: schema });
+    {
+        const node = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        node.dispatch('mousedown', { button: 0, clientX: 10, clientY: 10, preventDefault() { }, stopPropagation() { } });
+        winStub.dispatch('mouseup', { clientX: 10, clientY: 10, preventDefault() { }, stopPropagation() { } });
+        const stageEl = sandbox.document.querySelector('.stage');
+        stageEl.dispatch('keydown', { key: 'F2', preventDefault() { }, stopPropagation() { } });
+        const cur = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        const overlay = cur ? cur.querySelector('.text-edit') : null;
+        check('F2 opens a text overlay on a selected text-bearing control', !!overlay);
+        check('overlay starts from the current text', !!overlay && overlay.value === 'Submit',
+            overlay ? JSON.stringify(overlay.value) : 'no overlay');
+
+        // Fresh editable model for the commit round trip.
+        sandbox.__sent.length = 0;
+        overlay.value = 'Go';
+        overlay.dispatch('keydown', { key: 'Enter', preventDefault() { }, stopPropagation() { } });
     }
     await new Promise((r) => setTimeout(r, 350));
     {
@@ -481,12 +490,16 @@ setTimeout(async () => {
         // Escape cancels with no generate.
         send({ type: 'load', data: schema });
         const node2 = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
-        node2.dispatch('dblclick', { preventDefault() { }, stopPropagation() { } });
-        const ov2 = node2.querySelector('.text-edit');
+        node2.dispatch('mousedown', { button: 0, clientX: 10, clientY: 10, preventDefault() { }, stopPropagation() { } });
+        winStub.dispatch('mouseup', { clientX: 10, clientY: 10, preventDefault() { }, stopPropagation() { } });
+        const stageEl = sandbox.document.querySelector('.stage');
+        stageEl.dispatch('keydown', { key: 'F2', preventDefault() { }, stopPropagation() { } });
+        const cur2 = [...ids.canvas.querySelectorAll('.ctl')].find((n) => n.dataset.id === 'btnSubmit');
+        const ov2 = cur2 ? cur2.querySelector('.text-edit') : null;
         sandbox.__sent.length = 0;
         ov2.value = 'Nope';
         ov2.dispatch('keydown', { key: 'Escape', preventDefault() { }, stopPropagation() { } });
-        check('Escape removes the overlay', !node2.querySelector('.text-edit'));
+        check('Escape removes the overlay', !cur2.querySelector('.text-edit'));
     }
     await new Promise((r) => setTimeout(r, 350));
     check('Escape posts no commit', !sandbox.__sent.some((m) => m.type === 'commit'),

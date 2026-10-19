@@ -112,6 +112,11 @@ public sealed class Request
     // `rename` only. See docs/adr/0008-rename-boundary.md.
     [JsonPropertyName("from")] public string? From { get; set; }
     [JsonPropertyName("to")] public string? To { get; set; }
+
+    // `wireEvent` and `unwireEvent` only. See docs/adr/0011-event-scaffolding-boundary.md.
+    [JsonPropertyName("controlId")] public string? ControlId { get; set; }
+    [JsonPropertyName("eventName")] public string? EventName { get; set; }
+    [JsonPropertyName("handlerName")] public string? HandlerName { get; set; }
 }
 
 public sealed class Response
@@ -132,6 +137,11 @@ public sealed class Response
     // `rename` only.
     [JsonPropertyName("codeBehind")] public string? CodeBehind { get; set; }
     [JsonPropertyName("referenceCount")] public int? ReferenceCount { get; set; }
+
+    // `wireEvent` only.
+    [JsonPropertyName("targetLine")] public int? TargetLine { get; set; }
+    [JsonPropertyName("targetColumn")] public int? TargetColumn { get; set; }
+    [JsonPropertyName("createdMethod")] public bool? CreatedMethod { get; set; }
 }
 
 public static class Json
