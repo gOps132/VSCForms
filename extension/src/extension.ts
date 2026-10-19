@@ -584,6 +584,36 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
                 if (!res.ok) return { ok: false, error: res.error, errorKind: res.errorKind };
                 return { ok: true, designerPath: wanted, codeBehind: res.codeBehind };
             }
+            case 'wireEvent': {
+                const o = (arg ?? {}) as { designer?: string; controlId?: string; eventName?: string; handlerName?: string };
+                if (!o.designer || !o.controlId || !o.eventName) throw new Error('wireEvent seam needs designer, controlId and eventName');
+                const wanted = o.designer;
+                const entry = Array.from(this.documents.values())
+                    .find((e) => e.uri.fsPath === wanted);
+                if (!entry) throw new Error('that document is not open in a VSCForms canvas');
+                const panel = this.panels.get(entry.uri.toString());
+                if (!panel) throw new Error('no canvas panel for that document');
+                return this.doWireEvent(
+                    entry.doc,
+                    (t: string, d?: unknown) => panel.webview.postMessage({ type: t, data: d }),
+                    o.controlId, o.eventName, o.handlerName,
+                );
+            }
+            case 'unwireEvent': {
+                const o = (arg ?? {}) as { designer?: string; controlId?: string; eventName?: string };
+                if (!o.designer || !o.controlId || !o.eventName) throw new Error('unwireEvent seam needs designer, controlId and eventName');
+                const wanted = o.designer;
+                const entry = Array.from(this.documents.values())
+                    .find((e) => e.uri.fsPath === wanted);
+                if (!entry) throw new Error('that document is not open in a VSCForms canvas');
+                const panel = this.panels.get(entry.uri.toString());
+                if (!panel) throw new Error('no canvas panel for that document');
+                return this.doUnwireEvent(
+                    entry.doc,
+                    (t: string, d?: unknown) => panel.webview.postMessage({ type: t, data: d }),
+                    o.controlId, o.eventName,
+                );
+            }
             case 'newProject': {
                 // The command itself is two interactive dialogs, which the suite cannot drive.
                 // What is worth asserting is that the engine call the command makes works from

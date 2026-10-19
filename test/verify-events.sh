@@ -14,7 +14,7 @@ ENGINE=./engine/bin/Debug/net10.0/vscforms-engine
 [ -x "$ENGINE" ] || {
   dotnet build engine -v q --nologo >/dev/null 2>&1 || true
 }
-[ -x "$ENGINE" ] || { echo "SKIP  engine not built"; exit 0; }
+if [ ! -x "$ENGINE" ]; then echo "engine not built; run: dotnet build engine"; exit 1; fi
 
 WORK=$(mktemp -d)/events
 mkdir -p "$WORK"
@@ -29,6 +29,14 @@ stage() {
   echo "$d"
 }
 
+stage_events() {
+  local d="$WORK/$1"
+  mkdir -p "$d"
+  cp fixtures/events/EventsForm.Designer.cs "$d/"
+  cp fixtures/events/EventsForm.cs "$d/"
+  echo "$d"
+}
+
 wire_cmd() { # $1 dir, $2 ctrl, $3 event, $4 handler
   if [ -z "${4:-}" ]; then
     printf '{"id":1,"cmd":"wireEvent","path":"%s/WiredForm.Designer.cs","controlId":"%s","eventName":"%s"}\n' \
@@ -39,8 +47,23 @@ wire_cmd() { # $1 dir, $2 ctrl, $3 event, $4 handler
   fi
 }
 
+wire_custom_file() { # $1 path, $2 ctrl, $3 event, $4 handler
+  if [ -z "${4:-}" ]; then
+    printf '{"id":1,"cmd":"wireEvent","path":"%s","controlId":"%s","eventName":"%s"}\n' \
+      "$1" "$2" "$3" | "$ENGINE" 2>/dev/null
+  else
+    printf '{"id":1,"cmd":"wireEvent","path":"%s","controlId":"%s","eventName":"%s","handlerName":"%s"}\n' \
+      "$1" "$2" "$3" "$4" | "$ENGINE" 2>/dev/null
+  fi
+}
+
 unwire_cmd() { # $1 dir, $2 ctrl, $3 event
   printf '{"id":1,"cmd":"unwireEvent","path":"%s/WiredForm.Designer.cs","controlId":"%s","eventName":"%s"}\n' \
+    "$1" "$2" "$3" | "$ENGINE" 2>/dev/null
+}
+
+unwire_custom_file() { # $1 path, $2 ctrl, $3 event
+  printf '{"id":1,"cmd":"unwireEvent","path":"%s","controlId":"%s","eventName":"%s"}\n' \
     "$1" "$2" "$3" | "$ENGINE" 2>/dev/null
 }
 
@@ -215,6 +238,68 @@ if [ "$WIRED_IN_SCHEMA" = "OnCalculateRequested" ]; then
   ok "schema parse surfaces wired event handler in events dictionary"
 else
   bad "schema parse missing wired event, got: '$WIRED_IN_SCHEMA'"
+fi
+
+sect "8. Dedicated fixtures/events suite with Form, TextBox, CheckBox"
+EDIR=$(stage_events events_suite)
+compile "$EDIR"
+RES_FORM=$(wire_custom_file "$EDIR/EventsForm.Designer.cs" "EventsForm" "Load")
+if [ "$(echo "$RES_FORM" | kind)" = "ok" ] && grep -q "private void EventsForm_Load(object sender, EventArgs e)" "$EDIR/EventsForm.cs"; then
+  ok "scaffolds Form.Load handler into EventsForm.cs"
+else
+  bad "failed to scaffold Form.Load, got: $RES_FORM"
+fi
+
+if grep -q "this\.Load += new System\.EventHandler(this\.EventsForm_Load);" "$EDIR/EventsForm.Designer.cs"; then
+  ok "Designer wires Form.Load"
+else
+  bad "Designer missing Form.Load wiring"
+fi
+
+RES_TXT=$(wire_custom_file "$EDIR/EventsForm.Designer.cs" "txtInput" "TextChanged")
+if [ "$(echo "$RES_TXT" | kind)" = "ok" ] && grep -q "private void txtInput_TextChanged(object sender, EventArgs e)" "$EDIR/EventsForm.cs"; then
+  ok "scaffolds TextBox.TextChanged handler into EventsForm.cs"
+else
+  bad "failed to scaffold TextBox.TextChanged, got: $RES_TXT"
+fi
+
+RES_CHK=$(wire_custom_file "$EDIR/EventsForm.Designer.cs" "chkOption" "CheckedChanged")
+if [ "$(echo "$RES_CHK" | kind)" = "ok" ] && grep -q "private void chkOption_CheckedChanged(object sender, EventArgs e)" "$EDIR/EventsForm.cs"; then
+  ok "scaffolds CheckBox.CheckedChanged handler into EventsForm.cs"
+else
+  bad "failed to scaffold CheckBox.CheckedChanged, got: $RES_CHK"
+fi
+
+EOUT=$(build_fails "$EDIR")
+if [ $? -eq 0 ]; then
+  ok "EventsForm project with multi-control event wirings compiles cleanly"
+else
+  bad "EventsForm build failed: $EOUT"
+fi
+
+sect "9. Byte-level preservation (CRLF/LF, indentation, line endings)"
+CRLF_DIR="$WORK/crlf_check"
+mkdir -p "$CRLF_DIR"
+python3 -c "
+for f in ['EventsForm.Designer.cs', 'EventsForm.cs']:
+    txt = open('fixtures/events/' + f, 'r', encoding='utf-8').read().replace('\r\n', '\n').replace('\n', '\r\n')
+    open('$CRLF_DIR/' + f, 'wb').write(txt.encode('utf-8'))
+"
+compile "$CRLF_DIR"
+wire_custom_file "$CRLF_DIR/EventsForm.Designer.cs" "txtInput" "TextChanged" >/dev/null
+CRLF_CHECK=$(python3 -c "
+def check_crlf(p):
+    d = open(p, 'rb').read()
+    if b'\r\n' not in d: return False
+    return b'\n' not in d.replace(b'\r\n', b'')
+d_ok = check_crlf('$CRLF_DIR/EventsForm.Designer.cs')
+c_ok = check_crlf('$CRLF_DIR/EventsForm.cs')
+print('ok' if (d_ok and c_ok) else 'fail')
+")
+if [ "$CRLF_CHECK" = "ok" ]; then
+  ok "CRLF line endings preserved across both files"
+else
+  bad "CRLF line endings were not preserved"
 fi
 
 echo

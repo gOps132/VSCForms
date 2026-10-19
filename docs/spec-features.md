@@ -147,7 +147,7 @@ churn on every edit, which is exactly what the dialect work exists to prevent.
 | **Multi-select, align, distribute** | M | QOL; see `spec-canvas-qol.md` §3. Pure geometry over data we already hold |
 | **Copy / paste / duplicate** | S–M | `Cmd/Ctrl+D` is the cheap version |
 | **Z-order** | M + **protocol change** | **Shipped** (ADR 0009): the array order is the paint order (index 0 = front) and `generate` moves `Controls.Add` lines verbatim — a move, never delete+insert, so unmodelled properties survive. A duplicated Add refuses the reorder (`ambiguous-order`) |
-| **Event scaffolding** (`btnSubmit_Click`) | M | Deliberately absent (v1). Note it is a *bigger* claim on the hand-written `Form1.cs` than rename was — ADR 0008 is the precedent for how to bound that |
+| **Event scaffolding** (`btnSubmit_Click`) | M | **Shipped** (ADR 0011): Dedicated `wireEvent`/`unwireEvent` commands, dual-file surgical patch across `Form.Designer.cs` (`+=` subscription) and `Form.cs` (method stub) with exact dialect matching, method reuse, line position return for VS Code navigation, refusal enforcement (`no-code-behind`, `locked`, `refused-form`), multi-file undo/redo via `CustomDocumentEditEvent`, and Inspector Events tab (⚡) with Categorized and Alphabetical views plus double-click default event wiring |
 | **Tab order / tab index editing** | S | `TabIndex` exists in the schema and the canvas; the *ordering* UI does not |
 | **Resource editing** (images for `PictureBox`) | L | Needs image serialisation. Out of scope |
 | **UserControl composition** | L | A nested designer. Genuinely a different product |

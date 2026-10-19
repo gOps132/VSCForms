@@ -27,6 +27,9 @@ step "Designer dialects (templated, bare, this-style)"
 step "control rename (the one operation that leaves the Designer File)"
 ./test/verify-rename.sh || FAIL=1
 
+step "event wiring & scaffolding (dual-file patch + code-behind)"
+./test/verify-events.sh || FAIL=1
+
 step "project generator"
 ./test/verify-generator.sh || FAIL=1
 

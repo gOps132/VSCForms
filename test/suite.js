@@ -306,6 +306,47 @@ async function run(vscode) {
             'redo() did not re-apply the code-behind rename');
     });
 
+    await test('wireEvent scaffolds both files and undo restores both files byte-for-byte (#57, #60)', async () => {
+        const wiredDesigner = path.join(dir, 'Wired.Designer.cs');
+        const wiredCodeBehind = path.join(dir, 'Wired.cs');
+        const preEvent = [
+            fs.readFileSync(wiredDesigner, 'utf8'),
+            fs.readFileSync(wiredCodeBehind, 'utf8'),
+        ];
+
+        const r = await vscode.commands.executeCommand(
+            'vscforms._testSeam', 'wireEvent', {
+                designer: wiredDesigner,
+                controlId: 'lblResult',
+                eventName: 'Click',
+            });
+        assert.ok(r.ok, 'wireEvent failed: ' + (r && r.error));
+        assert.strictEqual(r.handlerName, 'lblResult_Click');
+
+        const designerAfter = fs.readFileSync(wiredDesigner, 'utf8');
+        const codeBehindAfter = fs.readFileSync(wiredCodeBehind, 'utf8');
+        assert.ok(designerAfter.includes('lblResult.Click += new System.EventHandler(this.lblResult_Click);'),
+            'Designer File missing wire statement');
+        assert.ok(codeBehindAfter.includes('private void lblResult_Click(object sender, EventArgs e)'),
+            'code-behind missing scaffolded method');
+
+        // Multi-file undo: one Ctrl+Z restores both files byte-for-byte
+        await seam('undo');
+        await sleep(400);
+        assert.strictEqual(fs.readFileSync(wiredDesigner, 'utf8'), preEvent[0],
+            'undo() did not restore the Designer File byte-for-byte after wireEvent');
+        assert.strictEqual(fs.readFileSync(wiredCodeBehind, 'utf8'), preEvent[1],
+            'undo() did not restore the code-behind byte-for-byte after wireEvent');
+
+        // Multi-file redo: restores the wiring in Designer and stub in code-behind
+        await seam('redo');
+        await sleep(400);
+        assert.strictEqual(fs.readFileSync(wiredDesigner, 'utf8'), designerAfter,
+            'redo() did not restore the Designer File wiring');
+        assert.strictEqual(fs.readFileSync(wiredCodeBehind, 'utf8'), codeBehindAfter,
+            'redo() did not restore the code-behind stub');
+    });
+
     await test('*.Designer.cs opens in OUR editor by default (priority "default")', () => {
         assert.ok(isOurEditor(vscode),
             'active tab is not our custom editor — priority may be "option", which never auto-opens');

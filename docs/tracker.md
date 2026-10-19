@@ -37,7 +37,8 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   ClientSize/Text/BackColor.
 - **Engine commands:** `parse`, `generate`, `ping`, `new` (project
   generation), `rename` (Designer File + code-behind member-access receivers
-  only, ADR 0008).
+  only, ADR 0008), `wireEvent`, `unwireEvent` (dual-file surgical patch across
+  `Form.Designer.cs` and `Form.cs`, ADR 0011).
 - **Canvas toolset:** drag, 8-handle resize, snap (grid-size setting + SnapLines
   edges/centers/baselines with magnetic pull on move/resize/multi + Alt-suppress
   + SnapLines/grid-only mode, all toggleable),
@@ -58,7 +59,8 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   Bring to Front / Send to Back (z-order: array order is paint order, index 0 = front),
    inspector bold+Reset (edited-since-load rows bold, Reset deletes the model key),
    multi-select common-props intersection (agreed or blank, geometry stays on group ops),
-   hardcoded description pane, read-only Events note (A3 still missing).
+   hardcoded description pane, inspector Events tab (⚡) with Categorized and Alphabetical views,
+   double-click on canvas to scaffold default event (F2 for in-place text edit).
 - **Project & run:** `VSCForms: New Project…` (classic `.sln`, BOM/CRLF-safe
   csproj edit), `VSCForms: Run in Wine` + editor play button + `F5`.
 - **Refusals (correct behaviour, not gaps):** `ApplyResources` (41.6% of
@@ -88,7 +90,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 |---|---|---|---|---|---|
 | A1 | Z-order (Bring to Front / Send to Back) | shipped | M + protocol | `spec-features.md` §4, `spec-canvas-qol.md` §4 | Array order is paint order (index 0 = front); `generate` moves `Controls.Add` lines verbatim, never delete+insert. Inspector buttons ride `commit()`; duplicated Add refuses (`ambiguous-order`). ADR 0009. (#2) |
 | A2 | Clipboard copy/paste | shipped | S–M | `spec-canvas-qol.md` §8 decision 5 | `copy`/`requestPaste`/`paste` host round-trip via system clipboard (`vscforms-controls-v1:` wire format); Ctrl/Cmd+C/V. Reuses duplicate kernel; locked filtered, refused guarded, unhandled paste lands locked. (#3) |
-| A3 | Event scaffolding (`btn_Click` generation) | missing | M | `spec-features.md` §4 | Deliberately absent v1. Bigger claim on hand-written `Form1.cs` than rename; ADR 0008 is the bounding precedent. |
+| A3 | Event scaffolding (`btn_Click` generation) | shipped | M | `spec-features.md` §4, ADR 0011 | Dedicated `wireEvent`/`unwireEvent` stdio commands, dual-file surgical patch across `Form.Designer.cs` and `Form.cs`, dialect matching, method reuse, VS Code cursor jump, Inspector Events tab (⚡) with Categorized/Alphabetical views, double-click canvas default event (Text edit on F2). Covered by `verify-events.sh`. (#4) |
 | A4 | Tab-order editing UI | shipped | S | `spec-features.md` §4 | Mode toggle in status bar: badges show TabIndex, mousedown assigns next in click order (existing setProp/INSERT path). Esc exits; refused forms stay out; dblclick suppressed in mode. TabStop not modelled. (#5) |
 | A5 | `ComboBox`/`ListBox` follow-ups: `SelectedIndex`/`SelectedItem`, `DropDownStyle`, drag-reorder | shipped (drag-reorder parked) | S–M | `spec-items.md` §0, §7 | `SelectedIndex` (incl. `-1`), `SelectedItem`, `DropDownStyle` end-to-end with INSERT paths + fixtures. Drag-reorder is a separate change, still open. (#6) |
 | A6 | Resource/image editing (`PictureBox` images) | missing | L | `spec-features.md` §4 | Needs image serialisation. Out of scope. |
