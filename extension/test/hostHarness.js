@@ -3336,6 +3336,34 @@ setTimeout(async () => {
         const wireMsg = sandbox.__sent.find((m) => m.type === 'wireEvent');
         check('double-clicking event row posts wireEvent', !!wireMsg && wireMsg.data.id === 'btnSubmit' && wireMsg.data.event === 'MouseEnter');
 
+        // Custom handler binding: typing custom name and pressing Enter
+        sandbox.__sent.length = 0;
+        const clickInputEl = wiredClickRow.querySelector('.event-handler-input');
+        clickInputEl.value = 'MyCustomSubmitHandler';
+        clickInputEl.dispatch('keydown', { key: 'Enter', preventDefault() {} });
+        const customWireMsg = sandbox.__sent.find((m) => m.type === 'wireEvent');
+        check('typing custom handler name and pressing Enter posts wireEvent with handler',
+            !!customWireMsg && customWireMsg.data.id === 'btnSubmit' && customWireMsg.data.event === 'Click' && customWireMsg.data.handler === 'MyCustomSubmitHandler');
+
+        // Unwiring via Reset button
+        const eventResetBtn = wiredClickRow.querySelector('.prop-reset');
+        check('wired event row offers Reset button', !!eventResetBtn);
+        if (eventResetBtn) {
+            sandbox.__sent.length = 0;
+            eventResetBtn.dispatch('click', { stopPropagation() {} });
+            const unwireMsg = sandbox.__sent.find((m) => m.type === 'unwireEvent');
+            check('clicking Reset on wired event posts unwireEvent',
+                !!unwireMsg && unwireMsg.data.id === 'btnSubmit' && unwireMsg.data.event === 'Click');
+        }
+
+        // Unwiring by clearing the input
+        sandbox.__sent.length = 0;
+        clickInputEl.value = '';
+        clickInputEl.dispatch('keydown', { key: 'Enter', preventDefault() {} });
+        const clearUnwireMsg = sandbox.__sent.find((m) => m.type === 'unwireEvent');
+        check('clearing input and pressing Enter posts unwireEvent',
+            !!clearUnwireMsg && clearUnwireMsg.data.id === 'btnSubmit' && clearUnwireMsg.data.event === 'Click');
+
         // Views: Categorized vs Alphabetical on Events tab
         const viewBtns = () => ids.inspector.querySelectorAll('.inspector-view-btn');
         const catBtn = () => [...viewBtns()].find((b) => b.dataset.view === 'categorized');

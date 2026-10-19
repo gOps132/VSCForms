@@ -184,6 +184,39 @@ else
   bad "expected locked, got: $RES"
 fi
 
+sect "6. Custom handler binding"
+DIR=$(stage custom_handler)
+compile "$DIR"
+RES=$(wire_cmd "$DIR" "btnCalculate" "Click" "OnCalculateRequested")
+K=$(echo "$RES" | kind)
+if [ "$K" = "ok" ] && grep -q "private void OnCalculateRequested(object sender, EventArgs e)" "$DIR/WiredForm.cs"; then
+  ok "scaffolds custom handler name OnCalculateRequested"
+else
+  bad "failed to scaffold custom handler name, got: $RES"
+fi
+
+if grep -q "btnCalculate.Click +=.*OnCalculateRequested" "$DIR/WiredForm.Designer.cs"; then
+  ok "Designer wires to custom handler name"
+else
+  bad "Designer did not wire to custom handler name"
+fi
+
+OUT=$(build_fails "$DIR")
+if [ $? -eq 0 ]; then
+  ok "custom handler project compiles cleanly"
+else
+  bad "custom handler build failed: $OUT"
+fi
+
+sect "7. Schema event parsing"
+PARSE_RES=$(printf '{"id":1,"cmd":"parse","path":"%s/WiredForm.Designer.cs"}\n' "$DIR" | "$ENGINE" 2>/dev/null)
+WIRED_IN_SCHEMA=$(python3 -c "import json,sys; d=json.load(sys.stdin); c=next(x for x in d['schema']['controls'] if x['id']=='btnCalculate'); print(c.get('events',{}).get('Click',''))" <<< "$PARSE_RES")
+if [ "$WIRED_IN_SCHEMA" = "OnCalculateRequested" ]; then
+  ok "schema parse surfaces wired event handler in events dictionary"
+else
+  bad "schema parse missing wired event, got: '$WIRED_IN_SCHEMA'"
+fi
+
 echo
 echo "========================================"
 echo "Results: $PASS passed, $FAIL failed"
