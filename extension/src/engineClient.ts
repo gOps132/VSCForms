@@ -252,6 +252,7 @@ export interface FormInfo {
     name: string; text: string;
     clientSize: { width: number; height: number };
     className: string;
+    events?: Record<string, string>;
 }
 export interface Analysis {
     modelledCount: number; unmodelledCount: number; coveragePercent: number;
@@ -261,6 +262,7 @@ export interface ControlNode {
     id: string; type: string; children: ControlNode[];
     properties: ControlProperties;
     locked: boolean; lockedReason?: string;
+    events?: Record<string, string>;
 }
 export interface ControlProperties {
     x: number; y: number; width: number; height: number;

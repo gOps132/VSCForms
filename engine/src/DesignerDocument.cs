@@ -62,6 +62,7 @@ public sealed class DesignerDocument
         public required ExpressionStatementSyntax InitAssignment { get; init; }
         public ExpressionStatementSyntax? AddCall { get; set; }
         public Dictionary<string, AssignmentExpressionSyntax> Properties { get; init; } = new();
+        public Dictionary<string, string> Events { get; init; } = new(StringComparer.Ordinal);
         /// <summary>Container field name this control was added to, or null for top level.</summary>
         public string? Parent { get; set; }
         /// <summary>Statements that populate Items (Add/AddRange). Order matters — it IS the list.</summary>
@@ -121,6 +122,7 @@ public sealed class DesignerDocument
         // Assigned (not OR-ed) so the LAST add call decides — files are consistent, and
         // OR-ing would let one stray line flip the convention.
         bool qualifiedControlsCollection = false;
+        var formEvents = new Dictionary<string, string>(StringComparer.Ordinal);
 
         // A single pass resolves instantiations, field declarations, property assignments and
         // `Controls.Add` calls. Order is not assumed: a control's Add call can appear before
@@ -220,13 +222,42 @@ public sealed class DesignerDocument
                 continue;
             }
 
+            // x.Event += rhs / this.Event += rhs
             // x.Prop = rhs;   The CONTROL is plhs.Expression (either `this.x` or bare `x`) and the
             // PROPERTY is plhs.Name. Both dialects handled by TryGetControlName.
-            if (es.Expression is AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax plhs } assign
-                && TryGetControlName(plhs.Expression, out var ctrl)
-                && index.TryGetValue(ctrl, out var target))
+            if (es.Expression is AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax plhs } assign)
             {
-                target.Properties[plhs.Name.Identifier.Text] = assign;
+                if (assign.IsKind(SyntaxKind.AddAssignmentExpression))
+                {
+                    var handler = EventScaffolder.ExtractHandlerIdentifier(assign.Right);
+                    if (handler is not null)
+                    {
+                        if (plhs.Expression is ThisExpressionSyntax)
+                        {
+                            formEvents[plhs.Name.Identifier.Text] = handler;
+                        }
+                        else if (TryGetControlName(plhs.Expression, out var ctrl) && index.TryGetValue(ctrl, out var target))
+                        {
+                            target.Events[plhs.Name.Identifier.Text] = handler;
+                        }
+                    }
+                    continue;
+                }
+
+                if (TryGetControlName(plhs.Expression, out var ctrlProp)
+                    && index.TryGetValue(ctrlProp, out var targetProp))
+                {
+                    targetProp.Properties[plhs.Name.Identifier.Text] = assign;
+                }
+            }
+            else if (es.Expression is AssignmentExpressionSyntax { Left: IdentifierNameSyntax bareId } bareAssign
+                && bareAssign.IsKind(SyntaxKind.AddAssignmentExpression))
+            {
+                var handler = EventScaffolder.ExtractHandlerIdentifier(bareAssign.Right);
+                if (handler is not null)
+                {
+                    formEvents[bareId.Identifier.Text] = handler;
+                }
             }
         }
 
@@ -239,7 +270,7 @@ public sealed class DesignerDocument
         }
 
         var analysis = Analyse(ic, index);
-        var schema = BuildSchema(formType, ic, index, analysis);
+        var schema = BuildSchema(formType, ic, index, analysis, formEvents);
 
         // Declared style fills a gap; it never overrides observation. Only consulted when the
         // file contains no instantiation and therefore no evidence either way — the templated
@@ -468,7 +499,7 @@ public sealed class DesignerDocument
     // ------------------------------------------------------------- schema
 
     private static FormSchema BuildSchema(TypeDeclarationSyntax formType, MethodDeclarationSyntax ic,
-        Dictionary<string, ControlSyntax> index, AnalysisResult analysis)
+        Dictionary<string, ControlSyntax> index, AnalysisResult analysis, Dictionary<string, string> formEvents)
     {
         var modelled = 0;
         var unmodelled = 0;
@@ -515,6 +546,7 @@ public sealed class DesignerDocument
                 Locked = !handled,
                 LockedReason = handled ? null : TypeTable.LockedReason(cs.Type),
                 Children = new List<ControlNode>(),
+                Events = new Dictionary<string, string>(cs.Events, StringComparer.Ordinal),
             };
 
             if (TypeTable.IsContainer(cs.Type))
@@ -548,6 +580,7 @@ public sealed class DesignerDocument
                 Text = ReadFormText(ic) ?? "",
                 ClientSize = clientSize,
                 BackColor = ReadFormBackColor(ic),
+                Events = formEvents,
             },
             Controls = controls,
             Analysis = new Analysis

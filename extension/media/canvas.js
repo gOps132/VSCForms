@@ -58,6 +58,7 @@
      * source, mirroring VS `[Category]` values (spec-property-tabs §§1–2).
      */
     let inspectorView = 'flat'; // 'flat' | 'categorized' | 'alphabetical'
+    let inspectorTab = 'properties'; // 'properties' | 'events'
     /** Filter text for the Controls toolbox. View state: never committed, never undoable. */
     let toolboxFilter = '';
     /**
@@ -2315,8 +2316,12 @@
         if (sel.length === 0) {
             renderFormInspector(box);
             applyInspectorView(box);
-            decorateInspectorRows(box, null);
-            renderInspectorDescription(box, `${schema.form.name} (Form) — focus a row to read its description.`);
+            if (inspectorTab === 'properties') {
+                decorateInspectorRows(box, null);
+                renderInspectorDescription(box, `${schema.form.name} (Form) — focus a row to read its description.`);
+            } else {
+                renderInspectorDescription(box, `${schema.form.name} (Form) — focus an event to read its description.`);
+            }
             applyInspectorFilter();
             return;
         }
@@ -2337,6 +2342,25 @@
         const simple = simpleName(c.type);
         box.appendChild(el('h3', null, `${simple} — ${c.id}`));
         renderInspectorViewToggle(box);
+
+        if (inspectorTab === 'events') {
+            if (c.locked) {
+                const n = el('div', 'field');
+                n.appendChild(el('div', 'note warn', c.lockedReason || 'Not modelled.'));
+                box.appendChild(n);
+            }
+            if (readOnly) {
+                const n = el('div', 'field');
+                n.appendChild(el('div', 'note warn',
+                    'This form is read-only in VSCForms. Open it as text to edit it.'));
+                box.appendChild(n);
+            }
+            renderEventsInspector(box, c);
+            applyInspectorView(box);
+            renderInspectorDescription(box, `${simple} ${c.id} — focus an event to read its description.`);
+            applyInspectorFilter();
+            return;
+        }
 
         if (c.locked) {
             const n = el('div', 'field');
@@ -2581,6 +2605,10 @@
                 'This form is read-only in VSCForms. Open it as text to edit it.'));
             box.appendChild(n);
         }
+        if (inspectorTab === 'events') {
+            renderEventsInspector(box, null);
+            return;
+        }
         box.appendChild(strField('Title (Text)', schema.form.text || '', readOnly, (v) => {
             schema.form.text = v;
             commit();
@@ -2616,6 +2644,8 @@
      * MOVED, not rebuilt, so field listeners and in-progress input survive the switch.
      */
     function renderInspectorViewToggle(box) {
+        const toolbar = el('div', 'inspector-toolbar');
+
         const wrap = el('div', 'inspector-view');
         wrap.setAttribute('role', 'group');
         wrap.title = 'Inspector view. Switching views never touches the file.';
@@ -2634,7 +2664,105 @@
             });
             wrap.appendChild(b);
         }
-        box.appendChild(wrap);
+        toolbar.appendChild(wrap);
+
+        const tabs = el('div', 'inspector-tabs');
+        tabs.setAttribute('role', 'group');
+        tabs.title = 'Switch between Properties and Events';
+        for (const [tab, icon, label] of [['properties', '🔧', 'Properties'], ['events', '⚡', 'Events']]) {
+            const b = el('button', 'inspector-tab-btn', icon);
+            b.dataset.tab = tab;
+            b.setAttribute('aria-label', label);
+            if (inspectorTab === tab) b.setAttribute('aria-pressed', 'true');
+            else b.setAttribute('aria-pressed', 'false');
+            b.title = `${label} view (${icon}). Switching tabs never touches the file.`;
+            b.addEventListener('click', () => {
+                if (inspectorTab === tab) return;
+                inspectorTab = tab;
+                renderInspector();
+            });
+            tabs.appendChild(b);
+        }
+        toolbar.appendChild(tabs);
+
+        box.appendChild(toolbar);
+    }
+
+    function renderEventsInspector(box, c) {
+        const targetId = c ? c.id : (schema && schema.form ? schema.form.name : 'Form1');
+        const simple = c ? simpleName(c.type) : 'Form';
+        const eventsMap = (c ? c.events : (schema && schema.form ? schema.form.events : null)) || {};
+        const isLocked = c ? c.locked : false;
+        const evList = eventsForTarget(simple, eventsMap);
+
+        for (const ev of evList) {
+            const f = el('div', 'field');
+            f.classList.add('event-row');
+            f.dataset.prop = ev.name;
+            f.dataset.cat = ev.cat;
+
+            const row = el('div', 'row');
+            const lbl = el('label', 'field-label', ev.name);
+            lbl.setAttribute('title', ev.desc);
+            row.appendChild(lbl);
+
+            const currentHandler = eventsMap[ev.name] || '';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'event-handler-input';
+            input.value = currentHandler;
+            if (currentHandler) {
+                f.classList.add('changed');
+            }
+            if (isLocked || readOnly) {
+                input.disabled = true;
+            }
+
+            f.addEventListener('dblclick', (e) => {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (isLocked || readOnly) return;
+                const h = input.value.trim() || undefined;
+                post('wireEvent', { id: targetId, event: ev.name, handler: h });
+            });
+
+            const commitHandler = () => {
+                if (isLocked || readOnly) return;
+                const val = input.value.trim();
+                if (val === currentHandler) return;
+                if (val) {
+                    post('wireEvent', { id: targetId, event: ev.name, handler: val });
+                } else if (currentHandler) {
+                    post('unwireEvent', { id: targetId, event: ev.name });
+                }
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitHandler();
+                } else if (e.key === 'Escape') {
+                    input.value = currentHandler;
+                    input.blur();
+                }
+            });
+            input.addEventListener('change', commitHandler);
+            input.addEventListener('focus', () => showDescription(ev.name));
+
+            row.appendChild(input);
+
+            if (currentHandler && !isLocked && !readOnly) {
+                const b = el('button', 'prop-reset', 'Reset');
+                b.title = 'Reset: unwire this event';
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    post('unwireEvent', { id: targetId, event: ev.name });
+                });
+                row.appendChild(b);
+            }
+
+            f.appendChild(row);
+            box.appendChild(f);
+        }
     }
 
     function applyInspectorView(box) {
@@ -2883,6 +3011,128 @@
      * pane is text, and Events is a note — no schema/protocol change, no ADR.
      */
 
+    // -------------------------------------------------- WinForms Event Catalog
+    const CONTROL_BASE_EVENTS = [
+        { name: 'Click', cat: 'Action', desc: 'Occurs when the control is clicked.' },
+        { name: 'DoubleClick', cat: 'Action', desc: 'Occurs when the control is double-clicked.' },
+        { name: 'Paint', cat: 'Appearance', desc: 'Occurs when the control is redrawn.' },
+        { name: 'Enter', cat: 'Focus', desc: 'Occurs when the control enters focus.' },
+        { name: 'Leave', cat: 'Focus', desc: 'Occurs when the control leaves focus.' },
+        { name: 'Validating', cat: 'Focus', desc: 'Occurs when the control is validating.' },
+        { name: 'Validated', cat: 'Focus', desc: 'Occurs when the control is finished validating.' },
+        { name: 'KeyDown', cat: 'Key', desc: 'Occurs when a key is pressed down while the control has focus.' },
+        { name: 'KeyPress', cat: 'Key', desc: 'Occurs when a character key is pressed while the control has focus.' },
+        { name: 'KeyUp', cat: 'Key', desc: 'Occurs when a key is released while the control has focus.' },
+        { name: 'Layout', cat: 'Layout', desc: 'Occurs when the control positions its child controls.' },
+        { name: 'Move', cat: 'Layout', desc: 'Occurs when the control is moved.' },
+        { name: 'Resize', cat: 'Layout', desc: 'Occurs when the control is resized.' },
+        { name: 'MouseClick', cat: 'Mouse', desc: 'Occurs when the control is clicked by the mouse.' },
+        { name: 'MouseDoubleClick', cat: 'Mouse', desc: 'Occurs when the control is double-clicked by the mouse.' },
+        { name: 'MouseDown', cat: 'Mouse', desc: 'Occurs when the mouse pointer is over the control and a mouse button is pressed.' },
+        { name: 'MouseEnter', cat: 'Mouse', desc: 'Occurs when the mouse pointer enters the control.' },
+        { name: 'MouseHover', cat: 'Mouse', desc: 'Occurs when the mouse pointer hovers over the control.' },
+        { name: 'MouseLeave', cat: 'Mouse', desc: 'Occurs when the mouse pointer leaves the control.' },
+        { name: 'MouseMove', cat: 'Mouse', desc: 'Occurs when the mouse pointer is moved over the control.' },
+        { name: 'MouseUp', cat: 'Mouse', desc: 'Occurs when the mouse pointer is over the control and a mouse button is released.' },
+        { name: 'BackColorChanged', cat: 'Property Changed', desc: 'Occurs when the BackColor property value changes.' },
+        { name: 'FontChanged', cat: 'Property Changed', desc: 'Occurs when the Font property value changes.' },
+        { name: 'ForeColorChanged', cat: 'Property Changed', desc: 'Occurs when the ForeColor property value changes.' },
+        { name: 'LocationChanged', cat: 'Property Changed', desc: 'Occurs when the Location property value changes.' },
+        { name: 'SizeChanged', cat: 'Property Changed', desc: 'Occurs when the Size property value changes.' },
+        { name: 'TextChanged', cat: 'Property Changed', desc: 'Occurs when the Text property value changes.' },
+        { name: 'VisibleChanged', cat: 'Property Changed', desc: 'Occurs when the Visible property value changes.' },
+        { name: 'EnabledChanged', cat: 'Property Changed', desc: 'Occurs when the Enabled property value changes.' },
+    ];
+
+    const TYPE_SPECIFIC_EVENTS = {
+        TextBox: [
+            { name: 'TextChanged', cat: 'Action', desc: 'Occurs when the Text property value changes.' },
+            { name: 'ReadOnlyChanged', cat: 'Behavior', desc: 'Occurs when the ReadOnly property value changes.' },
+        ],
+        CheckBox: [
+            { name: 'CheckedChanged', cat: 'Action', desc: 'Occurs when the Checked property value changes.' },
+            { name: 'CheckStateChanged', cat: 'Action', desc: 'Occurs when the CheckState property value changes.' },
+        ],
+        RadioButton: [
+            { name: 'CheckedChanged', cat: 'Action', desc: 'Occurs when the Checked property value changes.' },
+        ],
+        ComboBox: [
+            { name: 'SelectedIndexChanged', cat: 'Behavior', desc: 'Occurs when the SelectedIndex property changes.' },
+            { name: 'SelectedValueChanged', cat: 'Behavior', desc: 'Occurs when the SelectedValue property changes.' },
+            { name: 'DropDown', cat: 'Behavior', desc: 'Occurs when the drop-down portion is displayed.' },
+            { name: 'DropDownClosed', cat: 'Behavior', desc: 'Occurs when the drop-down portion has closed.' },
+            { name: 'DropDownStyleChanged', cat: 'Behavior', desc: 'Occurs when the DropDownStyle property changes.' },
+        ],
+        ListBox: [
+            { name: 'SelectedIndexChanged', cat: 'Behavior', desc: 'Occurs when the SelectedIndex property changes.' },
+            { name: 'SelectedValueChanged', cat: 'Behavior', desc: 'Occurs when the SelectedValue property changes.' },
+        ],
+        TrackBar: [
+            { name: 'Scroll', cat: 'Action', desc: 'Occurs when either a mouse or keyboard action moves the scroll box.' },
+            { name: 'ValueChanged', cat: 'Action', desc: 'Occurs when the Value property changes.' },
+        ],
+        NumericUpDown: [
+            { name: 'ValueChanged', cat: 'Action', desc: 'Occurs when the Value property changes.' },
+        ],
+        DateTimePicker: [
+            { name: 'ValueChanged', cat: 'Action', desc: 'Occurs when the Value property changes.' },
+            { name: 'CloseUp', cat: 'Behavior', desc: 'Occurs when the drop-down calendar is dismissed.' },
+            { name: 'DropDown', cat: 'Behavior', desc: 'Occurs when the drop-down calendar is shown.' },
+        ],
+        TabControl: [
+            { name: 'SelectedIndexChanged', cat: 'Behavior', desc: 'Occurs when the SelectedIndex property changes.' },
+            { name: 'Selected', cat: 'Behavior', desc: 'Occurs when a tab is selected.' },
+            { name: 'Deselected', cat: 'Behavior', desc: 'Occurs when a tab is deselected.' },
+        ],
+        TreeView: [
+            { name: 'AfterSelect', cat: 'Behavior', desc: 'Occurs after the tree node is selected.' },
+            { name: 'BeforeSelect', cat: 'Behavior', desc: 'Occurs before the tree node is selected.' },
+            { name: 'NodeMouseClick', cat: 'Mouse', desc: 'Occurs when the user clicks a TreeNode with the mouse.' },
+            { name: 'NodeMouseDoubleClick', cat: 'Mouse', desc: 'Occurs when the user double-clicks a TreeNode with the mouse.' },
+        ],
+        DataGridView: [
+            { name: 'CellClick', cat: 'Action', desc: 'Occurs when any part of a cell is clicked.' },
+            { name: 'CellContentClick', cat: 'Action', desc: 'Occurs when content within a cell is clicked.' },
+            { name: 'CellValueChanged', cat: 'Action', desc: 'Occurs when the value of a cell changes.' },
+            { name: 'SelectionChanged', cat: 'Behavior', desc: 'Occurs when the current selection changes.' },
+        ],
+        Form: [
+            { name: 'Load', cat: 'Behavior', desc: 'Occurs before a form is displayed for the first time.' },
+            { name: 'FormClosing', cat: 'Behavior', desc: 'Occurs before the form is closed.' },
+            { name: 'FormClosed', cat: 'Behavior', desc: 'Occurs after the form is closed.' },
+            { name: 'Activated', cat: 'Behavior', desc: 'Occurs when the form is activated in code or by the user.' },
+            { name: 'Deactivate', cat: 'Behavior', desc: 'Occurs when the form loses focus and is not the active form.' },
+            { name: 'Shown', cat: 'Behavior', desc: 'Occurs whenever the form is first shown.' },
+        ],
+    };
+
+    const EVENT_DESCRIPTIONS = {};
+    for (const ev of CONTROL_BASE_EVENTS) EVENT_DESCRIPTIONS[ev.name] = ev.desc;
+    for (const list of Object.values(TYPE_SPECIFIC_EVENTS)) {
+        for (const ev of list) EVENT_DESCRIPTIONS[ev.name] = ev.desc;
+    }
+
+    function eventsForTarget(simple, targetEvents) {
+        const map = new Map();
+        const specific = TYPE_SPECIFIC_EVENTS[simple] || [];
+        for (const ev of specific) map.set(ev.name, { ...ev });
+        for (const ev of CONTROL_BASE_EVENTS) {
+            if (!map.has(ev.name)) map.set(ev.name, { ...ev });
+        }
+        if (targetEvents) {
+            for (const name of Object.keys(targetEvents)) {
+                if (!map.has(name)) {
+                    map.set(name, {
+                        name,
+                        cat: 'Misc',
+                        desc: `Event subscription for ${name}.`,
+                    });
+                }
+            }
+        }
+        return Array.from(map.values());
+    }
+
     /**
      * Hardcoded per-property descriptions (VS `[Description]` equivalent).
      * The engine cannot load .NET attributes (type resolution is purely
@@ -2950,7 +3200,7 @@
         const pane = ins && ins.querySelector('.inspector-description');
         if (!pane) return;
         const key = label || describedProp;
-        pane.textContent = (key && PROP_DESCRIPTIONS[key])
+        pane.textContent = (key && (PROP_DESCRIPTIONS[key] || EVENT_DESCRIPTIONS[key]))
             || pane.dataset.defaultText || '';
     }
     /** The pane itself: plain text at the inspector bottom, rebuilt every
@@ -2958,7 +3208,7 @@
     function renderInspectorDescription(box, defaultText) {
         const d = el('div', 'inspector-description', '');
         d.dataset.defaultText = defaultText;
-        d.textContent = (describedProp && PROP_DESCRIPTIONS[describedProp]) || defaultText;
+        d.textContent = (describedProp && (PROP_DESCRIPTIONS[describedProp] || EVENT_DESCRIPTIONS[describedProp])) || defaultText;
         box.appendChild(d);
     }
     function wireRowDescription(row, label) {

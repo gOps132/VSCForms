@@ -19,6 +19,7 @@ public sealed class FormInfo
     [JsonPropertyName("clientSize")] public required SizeDto ClientSize { get; set; }
     [JsonPropertyName("className")] public string ClassName { get; set; } = "";
     [JsonPropertyName("backColor")] public string? BackColor { get; set; }
+    [JsonPropertyName("events")] public Dictionary<string, string>? Events { get; set; }
 }
 
 public sealed class SizeDto
@@ -41,6 +42,7 @@ public sealed class ControlNode
     [JsonPropertyName("properties")] public required ControlProperties Properties { get; set; } = new();
     [JsonPropertyName("locked")] public bool Locked { get; set; }
     [JsonPropertyName("lockedReason")] public string? LockedReason { get; set; }
+    [JsonPropertyName("events")] public Dictionary<string, string>? Events { get; set; }
 }
 
 public sealed class ControlProperties

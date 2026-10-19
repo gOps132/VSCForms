@@ -573,3 +573,18 @@ body { display: flex; flex-direction: column; }
   padding: 4px 6px; margin: 2px 0 6px;
   border: 1px solid var(--border); border-radius: 2px;
 }
+.inspector-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0; }
+.inspector-tabs { display: flex; gap: 4px; }
+.inspector-tab-btn {
+  cursor: pointer; font-size: 12px; padding: 2px 6px;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 3px;
+  line-height: 1.2;
+}
+.inspector-tab-btn[aria-pressed="true"] {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+.event-row { cursor: default; }
+.event-row:hover { background: rgba(255, 255, 255, 0.03); }
+.event-handler-input { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; }

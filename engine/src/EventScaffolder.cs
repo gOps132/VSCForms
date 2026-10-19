@@ -297,7 +297,7 @@ public static class EventScaffolder
         return (null, null);
     }
 
-    private static string? ExtractHandlerIdentifier(ExpressionSyntax rhs)
+    internal static string? ExtractHandlerIdentifier(ExpressionSyntax rhs)
     {
         return rhs switch
         {

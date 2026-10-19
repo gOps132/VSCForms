@@ -3295,17 +3295,70 @@ setTimeout(async () => {
         check('focusing Text shows its hardcoded description',
             !!pane() && /caption/i.test(String(pane().textContent)), pane() && pane().textContent);
 
-        // Events: read-only note, no scaffold
-        const events = () => ids.inspector.querySelector('.events-readonly');
-        check('an Events section is offered', !!events());
-        check('Events names the A3 gap instead of scaffolding',
-            !!events() && /A3/.test(String(events().textContent)), events() && events().textContent);
-        check('Events offers no inputs (read-only)',
-            !!events() && events().querySelectorAll('input').length === 0);
-        check('Events offers no buttons (no scaffold)',
-            !!events() && events().querySelectorAll('button').length === 0);
-        check('Events offers no dropdowns (no scaffold)',
-            !!events() && events().querySelectorAll('select').length === 0);
+        // ---- A3 Events tab in Inspector (Row A3, issue #58)
+        const tabBtns = () => ids.inspector.querySelectorAll('.inspector-tab-btn');
+        const propTabBtn = () => [...tabBtns()].find((b) => b.dataset.tab === 'properties');
+        const eventTabBtn = () => [...tabBtns()].find((b) => b.dataset.tab === 'events');
+        check('inspector offers Properties and Events tab switcher', !!propTabBtn() && !!eventTabBtn());
+        check('properties tab is initially active', propTabBtn().getAttribute('aria-pressed') === 'true');
+
+        // Switch to Events tab
+        eventTabBtn().dispatch('click', {});
+        await settled();
+        check('events tab marks itself pressed', eventTabBtn().getAttribute('aria-pressed') === 'true');
+        check('properties tab is no longer pressed', propTabBtn().getAttribute('aria-pressed') === 'false');
+
+        const eventRows = () => ids.inspector.querySelectorAll('.event-row');
+        check('Events mode lists events for the selected control', eventRows().length > 0);
+        const clickRow = () => [...eventRows()].find((r) => r.dataset.prop === 'Click');
+        check('Button events include Click', !!clickRow());
+        const clickInput = () => clickRow() && clickRow().querySelector('.event-handler-input');
+        check('event row offers text input for handler', !!clickInput());
+
+        // Parse existing wirings: schema with wired event
+        const wiredSchema = JSON.parse(JSON.stringify(schema));
+        const btnSubmitCtrl = wiredSchema.controls.find((c) => c.id === 'btnSubmit');
+        btnSubmitCtrl.events = { Click: 'btnSubmit_Click' };
+        send({ type: 'load', data: wiredSchema });
+        await settled();
+        clickBtn('btnSubmit');
+        await settled();
+        eventTabBtn().dispatch('click', {});
+        await settled();
+        const wiredClickRow = [...eventRows()].find((r) => r.dataset.prop === 'Click');
+        const wiredInput = wiredClickRow && wiredClickRow.querySelector('.event-handler-input');
+        check('existing event wiring is displayed in handler input', !!wiredInput && wiredInput.value === 'btnSubmit_Click');
+
+        // Double-clicking an event row invokes wireEvent
+        sandbox.__sent.length = 0;
+        const dblClickRow = [...eventRows()].find((r) => r.dataset.prop === 'MouseEnter');
+        dblClickRow.dispatch('dblclick', { preventDefault() {}, stopPropagation() {} });
+        const wireMsg = sandbox.__sent.find((m) => m.type === 'wireEvent');
+        check('double-clicking event row posts wireEvent', !!wireMsg && wireMsg.data.id === 'btnSubmit' && wireMsg.data.event === 'MouseEnter');
+
+        // Views: Categorized vs Alphabetical on Events tab
+        const viewBtns = () => ids.inspector.querySelectorAll('.inspector-view-btn');
+        const catBtn = () => [...viewBtns()].find((b) => b.dataset.view === 'categorized');
+        const alphaBtn = () => [...viewBtns()].find((b) => b.dataset.view === 'alphabetical');
+
+        catBtn().dispatch('click', {});
+        await settled();
+        const catHeaders = () => ids.inspector.querySelectorAll('.inspector-cat');
+        check('categorized view in Events tab creates category groups', catHeaders().length > 0);
+        check('categories include ACTION', [...catHeaders()].some((h) => /Action/i.test(h.textContent)));
+
+        alphaBtn().dispatch('click', {});
+        await settled();
+        check('alphabetical view in Events tab has no category heads', catHeaders().length === 0);
+        const eventNames = [...eventRows()].map((r) => r.dataset.prop);
+        const sortedNames = [...eventNames].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        check('alphabetical view in Events tab sorts events A-Z', JSON.stringify(eventNames) === JSON.stringify(sortedNames));
+
+        // Switch back to properties tab
+        propTabBtn().dispatch('click', {});
+        await settled();
+        check('switching back restores properties tab', propTabBtn().getAttribute('aria-pressed') === 'true');
+        check('event rows are replaced by property rows', ids.inspector.querySelectorAll('.event-row').length === 0);
 
         // locked and refused rows imply no writability: no Reset anywhere
         clickBtn('ThirdPartyGauge');
