@@ -142,8 +142,12 @@ jobs:
       # The differential oracle's runtime half: the whole generated permutation matrix
       # (every handled type x every dialect x every container hierarchy) checked against
       # the real WinForms runtime, not just the hand-authored fixtures.
+      #
+      # `shell: bash`, not pwsh. pwsh cannot execute a .sh file: the step exited 0 in
+      # under a second having done nothing at all, and the job went GREEN without
+      # running the tier. A tier that cannot run must FAIL LOUDLY.
       - name: differential matrix against the real runtime
-        shell: pwsh
+        shell: bash
         run: ./scripts/run-windows-matrix.sh
 
   # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built

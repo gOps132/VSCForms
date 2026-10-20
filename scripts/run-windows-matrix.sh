@@ -55,6 +55,19 @@ esac
 
 rm -rf "$WORK" && mkdir -p "$WORK/src"
 
+# A tier that cannot run must FAIL LOUDLY. This script has been invoked once by a
+# shell that could not execute it, and it exited 0 having done nothing — a green CI
+# run that verified nothing at all. The guard below makes the three ways that can
+# happen impossible to mistake for success: no cases parsed, no forms staged, or the
+# harness binary missing.
+require() { # $1 = what, $2 = the path that must exist
+  if [ ! -e "$2" ]; then
+    echo "ERROR $1 is missing: $2" >&2
+    echo "  the matrix tier did not run. This must never look like a pass." >&2
+    exit 1
+  fi
+}
+
 # --- generate the matrix -----------------------------------------------------
 echo "generating the differential matrix…"
 python3 scripts/gen-differential-matrix.py --out "$WORK/matrix" --families control
@@ -99,6 +112,9 @@ for case in matrix["cases"]:
 
 with open(os.path.join(work, "manifest.json"), "w", encoding="utf-8") as fh:
     json.dump({"cases": cases}, fh, indent=1)
+if not cases:
+    print("  ERROR no case parsed — the matrix tier did not run")
+    sys.exit(1)
 print(f"  parsed {len(cases)} case(s)")
 PYEOF
 
@@ -145,13 +161,26 @@ with open(os.path.join(src, "Matrix.csproj"), "w", encoding="utf-8") as fh:
         "  </PropertyGroup>\n"
         "</Project>\n"
     )
+if not manifest["cases"]:
+    print("  ERROR no case to stage — the matrix tier did not run")
+    sys.exit(1)
 print(f"  staged {len(manifest['cases'])} form(s)")
 PYEOF
 
 cp verify/windows-layout/Program.cs "$WORK/src/Program.cs"
 
+# The matrix is the POINT of this tier, so a suspiciously small one means something
+# upstream truncated it. A tier that quietly checked three forms is not a tier.
+CASES=$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['cases']))" "$ENGINE_WORK/manifest.json")
+if [ "$CASES" -lt 100 ]; then
+  echo "ERROR the matrix has only $CASES case(s) — expected the full permutation matrix" >&2
+  exit 1
+fi
+echo "  $CASES case(s) to check"
+
 echo "building the matrix assembly…"
 dotnet build "$WORK/src/Matrix.csproj" -c Release -v q --nologo
+require "the built matrix harness" "$WORK/src/bin/Release/net10.0-windows/Matrix.exe"
 
 echo "running the matrix against the real WinForms runtime…"
 set +e
