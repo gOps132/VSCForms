@@ -296,6 +296,42 @@ grep -q "this.txtName.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;" "$
 grep -q "this.txtName.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;" "$FILE" \
   && ok "BorderStyle inserted" || bad "BorderStyle not inserted"
 
+sect "[roslyn] Text has an INSERT path (#62)"
+# Found by the differential matrix tier, not by a hand-written fixture: the engine
+# accepted a Text change on a control with no Text statement and wrote nothing. The
+# common case is a TextBox — Visual Studio does not write a Text statement for one —
+# so every TextBox in every real form was affected.
+work simple SimpleDialog
+grep -q "this.txtName.Text" "$FILE" && bad "fixture assumption broken: txtName has a Text" \
+  || ok "the fixture's TextBox has no Text statement, so the insert path is what runs"
+python_tweak "
+for c in s['controls']:
+    if c['id']=='txtName':
+        c['properties']['text'] = 'Hello'
+" >/dev/null
+grep -q 'this.txtName.Text = "Hello";' "$FILE" \
+  && ok "Text INSERTED for a control that had none" \
+  || { bad "Text not inserted — the change was silently discarded"; grep -n "txtName.Text" "$FILE" || true; }
+
+sect "[roslyn] a TextBox's TextAlign is a HorizontalAlignment, not a ContentAlignment (#63)"
+# Also found by the differential matrix tier. ContentAlignment has no Left/Center/Right
+# member, so the generated code did not compile: the user's project stopped building
+# with CS0117 while the engine reported success.
+# `System.Drawing.HorizontalAlignment` is NOT the alternative — that type does not
+# exist in modern .NET; it was a .NET Framework type.
+work simple SimpleDialog
+python_tweak "
+for c in s['controls']:
+    if c['id']=='txtName':
+        c['properties']['textAlign'] = 'Center'
+" >/dev/null
+grep -q "this.txtName.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;" "$FILE" \
+  && ok "TextBox TextAlign written as HorizontalAlignment" \
+  || { bad "TextBox TextAlign is wrong"; grep -n "txtName.TextAlign" "$FILE" || true; }
+grep -q "ContentAlignment" "$FILE" \
+  && { bad "a ContentAlignment leaked into a TextBox"; grep -n "ContentAlignment" "$FILE" || true; } \
+  || ok "no ContentAlignment leaked into the TextBox"
+
 # ---------------------------------------------------------------------------
 # Leaf widgets — docs/spec-leaf-widgets.md. Four types, and the risk is not the engine: it is
 # the TWO-LIST RULE. A type in TypeTable but not in the canvas HANDLED list renders as a locked

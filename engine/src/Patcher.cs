@@ -216,6 +216,10 @@ public sealed class Patcher
     {
         var p = node.Properties;
         var id = node.Id;
+        // The control's simple type gates several properties (Items, DropDownStyle, the
+        // TextBox set, the leaf-widget ranges) and decides which TextAlign enum the
+        // control uses, so it is resolved once, here.
+        var simpleType = TypeTable.SimpleName(cs.Type);
 
         if (cs.Properties.TryGetValue("Location", out var loc)
             && CurrentPoint(loc) is { } curPoint && curPoint != (p.X, p.Y))
@@ -231,6 +235,16 @@ public sealed class Patcher
         {
             var cur = CurrentText(t);
             if (cur != p.Text) Replace(t.Right.Span, StringLiteral(p.Text ?? ""));
+        }
+        else if (p.Text is { Length: > 0 } freshText && !cs.Properties.ContainsKey("Text"))
+        {
+            // The INSERT path for Text. Without it, setting the text of a control that
+            // has no `Text = "..."` statement was accepted by the canvas, accepted by
+            // the engine, and written nowhere — the "the control looks editable and
+            // nothing happens" failure AGENTS.md's two-list rule warns about. The common
+            // case is a TextBox: Visual Studio does not write a Text statement for one,
+            // so every TextBox was affected. (The differential matrix found this: #62.)
+            InsertProperty(cs, id, "Text", StringLiteral(freshText));
         }
 
         if (cs.Properties.TryGetValue("TabIndex", out var ti)
@@ -318,15 +332,34 @@ public sealed class Patcher
             InsertProperty(cs, id, "Checked", "true");
         }
 
-        // TextAlign
+        // TextAlign. There are TWO TextAligns, in different namespaces, with different
+        // members — and the control's type decides which one it is:
+        //
+        //   Button / Label / CheckBox / RadioButton  System.Drawing.ContentAlignment
+        //                                                    (TopLeft … BottomRight)
+        //   TextBox                                    System.Windows.Forms.HorizontalAlignment
+        //                                                    (Left, Center, Right)
+        //
+        // Writing ContentAlignment for a TextBox produced `ContentAlignment.Left`, which
+        // does not compile: the user's project stopped building with CS0117 while the
+        // engine reported success. `System.Drawing.HorizontalAlignment` is not the
+        // alternative — that type does not exist in modern .NET; it was a .NET Framework
+        // type — so the TextBox spelling is `System.Windows.Forms.HorizontalAlignment`.
+        //
+        // The canvas is the authority on the values: it offers Left/Center/Right for a
+        // TextBox and TopLeft…BottomRight for the others, so the value alone says which
+        // enum is meant.
+        string textAlignEnum = simpleType == "TextBox"
+            ? "System.Windows.Forms.HorizontalAlignment"
+            : "System.Drawing.ContentAlignment";
         if (cs.Properties.TryGetValue("TextAlign", out var ta))
         {
             if (p.TextAlign is { Length: > 0 } newTa && DesignerDocument.ParseMemberName(ta.Right) != newTa)
-                Replace(ta.Right.Span, $"System.Drawing.ContentAlignment.{newTa}");
+                Replace(ta.Right.Span, $"{textAlignEnum}.{newTa}");
         }
         else if (p.TextAlign is { Length: > 0 } freshTa && !cs.Properties.ContainsKey("TextAlign"))
         {
-            InsertProperty(cs, id, "TextAlign", $"System.Drawing.ContentAlignment.{freshTa}");
+            InsertProperty(cs, id, "TextAlign", $"{textAlignEnum}.{freshTa}");
         }
 
         // BorderStyle
@@ -364,7 +397,6 @@ public sealed class Patcher
         // The incoming items are in node.Properties.Items (string[] or null).
         // The current items statements are in cs.ItemsStatements (List<ExpressionStatementSyntax>).
         // We only handle this for ComboBox/ListBox (handled types with Items).
-        var simpleType = TypeTable.SimpleName(cs.Type);
         var incomingItems = node.Properties.Items;
         if ((simpleType == "ComboBox" || simpleType == "ListBox") && (incomingItems is { } || cs.ItemsStatements.Count > 0))
         {

@@ -65,27 +65,73 @@ public sealed class DeclaredStyle
     /// file is the boundary: <c>.editorconfig</c> search in the real tooling stops at the repo
     /// root, and walking past it would pick up a parent machine's or organisation's config.
     /// </summary>
+    /// <remarks>
+    /// The result is CACHED per directory. The walk is not free: deciding whether a
+    /// directory is a project root means enumerating it, and a directory can hold a
+    /// hundred thousand entries (a temp directory, a synced folder, a busy home
+    /// directory). Doing that on every parse turned a 0.2s parse into a 0.2s parse TIMES
+    /// THE NUMBER OF PARSES — the extension host parses on every keystroke-driven commit,
+    /// and the differential-matrix tier parses a file per property it checks. The cache
+    /// makes the walk happen once per directory.
+    /// </remarks>
     public static DeclaredStyle Discover(string designerPath)
     {
         string? dir;
         try { dir = Path.GetDirectoryName(Path.GetFullPath(designerPath)); }
         catch { return None; }
+        if (string.IsNullOrEmpty(dir)) return None;
 
+        return _cache.GetOrAdd(dir, static d => DiscoverUncached(d));
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DeclaredStyle>
+        _cache = new(System.StringComparer.Ordinal);
+
+    private static DeclaredStyle DiscoverUncached(string startDir)
+    {
+        var dir = startDir;
         while (!string.IsNullOrEmpty(dir))
         {
             var candidate = Path.Combine(dir, ".editorconfig");
             if (File.Exists(candidate)) return FromConfig(candidate);
 
             // Do not walk above the project root.
-            if (Directory.Exists(Path.Combine(dir, ".git"))
-                || Directory.GetFiles(dir, "*.sln").Length > 0
-                || Directory.GetFiles(dir, "*.slnx").Length > 0)
-                return None;
+            if (IsProjectRoot(dir)) return None;
 
             dir = Path.GetDirectoryName(dir);
         }
 
         return None;
+    }
+
+    /// <summary>
+    /// Does this directory look like a project root?
+    ///
+    /// ONE enumeration for all three signals. The previous form asked for <c>*.sln</c> and
+    /// <c>*.slnx</c> separately, and each of those scans the whole directory before it can
+    /// answer — so the cost was twice the directory's size, paid on every parse, on a
+    /// directory that may hold a hundred thousand entries. Enumerating once and matching
+    /// the names as we go also lets the scan stop at the FIRST match instead of reading
+    /// the entire directory to count them.
+    /// </summary>
+    private static bool IsProjectRoot(string dir)
+    {
+        if (Directory.Exists(Path.Combine(dir, ".git"))) return true;
+
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(dir))
+            {
+                var name = Path.GetFileName(file);
+                if (name.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+
+        return false;
     }
 
     private static DeclaredStyle FromConfig(string configPath)
