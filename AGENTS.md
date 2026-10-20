@@ -173,3 +173,8 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/do
 Use the vocabulary in `CONTEXT.md` — in particular **Modelled Control** vs **Locked Control**,
 **Coverage**, **Refusal**, and **Surgical Patch**. If a change contradicts an ADR, surface it
 rather than silently overriding it.
+
+### Agentic workflow & Differential Oracle
+
+Autonomous agent execution follows the Wayfinder loop, Builder + Auditor quality gate, and the
+Headless Differential Oracle contract. See `docs/agents/workflow.md`.
