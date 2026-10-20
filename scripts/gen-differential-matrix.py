@@ -737,15 +737,25 @@ def emit_case(
         # --- property blocks --------------------------------------------------
         for ctype in chain:
             cid = CONTAINER_IDS[ctype]
+            # A TabPage's Location/Size are the designer's view of the page inside the
+            # TabControl's display area, so they are inset rather than coincident with
+            # the TabControl's own. At runtime the TabControl owns them — which is why
+            # the layout harness checks a TabPage for existence only.
+            if ctype == "TabPage":
+                loc_x, loc_y, size_w, size_h = 4, 24, 352, 232
+            else:
+                loc_x, loc_y, size_w, size_h = 20, 20, 360, 260
             lines.append(f"{body}//")
             lines.append(f"{body}// {cid}")
             lines.append(f"{body}//")
             lines.append(
-                f"{body}{d.member(cid)}.Location = new {d.drawing('Point')}(20, 20);"
+                f"{body}{d.member(cid)}.Location = new {d.drawing('Point')}"
+                f"({loc_x}, {loc_y});"
             )
             lines.append(f'{body}{d.member(cid)}.Name = "{cid}";')
             lines.append(
-                f"{body}{d.member(cid)}.Size = new {d.drawing('Size')}(360, 260);"
+                f"{body}{d.member(cid)}.Size = new {d.drawing('Size')}"
+                f"({size_w}, {size_h});"
             )
             lines.append(f"{body}{d.member(cid)}.TabIndex = 0;")
 

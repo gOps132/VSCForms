@@ -82,6 +82,13 @@ jobs:
           dotnet-version: '10.0.x'
       - name: build engine (Debug)
         run: dotnet build engine -c Debug -v q --nologo
+      # The capture harness opens a REAL VS Code window with the extension loaded, and
+      # the extension needs the engine binary under extension/bin/<triple>/. Without it
+      # the harness fails with "design engine not found" and the job goes red for a
+      # setup reason that has nothing to do with the thing it is checking. This job was
+      # red for exactly that reason from the moment the UX capture tier landed.
+      - name: publish the engine (self-contained, linux-x64)
+        run: node scripts/publish-engine.js
       - run: npm --prefix extension ci
       - run: npm --prefix extension run compile
       - name: capture designer canvas UX (xvfb)

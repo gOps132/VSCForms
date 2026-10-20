@@ -230,8 +230,22 @@ internal static class Program
             }
             else
             {
-                Check(id, "Location.X", props.GetProperty("x").GetInt32(), found.Left);
-                Check(id, "Location.Y", props.GetProperty("y").GetInt32(), found.Top);
+                // A TabPage's geometry belongs to the TabControl, not to the file. The
+                // designer writes the TabPage's Location/Size as it was at design time;
+                // at runtime the TabControl lays the page out in its own display area.
+                // Comparing them would report a divergence that says nothing about
+                // VSCForms — and VSCForms deliberately does not simulate that layout
+                // (ADR 0003: refuse rather than simulate). So the TabPage is checked for
+                // EXISTENCE only, exactly like a control the runtime owns.
+                bool tabPage = node.TryGetProperty("type", out var t)
+                               && t.GetString() is string tn
+                               && tn.EndsWith(".TabPage", StringComparison.Ordinal);
+
+                if (!tabPage)
+                {
+                    Check(id, "Location.X", props.GetProperty("x").GetInt32(), found.Left);
+                    Check(id, "Location.Y", props.GetProperty("y").GetInt32(), found.Top);
+                }
 
                 // Size is only comparable for controls that do not compute their own. An
                 // AutoSize control sizes itself from the font, so asserting our declared width
@@ -247,7 +261,7 @@ internal static class Program
                 // width IS designer-controlled). Skip what the runtime overrides; the point of
                 // this tier is VSCForms' geometry, not WinForms' internal font metrics.
                 bool heightSnapped = found is UpDownBase;
-                if (!autoSize)
+                if (!autoSize && !tabPage)
                 {
                     Check(id, "Size.Width", props.GetProperty("width").GetInt32(), found.Width);
                     if (!heightSnapped)
