@@ -61,11 +61,13 @@ These are load-bearing. Each has caused or prevented a real bug.
 ./test/run-all.sh                      # everything; skip integration with VSCFORMS_SKIP_INTEGRATION=1
 node test/verify.sh                    # Roslyn invariants + real WinForms compile
 ./test/verify-rename.sh                # rename, incl. the code-behind and a real compile
+./test/verify-differential-matrix.sh   # the permutation matrix: every type x property x dialect
 node test/e2e.js                       # canvas -> host -> engine -> file
 node extension/test/hostHarness.js     # DOM harness over the canvas code
 node test/run-integration.js           # real VS Code; needs a display
 node test/run-cdp-probe.js             # manual only: real trusted Ctrl/Cmd+Z via CDP; needs a display, not in CI
 ./scripts/run-windows-layout.sh example   # schema vs real WinForms runtime; Windows only
+./scripts/run-windows-matrix.sh       # the matrix vs the real WinForms runtime; Windows only
 ```
 
 Integration tests reach internals through the hidden `vscforms._testSeam` command, because the
@@ -87,6 +89,24 @@ Two tiers carry the most weight, and they are not the same kind of test:
   against the runtime `Bounds` of the real controls. Everything else proves the patch is
   *valid*; only this proves it is *semantically* right. A control at the wrong coordinates
   still compiles.
+
+And one tier covers the *cross-product*, which the hand-authored fixtures cannot:
+
+- The **differential matrix** (`test/verify-differential-matrix.sh`) drives the engine over a
+  generated permutation matrix — every handled type × the 4 dialects × the container
+  hierarchies × every property the canvas offers, in BOTH directions (INSERT and REPLACE).
+  It runs everywhere and takes seconds. The **runtime half**
+  (`scripts/run-windows-matrix.sh`, Windows CI only) puts the same matrix through the real
+  WinForms runtime. Together they are the **Headless Differential Oracle**
+  (`docs/agents/workflow.md` §3).
+
+  A property the fixtures forgot is still measured, which is how `BackColor`/`Font` shipped
+  without an INSERT path, how a TextBox's `TextAlign` shipped as a `ContentAlignment` (the
+  user's project did not compile), and how `Text` shipped with no INSERT path at all. When
+  it finds something, the **fixture-first gate** writes one reproduction per root cause into
+  `fixtures/differential/` and prints the `gh issue create` command — it does not commit and
+  does not file, because CI has no push authority. Commit the reproduction FIRST, then fix
+  the engine. Every committed reproduction is replayed as a regression.
 
 `MF_DEBUG=1` prints every span the patcher emits, to stderr.
 
