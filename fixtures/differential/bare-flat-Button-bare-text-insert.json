@@ -1,0 +1,12 @@
+{
+  "case": "bare__flat__Button__bare",
+  "compileErrors": [],
+  "detail": "committed regression fixture for bare__flat__Button__bare / text",
+  "dialect": "bare",
+  "kind": "regression",
+  "property": "text",
+  "rootCause": "regression::text",
+  "subjectId": "btnSubject",
+  "type": "Button",
+  "value": "Replaced"
+}

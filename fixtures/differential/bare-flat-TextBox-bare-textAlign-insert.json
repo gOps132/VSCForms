@@ -1,0 +1,12 @@
+{
+  "case": "bare__flat__TextBox__bare",
+  "compileErrors": [],
+  "detail": "committed regression fixture for bare__flat__TextBox__bare / textAlign",
+  "dialect": "bare",
+  "kind": "regression",
+  "property": "textAlign",
+  "rootCause": "regression::textAlign",
+  "subjectId": "txtSubject",
+  "type": "TextBox",
+  "value": "TopRight"
+}

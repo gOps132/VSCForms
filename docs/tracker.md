@@ -10,11 +10,12 @@ same change.** A shipped capability with a stale row here is a bug in the
 change, not in the docs.
 
 Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19
-plus D5–D10 (#32–#37), one per gap row). Triage per `docs/agents/triage-labels.md` before claiming.
+plus D5–D10 (#32–#37) and E1 (#61), one per gap row). Triage per
+`docs/agents/triage-labels.md` before claiming.
 
 Last verified: `eb5bb01` (event-scaffolding wave #56–#60, UX capture tier #53–#55,
-agentic-workflow codification, #46 overflow regression tier).
-Re-verify by reading `engine/src/TypeTable.cs`,
+agentic-workflow codification, #46 overflow regression tier) plus the differential-matrix
+wave (#61–#63). Re-verify by reading `engine/src/TypeTable.cs`,
 `extension/media/canvas.js` (`HANDLED`), `engine/src/Schema.cs`,
 `engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
 
@@ -151,7 +152,7 @@ formerly listed there shipped (D1–D4, A4, C1/C3) or moved to D5–D10 above.
 
 | # | Gap | Status | Cost | Spec | Note |
 |---|---|---|---|---|---|
-| E1 | Headless Differential Oracle — deterministic matrix + fixture-first gate | missing | L | `docs/agents/workflow.md` §3 | The **contract** is codified; the implementation is not. Three pieces are owed: (a) a deterministic fixture generator over control type × property × dialect × container hierarchy, so the matrix is reproducible rather than hand-picked; (b) a Windows runtime comparison tier driven by that matrix, not only by the hand-authored fixtures; (c) the fixture-first gate — a divergence must first land as `fixtures/differential/<issue>-<name>.Designer.cs` plus a filed Wayfinder ticket, *then* a patcher change. Black-box only: the Visual Studio designer binaries are never decompiled, and runtime semantics come from the MIT-licensed `dotnet/winforms`. |
+| E1 | Headless Differential Oracle — deterministic matrix + fixture-first gate | shipped (Windows runtime half in CI) | L | `docs/agents/workflow.md` §3 | **The contract is now implemented.** `scripts/gen-differential-matrix.py` synthesises a deterministic permutation matrix — 19 handled types × the 4 dialects × 4 container hierarchies × the bare/full property variants, plus the 4 encoding variants (LF/CRLF × BOM/no-BOM) — reproducible byte-for-byte, and **not committed**: only a divergence is. `test/verify-differential-matrix.sh` drives the engine over it on every platform: structure (parses, refuses nothing, 100% modelled, nests correctly, round-trips byte-identically), properties (**every** property the canvas offers, in BOTH directions — INSERT *and* REPLACE — in the file's own dialect, touching nothing else), form-level properties in all four dialects, and a compile phase that builds the patched output as a real WinForms project. `scripts/run-windows-matrix.sh` is the runtime half: the whole matrix in ONE assembly, checked against the real WinForms runtime (`verify/windows-layout/Program.cs --matrix`), on `windows-latest`. The **fixture-first gate** collapses divergences by root cause, writes one reproduction per cause into `fixtures/differential/` with a manifest, prints the `gh issue create` command (it does not commit and does not file: CI has no push authority), and replays every committed fixture as a regression. Black-box only: the Visual Studio designer binaries are never decompiled, and runtime semantics come from the MIT-licensed `dotnet/winforms`. It found two shipped bugs on its first run — `Text` had no INSERT path (#62) and a TextBox's `TextAlign` was written as `ContentAlignment`, which does not compile (#63). |
 
 ## 3. Deliberately not planned (do not re-propose without an ADR)
 

@@ -24,8 +24,6 @@ partial class BareFlatButtonBareForm
         btnSubject.Name = "btnSubject";
         btnSubject.Size = new Size(120, 30);
         btnSubject.TabIndex = 1;
-        btnSubject.TextAlign = System.Drawing.ContentAlignment.TopRight;
-
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(400, 300);
         Text = "BareFlatButtonBareForm";

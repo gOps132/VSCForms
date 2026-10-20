@@ -21,6 +21,8 @@ jobs:
         run: dotnet build engine -c Debug -v q --nologo
       - name: roslyn invariants
         run: ./test/verify.sh
+      - name: differential matrix (type x property x dialect permutation)
+        run: ./test/verify-differential-matrix.sh
       - name: non-classic dialects and declared style
         run: ./test/verify-dialects.sh
       - name: project generator
@@ -126,6 +128,12 @@ jobs:
       - name: verify every fixture against the runtime
         shell: pwsh
         run: ./scripts/verify-layout-fixtures.ps1
+      # The differential oracle's runtime half: the whole generated permutation matrix
+      # (every handled type x every dialect x every container hierarchy) checked against
+      # the real WinForms runtime, not just the hand-authored fixtures.
+      - name: differential matrix against the real runtime
+        shell: pwsh
+        run: ./scripts/run-windows-matrix.sh
 
   # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built
   # HERE on Linux, not on windows-latest, because packaging from Windows loses the POSIX

@@ -21,6 +21,9 @@ step "build extension (typescript)"
 step "roslyn + compile tiers"
 ./test/verify.sh || FAIL=1
 
+step "differential matrix (permutation matrix over every type x property x dialect)"
+./test/verify-differential-matrix.sh || FAIL=1
+
 step "Designer dialects (templated, bare, this-style)"
 ./test/verify-dialects.sh || FAIL=1
 

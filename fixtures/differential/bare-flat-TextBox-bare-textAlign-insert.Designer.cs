@@ -24,8 +24,6 @@ partial class BareFlatTextBoxBareForm
         txtSubject.Name = "txtSubject";
         txtSubject.Size = new Size(120, 30);
         txtSubject.TabIndex = 1;
-        txtSubject.TextAlign = System.Drawing.ContentAlignment.Center;
-
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(400, 300);
         Text = "BareFlatTextBoxBareForm";
