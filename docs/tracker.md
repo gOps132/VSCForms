@@ -13,11 +13,10 @@ Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19
 plus D5–D10 (#32–#37) and E1 (#61), one per gap row). Triage per
 `docs/agents/triage-labels.md` before claiming.
 
-Last verified: `eb5bb01` (event-scaffolding wave #56–#60, UX capture tier #53–#55,
-agentic-workflow codification, #46 overflow regression tier) plus the differential-matrix
-wave (#61–#63). Re-verify by reading `engine/src/TypeTable.cs`,
-`extension/media/canvas.js` (`HANDLED`), `engine/src/Schema.cs`,
-`engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
+Last verified: `a93607f` (the differential-oracle wave: E1 shipped, #62 and #63
+fixed, `SCHEMA.md`'s `textAlign` shape documented). Re-verify by reading
+`engine/src/TypeTable.cs`, `extension/media/canvas.js` (`HANDLED`),
+`engine/src/Schema.cs`, `engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
 
 ## 1. Where we are
 
@@ -174,6 +173,13 @@ all three formerly untracked specs committed (#30) and corrected to HEAD
 `SCHEMA.md` v1 type table + `README.md` row read 19, `CONTEXT.md`/`AGENTS.md`/`CHANGELOG`
 flag the 47.9% ceiling as measured-at-10-types stale, and `spec-features.md` §8b is marked
 historical (tracker is the todo list). `git status` carries no `??` entries.
+
+Re-swept at `a93607f` (the differential-oracle wave): the one drift this wave found was
+the oracle contract itself — `docs/agents/workflow.md` §3 described a system that did not
+exist, which is why §3 now names the implementation and §2 E1 tracks it. `SCHEMA.md` is
+unchanged by this wave: the schema's shape did not move, only the patcher's coverage of
+it (`Text` gained an INSERT path; `TextAlign` is now type-aware). `AGENTS.md` gained the
+matrix tier in "Verifying" and in the "which tier proves what" list.
 
 ## 5. How to use this file
 

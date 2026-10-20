@@ -115,11 +115,33 @@ interface ControlProperties {
   maximum?: number             // TrackBar, ProgressBar, NumericUpDown
   value?: number               // TrackBar, ProgressBar, NumericUpDown
   checked?: boolean            // CheckBox, RadioButton
-  textAlign?: string           // Label, Button: ContentAlignment
+  textAlign?: string           // see the two TextAligns below
   borderStyle?: string         // Panel, GroupBox, PictureBox, Label: BorderStyle
   autoSize?: boolean           // Label, CheckBox, RadioButton, Button
 }
 ```
+
+### `textAlign` is TWO properties wearing one name
+
+The value space of `textAlign` depends on the control's type, because WinForms has two
+different `TextAlign` properties and they are different enums in different namespaces:
+
+| control types | enum | namespace | values |
+|---|---|---|---|
+| Button, Label, CheckBox, RadioButton | `ContentAlignment` | `System.Drawing` | `TopLeft` … `BottomRight` |
+| TextBox | `HorizontalAlignment` | `System.Windows.Forms` | `Left`, `Center`, `Right` |
+
+The schema carries a bare string, so **the control's type is what disambiguates it**. The
+engine must write the matching enum; writing `ContentAlignment` for a TextBox produces
+`ContentAlignment.Left`, which does not exist and does not compile (CS0117).
+
+Note that `System.Drawing.HorizontalAlignment` is NOT the alternative spelling — that type
+does not exist in modern .NET; it was a .NET Framework type.
+
+This was the shape of a shipped bug: the schema said "textAlign: string", the engine wrote
+one enum for every type, and no fixture set a TextBox's `TextAlign`, so no tier saw it. It
+is now covered by the differential matrix (`docs/agents/workflow.md` §3) and by a compile
+assertion in `test/verify.sh`.
 
 ### Z-order: array order is paint order
 
