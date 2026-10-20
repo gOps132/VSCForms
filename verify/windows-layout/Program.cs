@@ -258,9 +258,13 @@ internal static class Program
                 // UpDownBase (NumericUpDown, DomainUpDown) clamps its HEIGHT to the font's
                 // preferred height, so a declared Size.Height never survives runtime either —
                 // the same class of snap as MonthCalendar, but only on the height axis (the
-                // width IS designer-controlled). Skip what the runtime overrides; the point of
-                // this tier is VSCForms' geometry, not WinForms' internal font metrics.
-                bool heightSnapped = found is UpDownBase;
+                // width IS designer-controlled). A ComboBox (its height is the drop-down's)
+                // and a DateTimePicker (its height is the picker's) are the same shape.
+                // Skip what the runtime overrides; the point of this tier is VSCForms'
+                // geometry, not WinForms' internal font metrics.
+                bool heightSnapped = found is UpDownBase
+                                     || found is ComboBox
+                                     || found is DateTimePicker;
                 if (!autoSize && !tabPage)
                 {
                     Check(id, "Size.Width", props.GetProperty("width").GetInt32(), found.Width);

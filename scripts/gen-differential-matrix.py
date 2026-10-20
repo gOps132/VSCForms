@@ -680,6 +680,12 @@ def emit_case(
 ) -> tuple[str, dict]:
     """Emit one Designer file and its manifest record."""
     chain = dict(HIERARCHIES)[hierarchy]
+    if type_name == "TabPage":
+        # A TabPage's parent is always a TabControl — WinForms THROWS if a TabPage is
+        # added to anything else, so a TabPage as a direct child of a Form (the `flat`
+        # hierarchy) or of a Panel cannot even be constructed at runtime. The TabPage
+        # takes the place of the TabPage in the chain, inside the TabControl.
+        chain = ["TabControl"]
     ident = f"{d.name.capitalize()}{hierarchy.capitalize()}{type_name}{variant.capitalize()}"
     if encoding != "lf":
         ident += encoding.replace("-", "").capitalize()
@@ -1017,6 +1023,11 @@ def build(out_dir: str, families: list[str]) -> dict:
                 continue
             for hierarchy, _chain in HIERARCHIES:
                 for type_name in TYPES:
+                    if type_name == "TabPage" and hierarchy != "tab":
+                        # A TabPage can only live inside a TabControl, so the only
+                        # hierarchy it can be the subject of is the one whose chain
+                        # ends in a TabControl.
+                        continue
                     for variant in ("bare", "full"):
                         data, record = emit_case(
                             d, hierarchy, type_name, variant, "lf", "\n", False
