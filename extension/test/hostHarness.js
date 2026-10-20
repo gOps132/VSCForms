@@ -3614,6 +3614,107 @@ setTimeout(async () => {
             }
         }
 
+        // ---- Regression #46: child elements with geometry exceeding parent container dimensions are rendered unclipped
+        {
+            // Verify CSS contract directly from canvas.css
+            const cssPath = path.join(__dirname, '../media/canvas.css');
+            const css = fs.readFileSync(cssPath, 'utf8');
+            check('canvas.css specifies overflow: visible for .canvas',
+                /\.canvas\s*\{[^}]*overflow:\s*visible/.test(css));
+            check('canvas.css specifies overflow: visible for .ctl\.t-container',
+                /\.ctl\.t-container\s*\{[^}]*overflow:\s*visible/.test(css));
+            check('canvas.css keeps default overflow: hidden for .ctl',
+                /\.ctl\s*\{[^}]*overflow:\s*hidden/.test(css));
+
+            // Load a schema with a panel containing a child extending past its bounds
+            const overflowSchema = {
+                schemaVersion: 1,
+                form: { name: 'OverflowForm', text: 'Overflow Form', clientSize: { width: 500, height: 400 }, className: 'OverflowForm' },
+                controls: [
+                    {
+                        id: 'pnlParent',
+                        type: 'System.Windows.Forms.Panel',
+                        children: [
+                            {
+                                id: 'btnOverflow',
+                                type: 'System.Windows.Forms.Button',
+                                children: [],
+                                locked: false,
+                                properties: { x: 150, y: 80, width: 100, height: 50, text: 'Overflowing', tabIndex: 0 },
+                            },
+                        ],
+                        locked: false,
+                        properties: { x: 20, y: 20, width: 200, height: 100, tabIndex: 0 },
+                    },
+                ],
+                analysis: { modelledCount: 2, unmodelledCount: 0, coveragePercent: 100, refuses: [], warnings: [] },
+            };
+
+            send({ type: 'load', data: overflowSchema });
+            await settled();
+
+            const pnl = ctlNode('pnlParent');
+            const btn = ctlNode('btnOverflow');
+
+            check('container element carries t-container class',
+                pnl && pnl.classList.contains('t-container'),
+                pnl ? pnl.className : 'no container element');
+            check('leaf child does not carry t-container class',
+                btn && !btn.classList.contains('t-container'),
+                btn ? btn.className : 'no child element');
+
+            // Geometry checks: child.x + child.width (250) > container.width (200)
+            // and child.y + child.height (130) > container.height (100)
+            check('child x+width exceeds container width',
+                parseFloat(btn.style.left) + parseFloat(btn.style.width) > parseFloat(pnl.style.width));
+            check('child y+height exceeds container height',
+                parseFloat(btn.style.top) + parseFloat(btn.style.height) > parseFloat(pnl.style.height));
+            check('child element is rendered inside the container DOM parent',
+                btn && btn.closest('.t-container') === pnl);
+
+            // Dragging child further past container bounds
+            const down = (n, ev) => n.dispatch('mousedown',
+                Object.assign({ preventDefault() { }, stopPropagation() { }, clientX: 160, clientY: 90 }, ev || {}));
+            down(btn);
+            sandbox.window.dispatch('mousemove', { clientX: 220, clientY: 150 });
+            // During drag mousemove, live style preview is updated and not clamped or clipped
+            const dragLeft = parseFloat(btn.style.left);
+            const dragTop = parseFloat(btn.style.top);
+            check('drag preview updates style past container right edge',
+                dragLeft + parseFloat(btn.style.width) > parseFloat(pnl.style.width),
+                `left: ${dragLeft}`);
+            check('drag preview updates style past container bottom edge',
+                dragTop + parseFloat(btn.style.height) > parseFloat(pnl.style.height),
+                `top: ${dragTop}`);
+
+            sandbox.window.dispatch('mouseup', {});
+            mirrorScale();
+            await settled();
+
+            // Selection ring & handles accessible on overflowing child
+            const curBtn = () => ctlNode('btnOverflow');
+            check('overflowing child is selected',
+                curBtn() && curBtn().classList.contains('selected'));
+            check('overflowing child renders resize handles in DOM',
+                curBtn() && curBtn().querySelectorAll('.handle').length === 8,
+                `found ${curBtn() ? curBtn().querySelectorAll('.handle').length : 0} handles`);
+
+            // Resizing container smaller than child: children stay in DOM and visible
+            const shrunkSchema = JSON.parse(JSON.stringify(overflowSchema));
+            shrunkSchema.controls[0].properties.width = 50;
+            shrunkSchema.controls[0].properties.height = 40;
+            send({ type: 'load', data: shrunkSchema });
+            await settled();
+
+            const pnlShrunk = ctlNode('pnlParent');
+            const btnShrunk = ctlNode('btnOverflow');
+            check('child remains attached when container shrinks smaller than child',
+                btnShrunk && btnShrunk.closest('.t-container') === pnlShrunk);
+            check('shrunk container keeps t-container class (unclipped overflow)',
+                pnlShrunk && pnlShrunk.classList.contains('t-container'));
+        }
+
+
         send({ type: 'load', data: schema });
         await settled();
         sandbox.__sent.length = 0;
