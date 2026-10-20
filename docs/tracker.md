@@ -12,7 +12,8 @@ change, not in the docs.
 Issue map: [#1](https://github.com/gOps132/VSCForms/issues/1) (children #2–#19
 plus D5–D10 (#32–#37), one per gap row). Triage per `docs/agents/triage-labels.md` before claiming.
 
-Last verified: `1198005` (parity-spec cleanup #27–#30, P0 re-scope #29 with D5–D10 rows).
+Last verified: `eb5bb01` (event-scaffolding wave #56–#60, UX capture tier #53–#55,
+agentic-workflow codification, #46 overflow regression tier).
 Re-verify by reading `engine/src/TypeTable.cs`,
 `extension/media/canvas.js` (`HANDLED`), `engine/src/Schema.cs`,
 `engine/src/Patcher.cs`, and `SCHEMA.md` — not by memory.
@@ -78,6 +79,12 @@ Re-verify by reading `engine/src/TypeTable.cs`,
   high-res Dark and Light theme designer canvas snapshots, structured DOM, computed styles,
   and accessibility metrics (`dom-metrics.json`) to `out/ux-snapshots/`, with review guidelines in
   `docs/ui-ux-review.md`. (#53, #54, #55)
+- **Agentic workflow (`docs/agents/workflow.md`):** the Wayfinder loop (query map #1 →
+  claim the top unblocked leaf → Builder TDD → Auditor multi-tier audit → flip this
+  tracker in the same commit → close the ticket), the Builder + Auditor dual-agent seam
+  for high-risk `engine/` and cross-file work, and the **Headless Differential Oracle**
+  contract (deterministic permutation matrix, Windows runtime oracle, fixture-first
+  discrepancy gate). **Contract only — the oracle itself is not built; see §2 E1.**
 
 ## 2. Gaps to implement
 
@@ -139,6 +146,12 @@ P0 after #29 is fully shipped: clipboard (A2 #3), grid-size setting, snapline
 baselines + Alt-suppress, full edge/center pull on move/resize/multi, and the
 SnapLines/grid-only mode (`spec-vs-parity.md` §3, #49) — everything else
 formerly listed there shipped (D1–D4, A4, C1/C3) or moved to D5–D10 above.
+
+### E. Verification & oracle tooling
+
+| # | Gap | Status | Cost | Spec | Note |
+|---|---|---|---|---|---|
+| E1 | Headless Differential Oracle — deterministic matrix + fixture-first gate | missing | L | `docs/agents/workflow.md` §3 | The **contract** is codified; the implementation is not. Three pieces are owed: (a) a deterministic fixture generator over control type × property × dialect × container hierarchy, so the matrix is reproducible rather than hand-picked; (b) a Windows runtime comparison tier driven by that matrix, not only by the hand-authored fixtures; (c) the fixture-first gate — a divergence must first land as `fixtures/differential/<issue>-<name>.Designer.cs` plus a filed Wayfinder ticket, *then* a patcher change. Black-box only: the Visual Studio designer binaries are never decompiled, and runtime semantics come from the MIT-licensed `dotnet/winforms`. |
 
 ## 3. Deliberately not planned (do not re-propose without an ADR)
 
