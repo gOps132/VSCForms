@@ -2,6 +2,24 @@
 
 These Designer files are **hand-authored**, not copied from any project.
 
+## The two kinds of fixture here
+
+| Directory | What it is | How it is written |
+|---|---|---|
+| everything except `differential/` | **hand-authored** — written to assert an exact expected diff | by a person, deliberately |
+| `differential/` | **oracle-generated** — written by the differential matrix when it found a divergence | by `scripts/gen-differential-matrix.py`, then committed |
+
+The `differential/` fixtures are the only generated files in the repository, and they are
+generated for a different reason than the hand-authored ones. The hand-authored fixtures
+say "this shape must behave exactly so". The `differential/` fixtures say "here is a
+concrete reproduction of something that is broken" — they exist so that a fix can be
+driven from an exact baseline instead of from a description, which is the fixture-first
+gate in `../docs/agents/workflow.md` §3.
+
+A `differential/` fixture is committed when the matrix finds a divergence and removed
+when the divergence is fixed. The matrix itself generates hundreds of files on every
+run; those are **not** committed — only the ones that reproduce a bug.
+
 ## Why not vendored real files
 
 The measurements in `../README.md` and `../CONTEXT.md` were taken from a corpus of 154 real
