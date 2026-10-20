@@ -885,7 +885,6 @@ def divergence_signature(div: dict) -> str:
 
 
 def write_fixture(
-    matrix: dict,
     case: dict,
     prop: str,
     value,
@@ -930,9 +929,7 @@ def write_fixture(
     return dest
 
 
-def emit_gate(
-    matrix: dict, work: str, report: Report, fixtures_dir: str, patched: dict
-) -> None:
+def emit_gate(matrix: dict, report: Report, fixtures_dir: str) -> None:
     """The fixture-first gate.
 
     A divergence must land as a committed reproduction BEFORE a patcher change is
@@ -979,7 +976,6 @@ def emit_gate(
             )
             continue
         dest = write_fixture(
-            matrix,
             case,
             prop,
             value,
@@ -1077,7 +1073,6 @@ def main() -> int:
             print(f"no such property: {prop}", file=sys.stderr)
             return 2
         dest = write_fixture(
-            matrix,
             case,
             prop,
             value,
@@ -1121,9 +1116,7 @@ def main() -> int:
     finally:
         engine.close()
 
-    emit_gate(
-        matrix, work, report, os.path.join(ROOT, "fixtures", "differential"), patched
-    )
+    emit_gate(matrix, report, os.path.join(ROOT, "fixtures", "differential"))
 
     if args.report:
         with open(args.report, "w", encoding="utf-8") as fh:
