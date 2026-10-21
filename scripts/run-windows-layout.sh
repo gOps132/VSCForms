@@ -171,7 +171,7 @@ cat > "$WORK/src/Check.csproj" <<'EOF'
     <UseWindowsForms>true</UseWindowsForms>
     <OutputType>WinExe</OutputType>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Nullable>disable</Nullable>
+    <Nullable>annotations</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <StartupObject>Program</StartupObject>
   </PropertyGroup>
