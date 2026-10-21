@@ -25,6 +25,20 @@ if [ -n "${RUNNER_TEMP:-}" ] && command -v cygpath >/dev/null 2>&1; then
 fi
 ENGINE_WORK="$WORK"
 
+# --- the RID ------------------------------------------------------------------
+# The host's RID decides which engine build is the right one. Hardcoding win-x64 made
+# this script unable to run on an ARM64 Windows host — which is exactly the UTM guest
+# (Windows 11 ARM64 on Apple Silicon). The engine is published per RID, so the script
+# has to look for the one that matches, and the ORDER matters: a publish/ output is the
+# self-contained build we want, and the plain framework-dependent output is the
+# fallback.
+case "$(uname -m)" in
+  aarch64|arm64) RID="win-arm64" ;;
+  *)             RID="win-x64" ;;
+esac
+export VSCFORMS_MATRIX_RID="$RID"
+echo "host architecture: $(uname -m) -> RID $RID"
+
 # --- engine discovery -------------------------------------------------------
 # Same discovery as run-windows-layout.sh, and for the same reason: a missing engine
 # must FAIL LOUDLY. A silent skip here is indistinguishable from having verified
@@ -32,15 +46,16 @@ ENGINE_WORK="$WORK"
 ENGINE_DLL=""
 for dll in vscforms-engine.dll; do
   for p in \
-    "./engine/bin/Release/net10.0/win-x64/publish/$dll" \
-    "./engine/bin/Release/net10.0/win-x64/$dll" \
+    "./engine/bin/Release/net10.0/$RID/publish/$dll" \
+    "./engine/bin/Release/net10.0/$RID/$dll" \
     "./engine/bin/Release/net10.0/$dll" \
     "./engine/bin/Debug/net10.0/$dll"; do
     [ -f "$p" ] && ENGINE_DLL="$p"
   done
 done
 if [ -z "$ENGINE_DLL" ]; then
-  echo "ERROR engine not built. Run: dotnet publish engine -c Release -r win-x64 --self-contained true" >&2
+  echo "ERROR engine not built for $RID. Run:" >&2
+  echo "  dotnet publish engine -c Release -r $RID --self-contained true" >&2
   exit 1
 fi
 ENGINE=(dotnet "$ENGINE_DLL")
