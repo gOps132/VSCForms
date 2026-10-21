@@ -1094,6 +1094,20 @@ def build(out_dir: str, families: list[str]) -> dict:
     ) as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)
         fh.write("\n")
+
+    # A plain-text index of the same cases: id|namespace|className|relative-file.
+    #
+    # The Windows tier consumes THIS, not matrix.json, because reading JSON in a shell
+    # means either a JSON parser (so python3 or jq, and the guest may have neither) or
+    # fragile string munging. One `|`-separated line per case is readable with `read`,
+    # and the fields are identifiers, so nothing needs escaping.
+    with open(
+        os.path.join(out_dir, "cases.txt"), "w", encoding="utf-8", newline="\n"
+    ) as fh:
+        for case in cases:
+            fh.write(
+                f"{case['id']}|{case['namespace']}|{case['className']}|{case['file']}\n"
+            )
     return manifest
 
 
