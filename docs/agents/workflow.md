@@ -97,9 +97,9 @@ flowchart LR
 2. **Headless Execution Substrate**:
    - Runs as a headless test runner / CLI daemon over SSH or local RPC.
    - **Portability**: Executes identically in a local macOS UTM Windows VM and on GitHub Actions native Windows CI runners (`windows-latest`).
-     **Verified on `windows-latest` only.** The UTM half is written to be portable and is
-     NOT yet exercised — see #64. The claim above is the target state, not the current
-     one; until a UTM run exists, treat the CI path as the only proven path.
+     **Verified on both.** The UTM half runs the same matrix — 438 forms, 876 controls — in a
+     Windows 11 ARM64 guest on Apple Silicon, and the renders it produces are **byte-identical**
+     to the `windows-latest` ones. See #64 for the procedure and the traps.
    - Zero dependency on GUI mouse/keyboard automation or window focus.
 
 3. **Deterministic Permutation Matrix**:

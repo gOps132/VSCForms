@@ -135,12 +135,38 @@ cmd_pull() {
   cat "$dest"
 }
 
+cmd_run_bash() {
+  # Push a BASH script and run it with Git Bash.
+  #
+  # Bash is the right currency in the guest: cmd.exe has no `printf` (so a request written
+  # with it is silently empty), and it has no `sed`/`grep` worth the name. Everything with
+  # real logic in the guest should be a .sh, pushed and run through Git Bash.
+  require_utmctl; require_guest
+  local script="$1"; shift
+  local base; base=$(basename "$script")
+  local guest; guest=$(guest_path "$base")
+  "$UTMCTL" file push "$VM" "$guest" < "$script" || {
+    echo "ERROR push failed" >&2; exit 1; }
+  local argline=""
+  for a in "$@"; do argline="$argline \"$a\""; done
+  "$UTMCTL" exec "$VM" --cmd cmd.exe /c \
+    "C:\\Program Files\\Git\\bin\\bash.exe -lc \"bash $(cygpath -m "$guest" 2>/dev/null || echo "$guest")$argline > $(cygpath -m "$GUEST_OUT" 2>/dev/null || echo "$GUEST_OUT") 2>&1 & echo $GUEST_SENTINEL >> $(cygpath -m "$GUEST_OUT" 2>/dev/null || echo "$GUEST_OUT")\"" \
+    >/dev/null 2>&1
+  if ! wait_for_sentinel; then
+    echo "ERROR the guest run did not finish within ${TIMEOUT}s" >&2
+    "$UTMCTL" file pull "$VM" "$GUEST_OUT" 2>/dev/null | tail -40
+    exit 1
+  fi
+  "$UTMCTL" file pull "$VM" "$GUEST_OUT" 2>/dev/null | sed "s/$GUEST_SENTINEL//" | sed '/^[[:space:]]*$/d'
+}
+
 case "${1:-}" in
-  run)  shift; cmd_run "$@" ;;
-  exec) shift; cmd_exec "$@" ;;
-  push) shift; cmd_push "$@" ;;
-  pull) shift; cmd_pull "$@" ;;
-  ip)   require_utmctl; require_guest; echo "$GUEST_IP" ;;
-  *)    echo "usage: $0 {run <script>|exec <cmd>|push <local> <name>|pull <name>|ip}" >&2
+  run)      shift; cmd_run "$@" ;;
+  run-bash) shift; cmd_run_bash "$@" ;;
+  exec)     shift; cmd_exec "$@" ;;
+  push)     shift; cmd_push "$@" ;;
+  pull)     shift; cmd_pull "$@" ;;
+  ip)       require_utmctl; require_guest; echo "$GUEST_IP" ;;
+  *)    echo "usage: $0 {run <script>|run-bash <script.sh>|exec <cmd>|push <local> <name>|pull <name>|ip}" >&2
         exit 2 ;;
 esac

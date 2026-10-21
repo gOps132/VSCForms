@@ -1,51 +1,45 @@
 <#
 .SYNOPSIS
-    Prepares a Windows guest to run the VSCForms differential oracle and the visual-parity
-    capture against the Visual Studio WinForms designer.
+    Prepares a Windows guest to run the VSCForms differential oracle, and (optionally) to
+    run the extension itself.
 
 .DESCRIPTION
-    Runs INSIDE the guest. It is transport-agnostic on purpose: the same script is driven
+    Runs INSIDE the guest. It is transport-agnostic on purpose: the same file is driven
     over SSH, over the QEMU guest agent (`utmctl exec`), or by hand in a guest terminal.
 
-    It does four things, in order, and each is idempotent so a re-run after a partial
-    failure is cheap:
+    Every step is idempotent, so a re-run after a partial failure is cheap.
 
-      1. .NET 10 SDK      — the oracle's engine is a .NET 10 console app, and the matrix
-                             assembly is `net10.0-windows`.
-      2. Visual Studio Code + our win32-x64 .vsix — this is OUR editor, and the README
-                             claims the extension "runs natively on macOS, Linux and
-                             Windows". Nothing has ever run it on Windows.
-      3. The repository    — a directory share (VirtioFS/WebDAV) or a pushed copy.
-      4. The engine binary + the matrix run.
+    WHAT THIS GUEST ACTUALLY HAS, AND WHAT IT CANNOT HAVE
+      dotnet 10.0.401 (RID win-arm64)   present
+      Visual Studio 18 Community        present, but WITHOUT the .NET desktop workload
+      git, python3, winget, VS Code     absent
 
-    Visual Studio itself (for the WinForms DESIGNER) is optional and off by default: it is
-    a ~10 GB install and the designer needs the full IDE — Build Tools does not include
-    it. Turn it on with -WithVisualStudio.
+    The Windows Installer is BROKEN in this guest: both the x64 and the ARM64 Python
+    installers fail with 0x80070003 (ERROR_PATH_NOT_FOUND). That also breaks the Visual
+    Studio workload add, so THE WINFORMS DESIGNER CANNOT BE INSTALLED HERE. The
+    installers that work are the non-MSI ones, and this script uses only those.
 
 .PARAMETER RepoPath
-    The repository checkout inside the guest. Default: the first thing that looks like a
-    VSCForms checkout on a share, or C:\src\VSCForms.
+    The repository checkout inside the guest. Default: C:\Users\Public\vscforms
 
-.PARAMETER ShareRoot
-    A directory share's root, e.g. \\MacOS.home\vm. The repo is copied from here when it
-    is not already present.
+.PARAMETER MatrixTar
+    A matrix tarball to unpack and point the tier at. The tier needs NO python in the
+    guest, so the matrix is generated on the host and pushed as one file.
 
 .PARAMETER VsixPath
-    The VSCForms .vsix to install. If omitted, the newest one under $ShareRoot is used.
+    The VSCForms .vsix to install into VS Code.
 
-.PARAMETER WithVisualStudio
-    Also install Visual Studio Community with the .NET desktop workload, which is what
-    carries the WinForms designer.
+.PARAMETER SkipMatrix
+    Provision the toolchain but do not run the matrix.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File bootstrap-guest.ps1 -ShareRoot '\\MacOS.home\vm' -WithVisualStudio
+    powershell -ExecutionPolicy Bypass -File utm-guest-bootstrap.ps1 -MatrixTar C:\Users\Public\matrix.tar
 #>
 [CmdletBinding()]
 param(
-    [string] $RepoPath = 'C:\src\VSCForms',
-    [string] $ShareRoot = '',
+    [string] $RepoPath = 'C:\Users\Public\vscforms',
+    [string] $MatrixTar = 'C:\Users\Public\matrix.tar',
     [string] $VsixPath = '',
-    [switch] $WithVisualStudio,
     [switch] $SkipMatrix
 )
 
@@ -56,179 +50,113 @@ function Step($m) { Write-Host ""; Write-Host ("== " + $m); Write-Host "" }
 # ---------------------------------------------------------------- identity
 Step "who am I"
 Log ("OS            : " + (Get-CimInstance Win32_OperatingSystem).Caption)
-Log ("Version       : " + [System.Environment]::OSVersion.VersionString)
 Log ("Architecture  : " + $env:PROCESSOR_ARCHITECTURE)
-Log ("PowerShell    : " + $PSVersionTable.PSVersion)
-Log ("Machine       : " + $env:COMPUTERNAME)
 $ip = (Get-NetIPAddress -AddressFamily IPv4 |
        Where-Object { $_.IPAddress -notlike '127.*' } |
        Select-Object -First 1).IPAddress
 Log ("IPv4          : " + $ip)
 
-# ------------------------------------------------------------- winget ready
-Step "winget"
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Log "winget not found — App Installer is missing. Install it from the Store, or run:"
-    Log "  https://learn.microsoft.com/windows/package-manager/winget/#install"
-    throw "winget is required to install the toolchain automatically"
-}
-winget --version
+# The RID is the one question that decides which engine build can be LOADED, and only the
+# runtime knows the answer. `uname -m` inside Git Bash says x86_64 on an ARM64 guest
+# because the shell runs under emulation, and an engine published for the wrong RID fails
+# with "Failed to load hostpolicy.dll ... Ensure the library matches the current process
+# architecture: arm64".
+$rid = (dotnet --info | Select-String 'RID:' | Select-Object -First 1) -replace '.*RID:\s*', ''
+$rid = $rid.Trim()
+Log ("dotnet RID    : " + $rid)
+if (-not $rid) { throw "dotnet did not report a RID" }
 
-# ------------------------------------------------------------- .NET 10 SDK
-Step ".NET 10 SDK"
-$sdk = (dotnet --list-sdks 2>$null | Where-Object { $_ -match '^10\.' })
-if ($sdk) {
-    Log "already present: $sdk"
+# ------------------------------------------------------------------ Git Bash
+Step "Git for Windows (Git Bash)"
+if (Test-Path 'C:\Program Files\Git\bin\bash.exe') {
+    Log "already present"
 } else {
-    Log "installing Microsoft.DotNet.SDK.10"
-    winget install --id Microsoft.DotNet.SDK.10 --exact --silent `
-        --accept-package-agreements --accept-source-agreements
-    $sdk = (dotnet --list-sdks 2>$null | Where-Object { $_ -match '^10\.' })
-    if (-not $sdk) { throw "the .NET 10 SDK did not install" }
-    Log "installed: $sdk"
+    $git = "$env:TEMP\git.exe"
+    Log "downloading (the NSIS installer works here; MSI does not)"
+    Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/Git-2.56.0.2-64-bit.exe' -OutFile $git
+    Log "installing silently"
+    $p = Start-Process -FilePath $git -Wait -PassThru -ArgumentList @(
+        '/VERYSILENT', '/NORESTART', '/NOCANCEL', '/SP-', '/SUPPRESSMSGBOXES')
+    Log ("installer exit code: " + $p.ExitCode)
+    if (-not (Test-Path 'C:\Program Files\Git\bin\bash.exe')) {
+        throw "Git for Windows did not install"
+    }
 }
+Log "Git Bash: ready"
 
 # ------------------------------------------------------------------- VS Code
-Step "Visual Studio Code"
-if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
-    Log "installing Microsoft.VisualStudioCode"
-    winget install --id Microsoft.VisualStudioCode --exact --silent `
-        --accept-package-agreements --accept-source-agreements
-    # The PATH is not refreshed for the current session.
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
-                [System.Environment]::GetEnvironmentVariable('Path', 'User')
+Step "Visual Studio Code (the portable archive, not the installer)"
+if (Test-Path 'C:\Users\Public\vscode\Code.exe') {
+    Log "already installed"
+} else {
+    $zip = "$env:TEMP\vscode.zip"
+    # The -archive suffix is the ZIP. Without it the URL serves a signed .exe and
+    # Expand-Archive fails with "End of Central Directory record could not be found".
+    Log "downloading the portable ARM64 archive"
+    Invoke-WebRequest -Uri 'https://update.code.visualstudio.com/latest/win32-arm64-archive/stable' -OutFile $zip
+    Log ("downloaded " + [math]::Round((Get-Item $zip).Length / 1MB) + " MB")
+    Expand-Archive -Force $zip 'C:\Users\Public\vscode'
+    if (-not (Test-Path 'C:\Users\Public\vscode\Code.exe')) { throw "VS Code did not extract" }
+    Log "VS Code: ready"
 }
-$code = (Get-Command code -ErrorAction SilentlyContinue)
-if (-not $code) { throw "VS Code is not on PATH" }
-Log ("code: " + $code.Source)
 
-# --------------------------------------------------------------- the repository
+# ------------------------------------------------------------- the repository
 Step "the repository"
-function Find-Repo {
-    $candidates = @($RepoPath)
-    if ($ShareRoot) {
-        $candidates += (Join-Path $ShareRoot 'VSCForms')
-        $candidates += (Join-Path $ShareRoot 'dev/projects/VSCForms')
-    }
-    foreach ($c in $candidates) {
-        if (Test-Path (Join-Path $c '.git')) { return $c }
-    }
-    return $null
-}
-
-$repo = Find-Repo
-if ($repo) {
-    Log "found the repository at $repo"
-    Push-Location $repo
-    try {
-        Log "fetching"
-        git fetch --all --prune 2>&1 | Out-Null
-        git status --short | Out-String | Write-Host
-    } finally { Pop-Location }
+if (Test-Path (Join-Path $RepoPath 'engine\src\Patcher.cs')) {
+    Log "already present at $RepoPath"
 } else {
-    if (-not $ShareRoot) { throw "no repository found and no -ShareRoot given" }
-    $src = Join-Path $ShareRoot 'VSCForms'
-    if (-not (Test-Path $src)) { $src = Join-Path $ShareRoot 'dev/projects/VSCForms' }
-    if (-not (Test-Path $src)) { throw "no VSCForms checkout under $ShareRoot" }
-    Log "copying $src -> $RepoPath"
-    New-Item -ItemType Directory -Force -Path (Split-Path $RepoPath) | Out-Null
-    robocopy $src $RepoPath /E /XD .git node_modules engine\bin engine\obj extension\bin out | Out-Null
-    $repo = $RepoPath
-}
-$RepoPath = $repo
-
-# ------------------------------------------------------------- the extension
-Step "the VSCForms extension (win32-x64)"
-if (-not $VsixPath) {
-    $candidates = Get-ChildItem -Path (Join-Path $ShareRoot 'dist'), (Join-Path $RepoPath 'dist') `
-        -Filter 'vscforms-win32-x64.vsix' -Recurse -ErrorAction SilentlyContinue
-    if ($candidates) { $VsixPath = $candidates[0].FullName }
-}
-if (-not $VsixPath -or -not (Test-Path $VsixPath)) {
-    Log "no .vsix found — the extension is not what this step is for"
-    Log "  (the oracle runs the ENGINE, not the extension; the extension needs the .vsix"
-    Log "   from the package job, or scripts/package-all.js)"
-} else {
-    Log "installing $VsixPath"
-    code --install-extension $VsixPath --force
-    code --list-extensions | Where-Object { $_ -like '*vscforms*' } | ForEach-Object { Log "installed: $_" }
+    $zip = "$env:TEMP\repo.zip"
+    Log "downloading (no git in this guest, and none is needed)"
+    Invoke-WebRequest -Uri 'https://github.com/gOps132/VSCForms/archive/refs/heads/main.zip' -OutFile $zip
+    Expand-Archive -Force $zip "$env:TEMP\repo"
+    $src = Get-ChildItem "$env:TEMP\repo" -Directory | Select-Object -First 1
+    Move-Item $src.FullName $RepoPath
+    Log "repository at $RepoPath"
 }
 
-# --------------------------------------------------- Visual Studio (optional)
-if ($WithVisualStudio) {
-    Step "Visual Studio Community (the WinForms designer lives here)"
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    $installed = $false
-    if (Test-Path $vswhere) {
-        $installed = (& $vswhere -latest -products * `
-            -requires Microsoft.VisualStudio.Workload.ManagedDesktop `
-            -property productPath) -ne $null
-    }
-    if ($installed) {
-        Log "Visual Studio with the .NET desktop workload is already installed"
-    } else {
-        Log "installing — this is a big download and a slow install in a VM"
-        $installer = "$env:TEMP\vs_community.exe"
-        Log "downloading the bootstrapper"
-        Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vs_community.exe' -OutFile $installer
-        Log "installing with the .NET desktop workload (and nothing else)"
-        Start-Process -FilePath $installer -Wait -ArgumentList @(
-            '--quiet', '--wait', '--norestart',
-            '--add', 'Microsoft.VisualStudio.Workload.ManagedDesktop',
-            '--includeRecommended'
-        )
-        if (Test-Path $vswhere) {
-            $installed = (& $vswhere -latest -products * `
-                -requires Microsoft.VisualStudio.Workload.ManagedDesktop `
-                -property productPath) -ne $null
-        }
-        if (-not $installed) { throw "Visual Studio did not install" }
-        Log "installed"
-    }
-    & $vswhere -latest -products * -property installationPath | ForEach-Object { Log "VS at $_" }
-} else {
-    Step "Visual Studio — SKIPPED"
-    Log "the WinForms DESIGNER needs the full Visual Studio IDE (Build Tools has no designer)."
-    Log "re-run with -WithVisualStudio to install it."
-}
-
-# --------------------------------------------------------- the engine binary
-Step "the engine (win-x64, self-contained)"
-Push-Location $RepoPath
-try {
-    if (-not (Test-Path 'engine/bin/Release/net10.0/win-x64/publish/vscforms-engine.exe')) {
-        Log "publishing the engine for win-x64 (self-contained, single file)"
-        dotnet publish engine -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=true -p:DebugType=none `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -o engine/bin/Release/net10.0/win-x64/publish
-    } else {
-        Log "already published"
-    }
-    if (-not (Test-Path 'engine/bin/Release/net10.0/win-x64/publish/vscforms-engine.exe')) {
-        throw "the engine did not publish"
-    }
-} finally { Pop-Location }
-
-# --------------------------------------------------------------- the matrix
-if (-not $SkipMatrix) {
-    Step "the differential matrix (the oracle's runtime half)"
+# ------------------------------------------------------------------- the engine
+Step "the engine ($rid)"
+$engine = Join-Path $RepoPath "engine\bin\Release\net10.0\$rid\publish\vscforms-engine.exe"
+if (-not (Test-Path $engine)) {
+    Log "publishing"
     Push-Location $RepoPath
     try {
-        # The script needs Git Bash for the POSIX path handling; fall back to a clear
-        # message rather than running a broken tier.
-        $bash = (Get-Command bash -ErrorAction SilentlyContinue)
-        if (-not $bash) {
-            Log "no bash found — run the matrix from a Git Bash prompt instead:"
-            Log "  cd /c/src/VSCForms && ./scripts/run-windows-matrix.sh"
-        } else {
-            $env:VSCFORMS_MATRIX_RENDER = '1'   # the visual reference PNGs
-            & $bash.Source -lc "cd '$($RepoPath -replace '\\','/')' && ./scripts/run-windows-matrix.sh"
-            Log ("matrix exit code: " + $LASTEXITCODE)
-        }
+        dotnet publish engine -c Release -r $rid --self-contained true `
+            -p:PublishSingleFile=true -p:DebugType=none `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o "engine/bin/Release/net10.0/$rid/publish" 2>&1 |
+            Select-String 'error|->' | ForEach-Object { Log $_.ToString() }
     } finally { Pop-Location }
+} else {
+    Log "already published"
+}
+$dll = Join-Path $RepoPath "engine\bin\Release\net10.0\$rid\vscforms-engine.dll"
+if (-not (Test-Path $dll)) { throw "the engine did not publish for $rid" }
+Log "engine ready: $dll"
+
+# ------------------------------------------------------------------ the matrix
+if (-not $SkipMatrix) {
+    Step "the matrix"
+    if (-not (Test-Path $MatrixTar)) {
+        Log "no matrix tarball at $MatrixTar - the tier needs one, because it needs no python"
+    } else {
+        $dir = 'C:\Users\Public\matrix'
+        if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Log "unpacking the matrix"
+        tar -xf $MatrixTar -C $dir
+        if (-not (Test-Path (Join-Path $dir 'cases.txt'))) { throw "the matrix did not unpack" }
+        $count = (Get-Content (Join-Path $dir 'cases.txt') | Measure-Object -Line).Lines
+        Log "$count case(s)"
+
+        Log "running the matrix"
+        $env:VSCFORMS_MATRIX_DIR = '/c/Users/Public/matrix'
+        $env:VSCFORMS_MATRIX_RENDER = '1'
+        $bash = 'C:\Program Files\Git\bin\bash.exe'
+        & $bash -lc "cd /c/Users/Public/vscforms && VSCFORMS_MATRIX_DIR=/c/Users/Public/matrix VSCFORMS_MATRIX_RENDER=1 ./scripts/run-windows-matrix.sh"
+        Log ("matrix exit code: " + $LASTEXITCODE)
+    }
 }
 
 Step "done"
-Log "the guest is ready. Next: open the same fixture in the Visual Studio WinForms"
-Log "designer and in VS Code, and compare them."
+Log "the guest is ready."
