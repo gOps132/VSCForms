@@ -149,6 +149,17 @@ jobs:
       - name: differential matrix against the real runtime
         shell: bash
         run: ./scripts/run-windows-matrix.sh
+      # The renders are the reference side of the visual-parity check: what the WinForms
+      # runtime paints, which is what the Visual Studio designer paints too (it hosts real
+      # controls). The canvas draws a stylised box per control, so the comparison that can
+      # be automated is geometric — and these rectangles are it.
+      - name: upload the matrix renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-renders
+          path: out/matrix-renders/
+          if-no-files-found: warn
 
   # Builds the .vsix. The linux legs build their own native binary; the win32 legs are built
   # HERE on Linux, not on windows-latest, because packaging from Windows loses the POSIX

@@ -39,7 +39,24 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Length >= 2 && args[0] == "--matrix")
-            return RunMatrix(args[1]);
+        {
+            // `--matrix <manifest> [--render <dir>] [--png]`
+            //
+            // The RECTANGLES are always written when a render directory is given: they are
+            // small, and they are the half of the visual-parity check that can be
+            // automated (does the canvas put each control where, and how big, the runtime
+            // will put it?). The PNGs are opt-in with `--png`: they are the visual
+            // reference for a comparison against the Visual Studio designer, and they are
+            // an artifact rather than an assertion.
+            string? renderDir = null;
+            bool writePng = false;
+            for (int i = 2; i + 1 < args.Length; i++)
+            {
+                if (args[i] == "--render") renderDir = args[i + 1];
+                if (args[i] == "--png") writePng = true;
+            }
+            return RunMatrix(args[1], renderDir, writePng);
+        }
 
         if (args.Length < 1)
         {
@@ -130,7 +147,7 @@ internal static class Program
     /// tolerance, same AutoScale freeze. One copy of the rules, so the two tiers
     /// cannot drift apart.
     /// </summary>
-    private static int RunMatrix(string manifestPath)
+    private static int RunMatrix(string manifestPath, string? renderDir, bool writePng)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
         var entries = doc.RootElement.GetProperty("cases").EnumerateArray().ToList();
@@ -187,6 +204,10 @@ internal static class Program
                     caseFailures++;
                     Console.WriteLine($"  --- {id}: geometry disagrees with the runtime");
                 }
+
+                // The render happens inside the using block: the form must still be alive.
+                if (renderDir is not null)
+                    Render(form, id, renderDir, writePng);
             }
         }
 
@@ -203,10 +224,85 @@ internal static class Program
         return 1;
     }
 
+    /// <summary>
+    /// Render the form to a PNG and record where every control ended up.
+    ///
+    /// WHY THIS IS THE VISUAL REFERENCE
+    ///   The Visual Studio WinForms designer hosts REAL controls and asks WinForms to paint
+    ///   them, so the designer's pixels ARE the runtime's pixels (minus the designer's own
+    ///   chrome: the grid, the selection handles, the tab strip's designer decoration). That
+    ///   means a runtime render is a faithful reference image for a visual-parity check
+    ///   against the designer — and it can be produced headlessly, for every matrix case, on
+    ///   every CI run, with no Visual Studio and no GUI automation.
+    ///
+    ///   The recorded rectangles are the more useful half for automation: the canvas draws a
+    ///   STYLISED box per control, so the parity question is not "do the pixels match" (they
+    ///   never will — ADR 0006 says the canvas is a layout view, not a renderer) but "does
+    ///   the canvas put the control where the runtime will put it, and at the size the
+    ///   runtime will give it". The rectangles answer exactly that.
+    ///
+    ///   KNOWN LIMITATION: DrawToBitmap asks each control to draw itself with WM_PRINT, and
+    ///   a control that does not implement it renders blank. A few WinForms controls are in
+    ///   that class, so a render is a reference for the controls that DO paint, not a
+    ///   pixel-perfect oracle for all of them. The rectangles are unaffected — they come
+    ///   from the layout, not the painting.
+    /// </summary>
+    private static void Render(Form form, string id, string renderDir, bool writePng)
+    {
+        try
+        {
+            Directory.CreateDirectory(renderDir);
+
+            var size = form.ClientSize;
+            if (size.Width <= 0 || size.Height <= 0) return;
+
+            if (writePng)
+            {
+                using var bmp = new Bitmap(size.Width, size.Height);
+                form.DrawToBitmap(bmp, new Rectangle(0, 0, size.Width, size.Height));
+                bmp.Save(Path.Combine(renderDir, id + ".png"),
+                         System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            // The rectangles, in the same JSON shape the canvas's DOM metrics use, so the
+            // two sides can be compared without a translation layer.
+            var sb = new System.Text.StringBuilder();
+            sb.Append("{\"id\":\"").Append(id).Append("\",\"clientSize\":{\"width\":")
+              .Append(size.Width).Append(",\"height\":").Append(size.Height)
+              .Append("},\"controls\":[");
+            bool first = true;
+            CollectRects(form.Controls, sb, ref first);
+            sb.Append("]}");
+            File.WriteAllText(Path.Combine(renderDir, id + ".json"), sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            // A render failure must not fail the comparison: the geometry check is the
+            // assertion; the render is the artifact.
+            Console.WriteLine($"  note {id}: render failed ({ex.GetType().Name}: {ex.Message})");
+        }
+    }
+
+    private static void CollectRects(Control.ControlCollection controls, System.Text.StringBuilder sb, ref bool first)
+    {
+        foreach (Control c in controls)
+        {
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append("{\"id\":\"").Append(c.Name).Append("\",\"type\":\"")
+              .Append(c.GetType().Name).Append("\",\"x\":").Append(c.Left)
+              .Append(",\"y\":").Append(c.Top)
+              .Append(",\"width\":").Append(c.Width)
+              .Append(",\"height\":").Append(c.Height)
+              .Append(",\"text\":\"").Append(c.Text?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? "")
+              .Append("\"}");
+            CollectRects(c.Controls, sb, ref first);
+        }
+    }
+
     private static int Walk(JsonElement nodes, Control.ControlCollection controls, bool geometry)
     {
         int count = 0;
-
         foreach (var node in nodes.EnumerateArray())
         {
             string id = node.GetProperty("id").GetString()!;

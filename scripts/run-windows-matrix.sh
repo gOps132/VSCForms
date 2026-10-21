@@ -155,7 +155,11 @@ with open(os.path.join(src, "Matrix.csproj"), "w", encoding="utf-8") as fh:
         "    <UseWindowsForms>true</UseWindowsForms>\n"
         "    <OutputType>WinExe</OutputType>\n"
         "    <EnableWindowsTargeting>true</EnableWindowsTargeting>\n"
-        "    <Nullable>disable</Nullable>\n"
+        # `annotations`, not `disable`: the harness uses `string?` in its signatures, and a
+        # project with nullable annotations DISABLED warns about every one of them
+        # (CS8632). The build must be warning-free — that is part of what the Auditor
+        # checks.
+        "    <Nullable>annotations</Nullable>\n"
         "    <ImplicitUsings>enable</ImplicitUsings>\n"
         "    <StartupObject>Program</StartupObject>\n"
         "  </PropertyGroup>\n"
@@ -183,8 +187,18 @@ dotnet build "$WORK/src/Matrix.csproj" -c Release -v q --nologo
 require "the built matrix harness" "$WORK/src/bin/Release/net10.0-windows/Matrix.exe"
 
 echo "running the matrix against the real WinForms runtime…"
+# The rectangles are always written: they are the half of the visual-parity check that
+# CAN be automated — does the canvas put each control where, and how big, the runtime
+# will put it? The PNGs are opt-in: they are the visual reference for a comparison
+# against the Visual Studio designer (which paints the same real controls), and they are
+# an artifact rather than an assertion.
+RENDER_ARGS=(--render "$ENGINE_WORK/renders")
+if [ "${VSCFORMS_MATRIX_RENDER:-0}" = "1" ]; then
+  RENDER_ARGS+=(--png)
+  echo "  rendering every matrix form to a PNG as well…"
+fi
 set +e
-"$WORK/src/bin/Release/net10.0-windows/Matrix.exe" --matrix "$ENGINE_WORK/manifest.json"
+"$WORK/src/bin/Release/net10.0-windows/Matrix.exe" --matrix "$ENGINE_WORK/manifest.json" "${RENDER_ARGS[@]}"
 RESULT=$?
 set -e
 
@@ -193,5 +207,15 @@ if [ $RESULT -ne 0 ]; then
   echo "Each divergence is a real semantic difference: VSCForms' schema says one thing,"
   echo "the WinForms runtime does another. The reproduction is the matrix case above."
   exit $RESULT
+fi
+
+# Keep the renders. They are the reference side of the visual-parity check: what the
+# WinForms runtime paints, which is what the Visual Studio designer paints too (it hosts
+# real controls). The canvas draws a stylised box per control, so the comparison that
+# CAN be automated is geometric, and the comparison that needs eyes is visual.
+if [ -d "$WORK/renders" ]; then
+  mkdir -p out/matrix-renders
+  cp -r "$WORK/renders/." out/matrix-renders/ 2>/dev/null || true
+  echo "wrote $(ls -1 out/matrix-renders | wc -l | tr -d ' ') render file(s) to out/matrix-renders/"
 fi
 echo "matrix runtime verification passed"
