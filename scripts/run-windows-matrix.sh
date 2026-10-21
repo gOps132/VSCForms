@@ -34,18 +34,28 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # --- the RID ------------------------------------------------------------------
-# The host's RID decides which engine build is the right one. Hardcoding win-x64 made
-# this script unable to run on an ARM64 Windows host — which is exactly the UTM guest
-# (Windows 11 ARM64 on Apple Silicon). The engine is published per RID, so the script
-# has to look for the one that matches, and the ORDER matters: a publish/ output is the
-# self-contained build we want, and the plain framework-dependent output is the
-# fallback.
-case "$(uname -m)" in
-  aarch64|arm64) RID="win-arm64" ;;
-  *)             RID="win-x64" ;;
-esac
+# The RID decides which engine build can actually be LOADED, and the only authority on
+# that is the runtime itself: `dotnet --info` reports the RID of the runtime that will
+# load the engine, and the engine's hostpolicy.dll must match it.
+#
+# `uname -m` is NOT that authority, and using it was a real bug. On the UTM guest
+# (Windows 11 ARM64) the Git Bash shell runs under x64 emulation, so uname says x86_64
+# and the engine was published for win-x64 — and the guest's ARM64 dotnet then refused
+# it with "Failed to load hostpolicy.dll ... Ensure the library matches the current
+# process architecture: arm64".
+#
+# So: ask dotnet. Fall back to uname only if dotnet cannot say.
+command -v dotnet >/dev/null || { echo "ERROR dotnet not on PATH" >&2; exit 1; }
+RID=$(dotnet --info 2>/dev/null | sed -n 's/^[[:space:]]*RID:[[:space:]]*//p' | head -1)
+if [ -z "$RID" ]; then
+  case "$(uname -m)" in
+    aarch64|arm64) RID="win-arm64" ;;
+    *)             RID="win-x64" ;;
+  esac
+  echo "dotnet did not report a RID; falling back to the architecture"
+fi
 export VSCFORMS_MATRIX_RID="$RID"
-echo "host architecture: $(uname -m) -> RID $RID"
+echo "dotnet RID: $RID  (uname says $(uname -m))"
 
 # --- engine discovery -------------------------------------------------------
 # Same discovery as run-windows-layout.sh, and for the same reason: a missing engine
