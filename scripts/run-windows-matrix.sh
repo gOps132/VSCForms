@@ -123,16 +123,25 @@ require "the matrix index" "$MATRIX_DIR/cases.txt"
 # The schema is what the canvas would show, and what the runtime is compared against.
 echo "parsing every matrix case with the engine…"
 MANIFEST="$WORK/manifest.json"
+# A path the ENGINE can open. The shell's paths are Git Bash POSIX paths
+# (/c/Users/...), which .NET on Windows cannot resolve — it needs C:/Users/...
+# `cygpath -m` does that conversion, and it produces FORWARD SLASHES, so no JSON
+# string ever has to escape a backslash.
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1" 2>/dev/null || echo "$1"
+  else
+    echo "$1"
+  fi
+}
 {
   printf '{"cases":['
   first=1
   while IFS='|' read -r id ns cls rel; do
     [ -n "$id" ] || continue
-    # Forward slashes throughout: .NET accepts them on Windows, and no JSON string
-    # ever has to escape a backslash.
     src="$MATRIX_DIR/$rel"
     schema="$WORK/schemas/$id.json"
-    if ! printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$src" \
+    if ! printf '{"id":1,"cmd":"parse","path":"%s"}\n' "$(winpath "$src")" \
          | "${ENGINE[@]}" > "$schema" 2>/dev/null; then
       echo "  ERROR the engine failed on $id" >&2
       exit 1
@@ -143,7 +152,7 @@ MANIFEST="$WORK/manifest.json"
     fi
     if [ $first -eq 1 ]; then first=0; else printf ','; fi
     printf '{"id":"%s","namespace":"%s","className":"%s","schema":"%s"}' \
-      "$id" "$ns" "$cls" "$schema"
+      "$id" "$ns" "$cls" "$(winpath "$schema")"
   done < "$MATRIX_DIR/cases.txt"
   printf ']}\n'
 } > "$MANIFEST"
