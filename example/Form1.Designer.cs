@@ -1,4 +1,4 @@
-﻿namespace Washing_Machine_Timer_Fuzzy_Logic
+namespace Washing_Machine_Timer_Fuzzy_Logic
 {
     partial class Form1
     {
@@ -540,7 +540,7 @@
             //
             trk46.Location = new System.Drawing.Point(516, 567);
             trk46.Name = "trk46";
-            trk46.Size = new System.Drawing.Size(120, 56);
+            trk46.Size = new System.Drawing.Size(120, 45);
             trk46.TabIndex = 45;
             trk46.Text = "";
             //

@@ -1214,9 +1214,9 @@ setTimeout(async () => {
     // A wrong default size is a silent quality bug: no tier sees it, the user just resizes
     // immediately, and every resize is a real write to their file.
     const LEAF = [
-        ['TrackBar', 'trk', 120, 56],
+        ['TrackBar', 'trk', 120, 45],
         ['ProgressBar', 'prg', 140, 20],
-        ['NumericUpDown', 'num', 100, 22],
+        ['NumericUpDown', 'num', 100, 23],
         ['DateTimePicker', 'dtp', 120, 23],
     ];
     for (const [simple, prefix, w, h] of LEAF) {

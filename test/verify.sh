@@ -415,9 +415,9 @@ assert s['analysis']['coveragePercent']==100.0, s['analysis']
 " && ok "all four parse as modelled at 100% coverage" || bad "leaf widgets not modelled"
 
 sect "[roslyn] adding each leaf widget emits the right lines and prefix"
-for spec in "System.Windows.Forms.TrackBar:trk:120:56" \
+for spec in "System.Windows.Forms.TrackBar:trk:120:45" \
             "System.Windows.Forms.ProgressBar:prg:140:20" \
-            "System.Windows.Forms.NumericUpDown:num:100:22" \
+            "System.Windows.Forms.NumericUpDown:num:100:23" \
             "System.Windows.Forms.DateTimePicker:dtp:120:23"; do
   IFS=':' read -r type prefix w h <<< "$spec"
   simple="${type##*.}"

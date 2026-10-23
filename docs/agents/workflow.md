@@ -114,3 +114,22 @@ flowchart LR
      1. It automatically writes a minimal failing `.Designer.cs` fixture into `fixtures/differential/<issue-id>-<name>.Designer.cs`.
      2. It files a Wayfinder sub-issue with the exact observed diff.
      3. Patcher changes are only implemented *after* the reproduction fixture is committed.
+
+---
+
+## 4. Closed Dual-Agent Parity & UI/UX Feedback Loop
+
+To bridge Windows Forms runtime semantics with the VS Code extension canvas, two specialized autonomous agents operate in a closed feedback loop:
+
+1. **`winforms-feature-engineer`**:
+   - Explores Windows Forms features and controls against the UTM Windows guest runtime (`scripts/utm-guest.sh`, `scripts/utm-vs-open.sh`).
+   - Identifies semantic divergences and writes reproduction fixtures in `fixtures/differential/`.
+   - Surgically adapts the Roslyn engine (`engine/src/Patcher.cs`, `TypeTable.cs`) under Invariants 1–5.
+   - Verifies with `./test/verify.sh` and `./test/verify-differential-matrix.sh`.
+
+2. **`canvas-ux-auditor`**:
+   - Inspects the VS Code visual designer canvas via headless CDP capture (`npm run ux:capture`, `npm run ux:verify`).
+   - Evaluates visual fidelity against `docs/ui-ux-review.md` (Pillar A: WinForms Aesthetics, Pillar B: Canvas Ergonomics, Pillar C: Theme Contrast).
+   - Feeds bounding rectangle, handle, or style discrepancies directly back to the feature engineer, or surgically patches `extension/media/`.
+
+See `docs/agents/parity-feedback-loop.md` for full agent specifications and invocation procedures.

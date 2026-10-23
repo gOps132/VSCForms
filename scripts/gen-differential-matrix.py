@@ -182,6 +182,34 @@ HAS_FONT = {
     "TabPage",
 }
 
+# The per-type sizes written into matrix Designer files (#65).
+# Leaf controls with constrained or font-driven heights (TextBox, ComboBox,
+# DateTimePicker, NumericUpDown, TrackBar) MUST declare the exact size the
+# WinForms runtime produces (height 23 for single-line text inputs at default
+# 9pt font, height 45 for TrackBar) so declared and runtime sizes agree by
+# construction.
+CONTROL_SIZES = {
+    "Button": (120, 30),
+    "Label": (120, 30),
+    "TextBox": (120, 23),
+    "CheckBox": (120, 30),
+    "RadioButton": (120, 30),
+    "ComboBox": (120, 23),
+    "ListBox": (120, 96),
+    "PictureBox": (120, 30),
+    "Panel": (120, 30),
+    "GroupBox": (120, 30),
+    "TrackBar": (120, 45),
+    "ProgressBar": (120, 30),
+    "NumericUpDown": (120, 23),
+    "DateTimePicker": (120, 23),
+    "TabControl": (120, 30),
+    "TabPage": (120, 30),
+    "DataGridView": (120, 30),
+    "ListView": (120, 30),
+    "TreeView": (120, 30),
+}
+
 # Form-level properties (the Form is modelled separately from the control table).
 FORM_PROPS = ["text", "clientSize", "backColor"]
 
@@ -772,7 +800,8 @@ def emit_case(
             f"{body}{d.member(sid)}.Location = new {d.drawing('Point')}(40, 40);"
         )
         lines.append(f'{body}{d.member(sid)}.Name = "{sid}";')
-        lines.append(f"{body}{d.member(sid)}.Size = new {d.drawing('Size')}(120, 30);")
+        sw, sh = CONTROL_SIZES.get(type_name, (120, 30))
+        lines.append(f"{body}{d.member(sid)}.Size = new {d.drawing('Size')}({sw}, {sh});")
         lines.append(f"{body}{d.member(sid)}.TabIndex = 1;")
 
         if variant == "full":

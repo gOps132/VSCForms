@@ -3432,9 +3432,9 @@
             GroupBox: { w: 220, h: 160, text: 'GroupBox' },
             // WinForms design-time defaults. A control dropped at an arbitrary size is one the
             // user immediately resizes — and every resize is a real write to their file.
-            TrackBar: { w: 120, h: 56, text: '' },
+            TrackBar: { w: 120, h: 45, text: '' },
             ProgressBar: { w: 140, h: 20, text: '' },
-            NumericUpDown: { w: 100, h: 22, text: '' },
+            NumericUpDown: { w: 100, h: 23, text: '' },
             DateTimePicker: { w: 120, h: 23, text: '' },
             TabControl: { w: 200, h: 100, text: '' },
             TabPage: { w: 192, h: 74, text: 'TabPage' },
