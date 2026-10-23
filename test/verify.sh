@@ -600,6 +600,43 @@ grep -qF 'this.progressLoad.Maximum = 200;' "$FILE" \
 grep -qF 'this.numQuantity.Value = 25;' "$FILE" \
   && ok "NumericUpDown Value inserted" || bad "NumericUpDown Value not inserted"
 
+sect "[roslyn] dateTimePicker: format, customFormat, value, minDate, maxDate parse, replace, insert"
+work leafwidgets LeafForm
+OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")
+echo "$OUT" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)['schema']
+byid={c['id']: c for c in s['controls']}
+dtp=byid['dtpDue']
+p=dtp['properties']
+assert p['format']=='Custom', p
+assert p['customFormat']=='yyyy-MM-dd', p
+assert p['value']=='2026-10-06', p
+" && ok "DateTimePicker parses format, customFormat, and value" || bad "DateTimePicker parse failed"
+
+python_tweak "
+for c in s['controls']:
+    if c['id']=='dtpDue':
+        c['properties'].update(format='Short', customFormat='MM/dd/yyyy', value='2026-10-24', minDate='2020-01-01', maxDate='2030-12-31')" >/dev/null
+grep -qF 'this.dtpDue.Format = System.Windows.Forms.DateTimePickerFormat.Short;' "$FILE" \
+  && ok "DateTimePicker Format replaced" || bad "Format not replaced"
+grep -qF 'this.dtpDue.CustomFormat = "MM/dd/yyyy";' "$FILE" \
+  && ok "DateTimePicker CustomFormat replaced" || bad "CustomFormat not replaced"
+grep -qF 'this.dtpDue.Value = new DateTime(2026, 10, 24);' "$FILE" \
+  && ok "DateTimePicker Value arguments replaced without churning type" || bad "Value not replaced"
+grep -qF 'this.dtpDue.MinDate = new System.DateTime(2020, 1, 1, 0, 0, 0, 0);' "$FILE" \
+  && ok "DateTimePicker MinDate inserted" || bad "MinDate not inserted"
+grep -qF 'this.dtpDue.MaxDate = new System.DateTime(2030, 12, 31, 0, 0, 0, 0);' "$FILE" \
+  && ok "DateTimePicker MaxDate inserted" || bad "MaxDate not inserted"
+
+LEAF_MOD_BUILD=$(cd "$LEAF_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$LEAF_MOD_BUILD" | grep -q "Build succeeded"; then
+  ok "LeafForm with patched DateTimePicker compiles as real WinForms"
+else
+  bad "LeafForm FAILED to compile after DateTimePicker patch"
+  echo "$LEAF_MOD_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
+
 sect "[roslyn] containers: TabControl, TabPage nesting and placeholders"
 work containers ContainerForm
 OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")

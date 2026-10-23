@@ -116,7 +116,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | B4 | `DataGridView` columns (6 types), `ListView`/`TreeView` nodes+items, `PropertyGrid`, `WebBrowser`, `BindingSource` | partial | M | Placeholders shipped (§1). Contents are collections the schema cannot express; interior stays preserved-but-invisible. Document as visibility win, not editing. |
 | B5 | T1 leaf inputs: `LinkLabel`, `RichTextBox`, `MaskedTextBox`, `CheckedListBox`, `MonthCalendar`, `H/VScrollBar`, `DomainUpDown` | missing | S each | Template-only per type (TypeTable row + canvas row + renderer + fixture). `CheckedListBox`/`DomainUpDown` need their own collection spec — not covered by `spec-items.md`. Pick by fresh-corpus frequency, not by guess. |
 | B6 | `ToolStripContainer`/`ToolStripPanel`, `Splitter` | missing | M | Same layout-simulation caveat as B2 at lower frequency. |
-| B7 | `DateTimePicker` value/format (`Value`, `Format`, `CustomFormat`) | missing | S–M | Shipped leaf set is geometry + shared min/max/value where applicable; `DateTimePicker` shows no value by decision (`spec-leaf-widgets.md` §6). Modelling it is a separate change. |
+| B7 | `DateTimePicker` value/format (`Value`, `Format`, `CustomFormat`, `MinDate`, `MaxDate`) | shipped | S–M | Shipped leaf set now models DateTimePicker formatting and value/limits: `Format` (Long/Short/Time/Custom), `CustomFormat`, `Value`, `MinDate`, `MaxDate` with surgical argument-level replacement and ISO 8601 schema representation. |
 
 ### C. Silent-divergence risks (zero handling today)
 

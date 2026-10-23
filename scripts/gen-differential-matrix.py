@@ -377,6 +377,11 @@ def _textalign_file(d, m, v, horizontal):
     return f"{m}.TextAlign = {d.drawing('ContentAlignment')}.{v}"
 
 
+def _datetime_file(d, m, key, iso_str):
+    parts = [int(p) for p in iso_str.split("-")]
+    return f"{m}.{key} = new {d.system('DateTime')}({parts[0]}, {parts[1]}, {parts[2]}, 0, 0, 0, 0)"
+
+
 PROPERTIES = [
     dict(
         key="text",
@@ -621,6 +626,51 @@ PROPERTIES = [
         v2=42,
         file=lambda d, m, v: f"{m}.Value = {v}",
     ),
+    dict(
+        key="format",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="Short",
+        v2="Custom",
+        file=lambda d, m, v: f"{m}.Format = {d.forms('DateTimePickerFormat')}.{v}",
+    ),
+    dict(
+        key="customFormat",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="yyyy-MM-dd",
+        v2="MM/dd/yyyy",
+        file=lambda d, m, v: f'{m}.CustomFormat = "{v}"',
+    ),
+    dict(
+        key="value",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="2026-10-06",
+        v2="2026-10-24",
+        file=lambda d, m, v: _datetime_file(d, m, "Value", v),
+    ),
+    dict(
+        key="minDate",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="2020-01-01",
+        v2="2021-06-15",
+        file=lambda d, m, v: _datetime_file(d, m, "MinDate", v),
+    ),
+    dict(
+        key="maxDate",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="2030-12-31",
+        v2="2029-11-20",
+        file=lambda d, m, v: _datetime_file(d, m, "MaxDate", v),
+    ),
 ]
 
 # Form-level property values, in SCHEMA shape: the v1 the file states and the v2 the
@@ -682,6 +732,9 @@ class Dialect:
         `HorizontalAlignment`), and the two must not be conflated.
         """
         return f"System.Windows.Forms.{simple}" if self.qualified_types else simple
+
+    def system(self, simple: str) -> str:
+        return f"System.{simple}" if self.qualified_types else simple
 
 
 def subject_id(type_name: str) -> str:

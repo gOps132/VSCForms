@@ -259,6 +259,8 @@
         'Multiline': 'Behavior', 'ReadOnly': 'Behavior', 'MaxLength': 'Behavior',
         'PasswordChar': 'Behavior', 'ScrollBars': 'Behavior',
         'Minimum': 'Behavior', 'Maximum': 'Behavior', 'Value': 'Behavior',
+        'Format': 'Behavior', 'CustomFormat': 'Behavior',
+        'MinDate': 'Behavior', 'MaxDate': 'Behavior',
         'SelectedIndex': 'Behavior', 'SelectedItem': 'Behavior',
         'DropDownStyle': 'Behavior',
         'Items': 'Data',
@@ -392,6 +394,47 @@
         cap.textContent = text;
         node.appendChild(cap);
         return cap;
+    }
+
+    /** Formats a DateTimePicker value according to its Format and CustomFormat. */
+    function formatDateTimePickerValue(val, format, customFormat) {
+        let d = null;
+        if (val) {
+            if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+                const parts = val.split('T')[0].split('-').map(Number);
+                d = new Date(parts[0], parts[1] - 1, parts[2]);
+            } else {
+                d = new Date(val);
+            }
+        }
+        if (!d || isNaN(d.getTime())) {
+            d = new Date();
+        }
+        const fmt = format || 'Long';
+        if (fmt === 'Short') {
+            return d.toLocaleDateString();
+        }
+        if (fmt === 'Time') {
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        if (fmt === 'Custom') {
+            if (customFormat) {
+                return customFormat
+                    .replace(/yyyy/g, String(d.getFullYear()))
+                    .replace(/yy/g, String(d.getFullYear()).slice(-2))
+                    .replace(/MM/g, String(d.getMonth() + 1).padStart(2, '0'))
+                    .replace(/M/g, String(d.getMonth() + 1))
+                    .replace(/dd/g, String(d.getDate()).padStart(2, '0'))
+                    .replace(/d/g, String(d.getDate()))
+                    .replace(/HH/g, String(d.getHours()).padStart(2, '0'))
+                    .replace(/hh/g, String(d.getHours() % 12 || 12).padStart(2, '0'))
+                    .replace(/mm/g, String(d.getMinutes()).padStart(2, '0'))
+                    .replace(/ss/g, String(d.getSeconds()).padStart(2, '0'))
+                    .replace(/tt/g, d.getHours() >= 12 ? 'PM' : 'AM');
+            }
+            return d.toLocaleDateString();
+        }
+        return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     }
     function containerTypes() { return new Set(['Panel', 'GroupBox', 'TabControl', 'TabPage']); }
 
@@ -731,7 +774,10 @@
         } else {
             // A handled type with empty text is genuinely empty (a TextBox with no value, an
             // unset Label) — showing the type name there would be a lie about the form.
-            const caption = c.properties.text || '';
+            let caption = c.properties.text || '';
+            if (simple === 'DateTimePicker') {
+                caption = formatDateTimePickerValue(c.properties.value, c.properties.format, c.properties.customFormat);
+            }
             const capNode = addCaption(node, caption);
             if (!caption && emptyShowTypeName(simple)) {
                 node.classList.add('placeholder');
@@ -2548,6 +2594,22 @@
                 (v) => setProp(c, 'value', v)));
         }
 
+        // DateTimePicker value, format, and limits
+        if (simple === 'DateTimePicker' && !appearanceBlocked) {
+            box.appendChild(el('h4', 'inspector-section', 'DateTime'));
+            box.appendChild(selectField('Format', c.properties.format || 'Long',
+                ['Long', 'Short', 'Time', 'Custom'], appearanceBlocked,
+                (v) => setProp(c, 'format', v)));
+            box.appendChild(strField('CustomFormat', c.properties.customFormat ?? '', appearanceBlocked,
+                (v) => setProp(c, 'customFormat', v)));
+            box.appendChild(dateField('Value', c.properties.value, appearanceBlocked,
+                (v) => setProp(c, 'value', v)));
+            box.appendChild(dateField('MinDate', c.properties.minDate, appearanceBlocked,
+                (v) => setProp(c, 'minDate', v)));
+            box.appendChild(dateField('MaxDate', c.properties.maxDate, appearanceBlocked,
+                (v) => setProp(c, 'maxDate', v)));
+        }
+
         // Rename is its own message, not a schema edit. A schema carrying a new id reads to the
         // engine as "old one deleted, new one inserted" — which would duplicate the control and
         // throw away its properties.
@@ -2918,6 +2980,25 @@
         f.appendChild(i);
         return f;
     }
+    function dateField(label, value, disabled, onChange) {
+        const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
+        const id = 'f' + label.replace(/\s+/g, '');
+        const lab = el('label', null, label);
+        lab.setAttribute('for', id);
+        f.appendChild(lab);
+        const i = document.createElement('input');
+        i.id = id;
+        i.type = 'date';
+        const dateStr = typeof value === 'string' ? value.split('T')[0] : '';
+        i.value = dateStr;
+        i.disabled = !!disabled;
+        i.addEventListener('change', () => {
+            if (i.value) onChange(i.value);
+        });
+        f.appendChild(i);
+        return f;
+    }
     function selectField(label, value, options, disabled, onChange) {
         const f = el('div', 'field');
         f.dataset.prop = label; f.dataset.cat = propCategory(label);
@@ -3168,7 +3249,11 @@
         'ScrollBars': 'Which scroll bars the text box shows.',
         'Minimum': 'Lowest value of the range.',
         'Maximum': 'Highest value of the range.',
-        'Value': 'Current value of the range.',
+        'Value': 'Current value or date.',
+        'Format': 'Format of the date and time displayed in the control.',
+        'CustomFormat': 'The custom date/time format string.',
+        'MinDate': 'The minimum date and time that can be selected.',
+        'MaxDate': 'The maximum date and time that can be selected.',
         'SelectedIndex': 'Which item starts selected. -1 selects nothing.',
         'SelectedItem': 'The selected item text. Empty means none.',
         'DropDownStyle': 'DropDown allows typing; DropDownList restricts to the list.',
@@ -3190,6 +3275,8 @@
         'Multiline': 'multiline', 'ReadOnly': 'readOnly', 'MaxLength': 'maxLength',
         'PasswordChar': 'passwordChar', 'ScrollBars': 'scrollBars',
         'Minimum': 'minimum', 'Maximum': 'maximum', 'Value': 'value',
+        'Format': 'format', 'CustomFormat': 'customFormat',
+        'MinDate': 'minDate', 'MaxDate': 'maxDate',
     };
     const NO_RESET_KEYS = new Set(['x', 'y', 'width', 'height']);
 
@@ -3382,6 +3469,22 @@
               options: ['Simple', 'DropDown', 'DropDownList'],
               get: (c) => c.properties.dropDownStyle || 'DropDown',
               set: (c, v) => { c.properties.dropDownStyle = v; } },
+            { label: 'Format', key: 'format', applies: (s) => s === 'DateTimePicker',
+              options: ['Long', 'Short', 'Time', 'Custom'],
+              get: (c) => c.properties.format || 'Long',
+              set: (c, v) => { c.properties.format = v; } },
+            { label: 'CustomFormat', key: 'customFormat', applies: (s) => s === 'DateTimePicker',
+              get: (c) => c.properties.customFormat ?? '',
+              set: (c, v) => { c.properties.customFormat = v; } },
+            { label: 'Value', key: 'value', applies: (s) => s === 'DateTimePicker', kind: 'date',
+              get: (c) => typeof c.properties.value === 'string' ? c.properties.value.split('T')[0] : '',
+              set: (c, v) => { c.properties.value = v; } },
+            { label: 'MinDate', key: 'minDate', applies: (s) => s === 'DateTimePicker', kind: 'date',
+              get: (c) => typeof c.properties.minDate === 'string' ? c.properties.minDate.split('T')[0] : '',
+              set: (c, v) => { c.properties.minDate = v; } },
+            { label: 'MaxDate', key: 'maxDate', applies: (s) => s === 'DateTimePicker', kind: 'date',
+              get: (c) => typeof c.properties.maxDate === 'string' ? c.properties.maxDate.split('T')[0] : '',
+              set: (c, v) => { c.properties.maxDate = v; } },
         ];
     }
     function renderMultiProps(box, sel) {
@@ -3399,6 +3502,7 @@
             if (cand.options) row = selectField(cand.label, agreed, cand.options, false, applyAll);
             else if (cand.kind === 'bool') row = boolField(cand.label, agreed, false, applyAll);
             else if (cand.kind === 'num') row = numField(cand.label, agreed, false, applyAll);
+            else if (cand.kind === 'date') row = dateField(cand.label, agreed, false, applyAll);
             else if (cand.kind === 'color') row = colorField(cand.label, agreed === null ? '' : agreed, false, applyAll);
             else row = strField(cand.label, agreed, false, applyAll);
             if (agreed === null) row.title = 'Selected controls disagree — editing sets every member.';

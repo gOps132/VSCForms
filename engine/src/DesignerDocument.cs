@@ -777,8 +777,63 @@ public sealed class DesignerDocument
                 p.Value = ParseNumber(val.Right);
         }
 
+        // DateTimePicker value, format, and limits
+        if (simpleType == "DateTimePicker")
+        {
+            if (cs.Properties.TryGetValue("Format", out var fmt)
+                && ParseMemberName(fmt.Right) is { Length: > 0 } f)
+                p.Format = f;
+
+            if (cs.Properties.TryGetValue("CustomFormat", out var cf)
+                && cf.Right is LiteralExpressionSyntax cfl
+                && cfl.IsKind(SyntaxKind.StringLiteralExpression))
+                p.CustomFormat = cfl.Token.ValueText;
+
+            if (cs.Properties.TryGetValue("Value", out var val)
+                && ParseDateTime(val.Right) is { } dt)
+                p.Value = FormatDateTime(dt);
+
+            if (cs.Properties.TryGetValue("MinDate", out var minD)
+                && ParseDateTime(minD.Right) is { } minDt)
+                p.MinDate = FormatDateTime(minDt);
+
+            if (cs.Properties.TryGetValue("MaxDate", out var maxD)
+                && ParseDateTime(maxD.Right) is { } maxDt)
+                p.MaxDate = FormatDateTime(maxDt);
+        }
+
         return p;
     }
+
+    internal static DateTime? ParseDateTime(ExpressionSyntax expr)
+    {
+        if (expr is ObjectCreationExpressionSyntax oce && oce.ArgumentList is { } args)
+        {
+            var intArgs = new List<int>();
+            foreach (var arg in args.Arguments)
+            {
+                if (arg.Expression is LiteralExpressionSyntax lit && lit.Token.Value is int iv)
+                    intArgs.Add(iv);
+                else return null;
+            }
+            try
+            {
+                if (intArgs.Count == 3)
+                    return new DateTime(intArgs[0], intArgs[1], intArgs[2]);
+                if (intArgs.Count == 6)
+                    return new DateTime(intArgs[0], intArgs[1], intArgs[2], intArgs[3], intArgs[4], intArgs[5]);
+                if (intArgs.Count == 7)
+                    return new DateTime(intArgs[0], intArgs[1], intArgs[2], intArgs[3], intArgs[4], intArgs[5], intArgs[6]);
+            }
+            catch { return null; }
+        }
+        return null;
+    }
+
+    internal static string FormatDateTime(DateTime dt) =>
+        dt.TimeOfDay == TimeSpan.Zero
+            ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : dt.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 
     private static decimal? ParseNumber(ExpressionSyntax e)
     {

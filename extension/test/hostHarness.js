@@ -1273,6 +1273,47 @@ setTimeout(async () => {
     check('TrackBar inspector offers Maximum', insInputs().some((i) => i.id === 'fMaximum'));
     check('TrackBar inspector offers Value', insInputs().some((i) => i.id === 'fValue'));
 
+    // Check DateTimePicker properties in inspector and canvas caption formatting
+    const dtpSchema = {
+        ...schema,
+        controls: [
+            { id: 'dtpTest', type: 'System.Windows.Forms.DateTimePicker', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 120, height: 23, tabIndex: 0,
+                            format: 'Custom', customFormat: 'yyyy-MM-dd', value: '2026-10-24' } },
+        ],
+    };
+    send({ type: 'load', data: dtpSchema });
+    await settled();
+    const dtpNode = ctlNode('dtpTest');
+    const dtpCaption = dtpNode.querySelector('.ctl-caption');
+    check('DateTimePicker renders formatted date value on canvas',
+        dtpCaption && dtpCaption.textContent === '2026-10-24',
+        dtpCaption ? dtpCaption.textContent : 'no caption');
+
+    dtpNode.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    check('DateTimePicker inspector offers Format',
+        ids.inspector.querySelectorAll('select').some((s) => s.id === 'fFormat'));
+    check('DateTimePicker inspector offers CustomFormat', insInputs().some((i) => i.id === 'fCustomFormat'));
+    check('DateTimePicker inspector offers Value', insInputs().some((i) => i.id === 'fValue'));
+    check('DateTimePicker inspector offers MinDate', insInputs().some((i) => i.id === 'fMinDate'));
+    check('DateTimePicker inspector offers MaxDate', insInputs().some((i) => i.id === 'fMaxDate'));
+
+    // Test editing DateTimePicker Value commits date
+    const dtpValueInput = insInputs().find((i) => i.id === 'fValue');
+    check('DateTimePicker Value input is date type', dtpValueInput && dtpValueInput.type === 'date');
+    if (dtpValueInput) {
+        dtpValueInput.value = '2026-11-15';
+        dtpValueInput.dispatch('change', {});
+        await new Promise((r) => setTimeout(r, 400));
+        const dtpCommits = sandbox.__sent.filter((m) => m.type === 'commit');
+        const lastDtpCommit = dtpCommits[dtpCommits.length - 1];
+        const sentDtp = lastDtpCommit && lastDtpCommit.data.controls.find((c) => c.id === 'dtpTest');
+        check('Editing DateTimePicker Value commits updated date',
+            sentDtp && sentDtp.properties.value === '2026-11-15',
+            sentDtp ? sentDtp.properties.value : 'no commit');
+    }
+
     // ---- Items editor: verify it appears for ComboBox/ListBox and posts commits
     const itemsTestSchema = {
         ...schema,

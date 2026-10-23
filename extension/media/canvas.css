@@ -291,6 +291,14 @@ body { display: flex; flex-direction: column; }
 .ctl.t-textbox > .ctl-caption,
 .ctl.t-combobox > .ctl-caption,
 .ctl.t-listbox > .ctl-caption { justify-content: flex-start; }
+.ctl.t-datetimepicker > .ctl-caption {
+  justify-content: flex-start;
+  padding-left: 6px;
+  padding-right: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* A container positions children absolutely and shows its own caption in the border. */
 /* Containers never clip either, for the same reason as the canvas: a child below
    the container's bottom edge (e.g. a combo at y=446 in a 261-high group) stays
@@ -554,9 +562,23 @@ body { display: flex; flex-direction: column; }
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #ccc);
 }
-.inspector-cat {
+.inspector-cat, .inspector-section {
   margin: 10px 0 2px; font-size: 10px; text-transform: uppercase;
   color: var(--muted); font-weight: 600;
+}
+
+body.vscode-dark, body.vscode-high-contrast {
+  color-scheme: dark;
+}
+body.vscode-light {
+  color-scheme: light;
+}
+.field input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.8;
+}
+.field input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 /* Task 5 (#51) inspector parity: VS bolds edited (non-default) values. Here

@@ -538,7 +538,45 @@ public sealed class Patcher
         {
             PatchRangeProperty(cs, id, "Minimum", p.Minimum, simpleType);
             PatchRangeProperty(cs, id, "Maximum", p.Maximum, simpleType);
-            PatchRangeProperty(cs, id, "Value", p.Value, simpleType);
+            PatchRangeProperty(cs, id, "Value", p.NumericValue, simpleType);
+        }
+
+        // DateTimePicker value, format, and limits
+        if (simpleType == "DateTimePicker")
+        {
+            // Format: DateTimePickerFormat.{Long|Short|Time|Custom}
+            if (cs.Properties.TryGetValue("Format", out var fmt))
+            {
+                if (p.Format is { Length: > 0 } newFmt && IsValidDateFormat(newFmt)
+                    && DesignerDocument.ParseMemberName(fmt.Right) != newFmt)
+                    Replace(fmt.Right.Span, $"System.Windows.Forms.DateTimePickerFormat.{newFmt}");
+            }
+            else if (p.Format is { Length: > 0 } freshFmt && IsValidDateFormat(freshFmt)
+                && !cs.Properties.ContainsKey("Format"))
+            {
+                InsertProperty(cs, id, "Format", $"System.Windows.Forms.DateTimePickerFormat.{freshFmt}");
+            }
+
+            // CustomFormat: string literal
+            if (cs.Properties.TryGetValue("CustomFormat", out var cf) && cf.Right is LiteralExpressionSyntax)
+            {
+                var cur = CurrentText(cf);
+                if (cur != p.CustomFormat && p.CustomFormat is not null)
+                    Replace(cf.Right.Span, StringLiteral(p.CustomFormat));
+            }
+            else if (p.CustomFormat is { Length: > 0 } freshCf && !cs.Properties.ContainsKey("CustomFormat"))
+            {
+                InsertProperty(cs, id, "CustomFormat", StringLiteral(freshCf));
+            }
+
+            // Value: new DateTime(...)
+            PatchDateTimeProperty(cs, id, "Value", p.StringValue);
+
+            // MinDate: new DateTime(...)
+            PatchDateTimeProperty(cs, id, "MinDate", p.MinDate);
+
+            // MaxDate: new DateTime(...)
+            PatchDateTimeProperty(cs, id, "MaxDate", p.MaxDate);
         }
     }
 
@@ -1771,6 +1809,57 @@ public sealed class Patcher
                 ? $"{val.ToString(CultureInfo.InvariantCulture)}"
                 : $"{((int)val).ToString(CultureInfo.InvariantCulture)}";
             InsertProperty(cs, id, propName, formatted);
+        }
+    }
+
+    private static bool TryParseIsoDate(string? s, out DateTime dt)
+    {
+        if (!string.IsNullOrWhiteSpace(s) &&
+            DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+            return true;
+        dt = default;
+        return false;
+    }
+
+    private static bool IsValidDateFormat(string f) =>
+        f is "Long" or "Short" or "Time" or "Custom";
+
+    private static string DateTimeArgs(ExpressionSyntax rhs, DateTime dt)
+    {
+        if (rhs is ObjectCreationExpressionSyntax oce && oce.ArgumentList is { } argList)
+        {
+            var count = argList.Arguments.Count;
+            if (count == 3 && dt.TimeOfDay == TimeSpan.Zero)
+                return $"({dt.Year}, {dt.Month}, {dt.Day})";
+            if (count == 6 && dt.Millisecond == 0)
+                return $"({dt.Year}, {dt.Month}, {dt.Day}, {dt.Hour}, {dt.Minute}, {dt.Second})";
+            if (count == 7)
+                return $"({dt.Year}, {dt.Month}, {dt.Day}, {dt.Hour}, {dt.Minute}, {dt.Second}, {dt.Millisecond})";
+        }
+        return $"({dt.Year}, {dt.Month}, {dt.Day}, {dt.Hour}, {dt.Minute}, {dt.Second}, {dt.Millisecond})";
+    }
+
+    private void PatchDateTimeProperty(DesignerDocument.ControlSyntax cs, string id, string propName, string? targetIso)
+    {
+        if (targetIso is null || !TryParseIsoDate(targetIso, out var newDt)) return;
+
+        if (cs.Properties.TryGetValue(propName, out var propAssign))
+        {
+            var curDt = DesignerDocument.ParseDateTime(propAssign.Right);
+            if (curDt == newDt) return;
+
+            if (propAssign.Right is ObjectCreationExpressionSyntax oce && oce.ArgumentList is not null)
+            {
+                Replace(oce.ArgumentList.Span, DateTimeArgs(propAssign.Right, newDt));
+            }
+            else
+            {
+                Replace(propAssign.Right.Span, $"new System.DateTime({newDt.Year}, {newDt.Month}, {newDt.Day}, {newDt.Hour}, {newDt.Minute}, {newDt.Second}, {newDt.Millisecond})");
+            }
+        }
+        else
+        {
+            InsertProperty(cs, id, propName, $"new System.DateTime({newDt.Year}, {newDt.Month}, {newDt.Day}, {newDt.Hour}, {newDt.Minute}, {newDt.Second}, {newDt.Millisecond})");
         }
     }
 
