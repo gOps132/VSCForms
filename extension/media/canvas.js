@@ -209,6 +209,10 @@
         // Phase B — TabControl & TabPage
         ['TabControl', 't-tabcontrol', '#3a3d41'],
         ['TabPage', 't-tabpage', '#2d2d2d'],
+        // B1 / B2 — Partial container modeling (ADR 0003 amendment)
+        ['SplitContainer', 't-splitcontainer', '#5a5a5a'],
+        ['TableLayoutPanel', 't-tablelayoutpanel', '#5a5a5a'],
+        ['FlowLayoutPanel', 't-flowlayoutpanel', '#5a5a5a'],
         // Phase C — Placeholders
         ['DataGridView', 't-datagridview', '#252526'],
         ['ListView', 't-listview', '#252526'],
@@ -233,6 +237,7 @@
         LinkLabel: 'lnk', RichTextBox: 'rtb', MaskedTextBox: 'mtb',
         CheckedListBox: 'clb', MonthCalendar: 'mcl', HScrollBar: 'hsb',
         VScrollBar: 'vsb', DomainUpDown: 'dud',
+        SplitContainer: 'spl', TableLayoutPanel: 'tlp', FlowLayoutPanel: 'flp',
     };
 
     /**
@@ -242,7 +247,8 @@
      */
     const NO_TEXT = new Set(['Panel', 'TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker',
         'TabControl', 'DataGridView', 'ListView', 'TreeView',
-        'MonthCalendar', 'HScrollBar', 'VScrollBar', 'DomainUpDown']);
+        'MonthCalendar', 'HScrollBar', 'VScrollBar', 'DomainUpDown',
+        'SplitContainer', 'TableLayoutPanel', 'FlowLayoutPanel']);
 
     /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
     const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
