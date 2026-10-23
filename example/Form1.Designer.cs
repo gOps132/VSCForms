@@ -76,6 +76,7 @@ namespace Washing_Machine_Timer_Fuzzy_Logic
             trk46 = new System.Windows.Forms.TrackBar();
             prg47 = new System.Windows.Forms.ProgressBar();
             dtp48 = new System.Windows.Forms.DateTimePicker();
+            dtp49 = new System.Windows.Forms.DateTimePicker();
             ((System.ComponentModel.ISupportInitialize)numDetergent).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numLoad).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numSoiling).BeginInit();
@@ -560,6 +561,16 @@ namespace Washing_Machine_Timer_Fuzzy_Logic
             dtp48.TabIndex = 47;
             dtp48.Text = "";
             //
+            // dtp49
+            //
+            dtp49.Location = new System.Drawing.Point(360, 606);
+            dtp49.Name = "dtp49";
+            dtp49.Size = new System.Drawing.Size(120, 23);
+            dtp49.TabIndex = 48;
+            dtp49.Text = "";
+            //
+
+            //
 
             //
 
@@ -621,6 +632,8 @@ namespace Washing_Machine_Timer_Fuzzy_Logic
             Controls.Add(trk46);
             Controls.Add(prg47);
             Controls.Add(dtp48);
+            Controls.Add(dtp49);
+
 
 
 
@@ -719,5 +732,6 @@ namespace Washing_Machine_Timer_Fuzzy_Logic
         private System.Windows.Forms.TrackBar trk46;
         private System.Windows.Forms.ProgressBar prg47;
         private System.Windows.Forms.DateTimePicker dtp48;
+        private System.Windows.Forms.DateTimePicker dtp49;
     }
 }

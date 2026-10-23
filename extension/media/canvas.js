@@ -213,6 +213,15 @@
         ['DataGridView', 't-datagridview', '#252526'],
         ['ListView', 't-listview', '#252526'],
         ['TreeView', 't-treeview', '#252526'],
+        // T1 leaf inputs — B5 (#13)
+        ['LinkLabel', 't-linklabel', '#3a3d41'],
+        ['RichTextBox', 't-richtextbox', '#1e1e1e'],
+        ['MaskedTextBox', 't-maskedtextbox', '#1e1e1e'],
+        ['CheckedListBox', 't-checkedlistbox', '#2e3134'],
+        ['MonthCalendar', 't-monthcalendar', '#3a3d41'],
+        ['HScrollBar', 't-hscrollbar', '#1e1e1e'],
+        ['VScrollBar', 't-vscrollbar', '#1e1e1e'],
+        ['DomainUpDown', 't-domainupdown', '#2a2a2a'],
     ];
     const PREFIX = {
         Button: 'btn', Label: 'lbl', TextBox: 'txt', CheckBox: 'chk',
@@ -221,6 +230,9 @@
         TrackBar: 'trk', ProgressBar: 'prg', NumericUpDown: 'num', DateTimePicker: 'dtp',
         TabControl: 'tab', TabPage: 'tab',
         DataGridView: 'dgv', ListView: 'lvw', TreeView: 'tvw',
+        LinkLabel: 'lnk', RichTextBox: 'rtb', MaskedTextBox: 'mtb',
+        CheckedListBox: 'clb', MonthCalendar: 'mcl', HScrollBar: 'hsb',
+        VScrollBar: 'vsb', DomainUpDown: 'dud',
     };
 
     /**
@@ -229,11 +241,13 @@
      * field, because it looks like it works.
      */
     const NO_TEXT = new Set(['Panel', 'TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker',
-        'TabControl', 'DataGridView', 'ListView', 'TreeView']);
+        'TabControl', 'DataGridView', 'ListView', 'TreeView',
+        'MonthCalendar', 'HScrollBar', 'VScrollBar', 'DomainUpDown']);
 
     /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
     const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
-        'ComboBox', 'ListBox', 'GroupBox', 'Form', 'TabPage']);
+        'ComboBox', 'ListBox', 'GroupBox', 'Form', 'TabPage',
+        'LinkLabel', 'RichTextBox', 'MaskedTextBox', 'CheckedListBox']);
 
     /**
      * D10 inspector views. Hardcoded per-property category table mirroring VS
