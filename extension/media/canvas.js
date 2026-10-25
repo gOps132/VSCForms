@@ -2696,10 +2696,9 @@
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));
         }
 
-        // Task 5 (#51): read-only Events (A3 stays missing), then bold+Reset
+        // Task 5 (#51): bold+Reset
         // decoration over the built rows, then the description pane. Neither
         // div is a .field row, so the D10 regroup and filter ignore them.
-        renderEventsSection(box);
 
         applyInspectorView(box);
         // After the regroup: rows moved, so decoration and the pane land last.
@@ -3403,23 +3402,6 @@
                 n.addEventListener('focus', () => showDescription('Items'));
             }
         }
-    }
-
-    /**
-     * Events section (A3 stays missing). The schema carries no wirings —
-     * parse preserves `+=` lines byte-identical without surfacing them, and
-     * surfacing them needs the engine parse step from spec-property-tabs §4
-     * (a separate change). So this section states the gap read-only: no
-     * inputs, no buttons, no scaffold, nothing that writes. Full scaffolding
-     * (wiring + Form1.cs stub) needs the #28 ADR, like rename needed 0008.
-     */
-    function renderEventsSection(box) {
-        box.appendChild(el('h4', 'inspector-section', 'Events'));
-        const n = el('div', 'events-readonly',
-            'Event wirings (e.g. Click += …) live in the Designer file and are '
-            + 'preserved untouched. Wiring display and handler scaffolding are not '
-            + 'modelled yet (A3) — nothing here writes the file, by design.');
-        box.appendChild(n);
     }
 
     /**
