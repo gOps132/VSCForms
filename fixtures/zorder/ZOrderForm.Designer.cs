@@ -20,7 +20,7 @@ namespace FixtureZOrder
             this.btnFront = new System.Windows.Forms.Button();
             this.btnMid = new System.Windows.Forms.Button();
             this.btnBack = new System.Windows.Forms.Button();
-            this.calPick = new System.Windows.Forms.MonthCalendar();
+            this.calPick = new System.Windows.Forms.PropertyGrid();
             this.pnlNest = new System.Windows.Forms.Panel();
             this.btnInA = new System.Windows.Forms.Button();
             this.btnInB = new System.Windows.Forms.Button();
@@ -126,7 +126,7 @@ namespace FixtureZOrder
         private System.Windows.Forms.Button btnFront;
         private System.Windows.Forms.Button btnMid;
         private System.Windows.Forms.Button btnBack;
-        private System.Windows.Forms.MonthCalendar calPick;
+        private System.Windows.Forms.PropertyGrid calPick;
         private System.Windows.Forms.Panel pnlNest;
         private System.Windows.Forms.Button btnInA;
         private System.Windows.Forms.Button btnInB;

@@ -1771,6 +1771,8 @@ setTimeout(async () => {
         outlineRow('btnTop') && /btnTop/.test(outlineRow('btnTop').textContent)
             && /Button/.test(outlineRow('btnTop').textContent),
         outlineRow('btnTop') && outlineRow('btnTop').textContent);
+    check('outline row renders type hint in .outline-type-hint',
+        !!outlineRow('btnTop').querySelector('.outline-type-hint'));
     {
         const g = outlineRow('GaugeX');
         const why = g && g.querySelector('.outline-locked-reason');
@@ -1787,6 +1789,21 @@ setTimeout(async () => {
         canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(','));
     check('the outline highlights the selected row',
         outlineRow('btnIn') && outlineRow('btnIn').classList.contains('selected'));
+    check('outline row has no hardcoded inline background',
+        !outlineRow('btnIn').style.background);
+    check('locked outline row label has no hardcoded inline color',
+        !outlineRow('GaugeX').querySelector('.outline-label').style.color);
+    {
+        const cssPath = path.join(__dirname, '../media/canvas.css');
+        const cssContent = fs.readFileSync(cssPath, 'utf8');
+        check('canvas.css styles .outline with theme background and border',
+            /\.outline\s*\{[^}]*--vscode-sideBar-background/.test(cssContent)
+                && /\.outline\s*\{[^}]*border-left/.test(cssContent));
+        check('canvas.css styles .outline-row.selected with active selection variables',
+            /\.outline-row\.selected\s*\{[^}]*--vscode-list-activeSelectionBackground/.test(cssContent));
+        check('canvas.css specifies min-width for .stage-wrap',
+            /\.stage-wrap\s*\{[^}]*min-width:\s*320px/.test(cssContent));
+    }
     // A locked row stays selectable (that is how its reason is readable)…
     outlineRow('GaugeX').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
     check('locked outline row still selects, so its reason is readable',

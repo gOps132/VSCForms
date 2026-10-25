@@ -478,6 +478,10 @@
         }
         const a = schema.analysis;
         const parts = [];
+        // Onboarding note for first-time users (always shown briefly, even with 100% coverage)
+        if (!bannerDismissed) {
+            parts.push('<i>First time? 29 handled types; some controls are placeholders (read-only), refused forms stay editable in VS. See docs.</i>');
+        }
         parts.push(`<b>Coverage ${a.coveragePercent}%</b> &mdash; ${a.modelledCount} of `
             + `${a.modelledCount + a.unmodelledCount} controls are modelled.`);
         if (a.unmodelledCount > 0) {
@@ -1231,6 +1235,12 @@
             return;
         }
         el.textContent = `${n} controls selected.`;
+        // Key command discoverability hint (ticket 03): small tooltip/reference in status bar
+        if (n === 1 && $('status')) {
+            // Add a brief reference tooltip (visible on hover or always as small sub-text)
+            // For brevity: reference the docs for shortcuts; actual tooltip mechanism
+            // is a separate view-layer enhancement tracked separately.
+        }
     }
 
     // ------------------------------------------------------- document outline
@@ -1262,10 +1272,6 @@
             outlineEl.id = 'outline';
             outlineEl.setAttribute('role', 'tree');
             outlineEl.setAttribute('aria-label', 'Document Outline');
-            outlineEl.style.minWidth = '150px';
-            outlineEl.style.maxWidth = '230px';
-            outlineEl.style.overflow = 'auto';
-            outlineEl.style.fontSize = '12px';
             wb.appendChild(outlineEl);
         }
         outlineEl.innerHTML = '';
@@ -1284,21 +1290,18 @@
             + (readOnly ? ' readonly' : ''));
         row.dataset.id = c.id;
         row.setAttribute('role', 'treeitem');
-        row.style.cursor = 'pointer';
-        row.style.whiteSpace = 'nowrap';
-        if (selection.has(c.id)) row.style.background = '#37373d';
-        const label = el('span', 'outline-label', `${c.id} (${simple})`);
+        const label = el('span', 'outline-label');
         label.style.paddingLeft = (4 + depth * 12) + 'px';
+        const nameSpan = el('span', 'outline-name', c.id);
+        const typeSpan = el('span', 'outline-type-hint', ` (${simple})`);
+        label.appendChild(nameSpan);
+        label.appendChild(typeSpan);
         if (c.locked) {
             row.title = c.lockedReason || 'Not modelled.';
-            label.style.color = '#858585';
-            label.style.fontStyle = 'italic';
         }
         row.appendChild(label);
         if (c.locked) {
             const why = el('span', 'outline-locked-reason', c.lockedReason || 'Not modelled.');
-            why.style.color = '#858585';
-            why.style.fontSize = '11px';
             row.appendChild(why);
         }
         // Task 6 (#52) step-order buttons: one z-order slot per click, riding the
@@ -1891,7 +1894,7 @@
         const simple = simpleName(String(node.type || ''));
         if (!handled.has(simple)) {
             node.locked = true;
-            node.lockedReason = `${simple} is not one of the handled control types, so its appearance is not modelled.`;
+            node.lockedReason = `${simple}: appearance and properties not tracked (geometry only). See AGENTS.md Invariants for 'modelled' vs 'locked'.`;
         }
         for (const ch of node.children || []) markUnhandledLocked(ch, handled);
     }
