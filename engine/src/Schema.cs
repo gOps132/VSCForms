@@ -73,7 +73,35 @@ public sealed class ControlProperties
     [JsonPropertyName("scrollBars")] public string? ScrollBars { get; set; }
     [JsonPropertyName("minimum")] public decimal? Minimum { get; set; }
     [JsonPropertyName("maximum")] public decimal? Maximum { get; set; }
-    [JsonPropertyName("value")] public decimal? Value { get; set; }
+    [JsonPropertyName("value")]
+    [JsonConverter(typeof(FlexibleValueConverter))]
+    public object? Value { get; set; }
+
+    [JsonIgnore]
+    public decimal? NumericValue => Value switch
+    {
+        decimal d => d,
+        long l => l,
+        int i => i,
+        double db => (decimal)db,
+        float f => (decimal)f,
+        string s when decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed) => parsed,
+        JsonElement je when je.ValueKind == JsonValueKind.Number && je.TryGetDecimal(out var jd) => jd,
+        _ => null,
+    };
+
+    [JsonIgnore]
+    public string? StringValue => Value switch
+    {
+        string s => s,
+        JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+        _ => Value?.ToString(),
+    };
+
+    [JsonPropertyName("format")] public string? Format { get; set; }
+    [JsonPropertyName("customFormat")] public string? CustomFormat { get; set; }
+    [JsonPropertyName("minDate")] public string? MinDate { get; set; }
+    [JsonPropertyName("maxDate")] public string? MaxDate { get; set; }
     [JsonPropertyName("checked")] public bool? Checked { get; set; }
     [JsonPropertyName("textAlign")] public string? TextAlign { get; set; }
     [JsonPropertyName("borderStyle")] public string? BorderStyle { get; set; }
@@ -144,6 +172,70 @@ public sealed class Response
     [JsonPropertyName("targetLine")] public int? TargetLine { get; set; }
     [JsonPropertyName("targetColumn")] public int? TargetColumn { get; set; }
     [JsonPropertyName("createdMethod")] public bool? CreatedMethod { get; set; }
+}
+
+public sealed class FlexibleValueConverter : JsonConverter<object?>
+{
+    public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.Null:
+                return null;
+            case JsonTokenType.Number:
+                if (reader.TryGetDecimal(out var d))
+                    return d;
+                return reader.GetDouble();
+            case JsonTokenType.String:
+                return reader.GetString();
+            case JsonTokenType.True:
+                return true;
+            case JsonTokenType.False:
+                return false;
+            default:
+                using (var doc = JsonDocument.ParseValue(ref reader))
+                {
+                    return doc.RootElement.Clone();
+                }
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
+    {
+        switch (value)
+        {
+            case null:
+                writer.WriteNullValue();
+                break;
+            case int i:
+                writer.WriteNumberValue(i);
+                break;
+            case long l:
+                writer.WriteNumberValue(l);
+                break;
+            case decimal d:
+                writer.WriteNumberValue(d);
+                break;
+            case double db:
+                writer.WriteNumberValue(db);
+                break;
+            case float f:
+                writer.WriteNumberValue(f);
+                break;
+            case string s:
+                writer.WriteStringValue(s);
+                break;
+            case bool b:
+                writer.WriteBooleanValue(b);
+                break;
+            case JsonElement je:
+                je.WriteTo(writer);
+                break;
+            default:
+                writer.WriteStringValue(value.ToString());
+                break;
+        }
+    }
 }
 
 public static class Json

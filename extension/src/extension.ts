@@ -659,7 +659,17 @@ class DesignerEditorProvider implements vscode.CustomEditorProvider<DesignerDocu
       <div class="ruler ruler-h" id="ruler-h"></div>
       <div class="ruler ruler-v" id="ruler-v"></div>
       <div class="form-frame">
-        <div class="form-title"><span id="form-title-text"></span><span id="form-size" class="form-size"></span></div>
+        <div class="form-title">
+          <span class="form-title-lead"><span id="form-title-text"></span></span>
+          <div class="form-title-right">
+            <span id="form-size" class="form-size"></span>
+            <div class="window-controls" aria-hidden="true">
+              <span class="win-btn win-btn-min"></span>
+              <span class="win-btn win-btn-max"></span>
+              <span class="win-btn win-btn-close"></span>
+            </div>
+          </div>
+        </div>
         <div id="canvas" class="canvas"></div>
       </div>
     </main>

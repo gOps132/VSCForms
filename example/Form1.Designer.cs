@@ -1,4 +1,4 @@
-﻿namespace Washing_Machine_Timer_Fuzzy_Logic
+namespace Washing_Machine_Timer_Fuzzy_Logic
 {
     partial class Form1
     {
@@ -76,6 +76,7 @@
             trk46 = new System.Windows.Forms.TrackBar();
             prg47 = new System.Windows.Forms.ProgressBar();
             dtp48 = new System.Windows.Forms.DateTimePicker();
+            dtp49 = new System.Windows.Forms.DateTimePicker();
             ((System.ComponentModel.ISupportInitialize)numDetergent).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numLoad).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numSoiling).BeginInit();
@@ -540,7 +541,7 @@
             //
             trk46.Location = new System.Drawing.Point(516, 567);
             trk46.Name = "trk46";
-            trk46.Size = new System.Drawing.Size(120, 56);
+            trk46.Size = new System.Drawing.Size(120, 45);
             trk46.TabIndex = 45;
             trk46.Text = "";
             //
@@ -559,6 +560,16 @@
             dtp48.Size = new System.Drawing.Size(120, 23);
             dtp48.TabIndex = 47;
             dtp48.Text = "";
+            //
+            // dtp49
+            //
+            dtp49.Location = new System.Drawing.Point(360, 606);
+            dtp49.Name = "dtp49";
+            dtp49.Size = new System.Drawing.Size(120, 23);
+            dtp49.TabIndex = 48;
+            dtp49.Text = "";
+            //
+
             //
 
             //
@@ -621,6 +632,8 @@
             Controls.Add(trk46);
             Controls.Add(prg47);
             Controls.Add(dtp48);
+            Controls.Add(dtp49);
+
 
 
 
@@ -719,5 +732,6 @@
         private System.Windows.Forms.TrackBar trk46;
         private System.Windows.Forms.ProgressBar prg47;
         private System.Windows.Forms.DateTimePicker dtp48;
+        private System.Windows.Forms.DateTimePicker dtp49;
     }
 }

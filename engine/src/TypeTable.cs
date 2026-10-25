@@ -37,6 +37,17 @@ public static class TypeTable
         ["System.Windows.Forms.TabControl"] = "tabcontrol",
         ["System.Windows.Forms.TabPage"] = "tabpage",
         // Phase C — Placeholders
+        ["System.Windows.Forms.LinkLabel"] = "linklabel",
+        ["System.Windows.Forms.RichTextBox"] = "richtextbox",
+        ["System.Windows.Forms.MaskedTextBox"] = "maskedtextbox",
+        ["System.Windows.Forms.CheckedListBox"] = "checkedlistbox",
+        ["System.Windows.Forms.MonthCalendar"] = "monthcalendar",
+        ["System.Windows.Forms.HScrollBar"] = "hscrollbar",
+        ["System.Windows.Forms.VScrollBar"] = "vscrollbar",
+        ["System.Windows.Forms.DomainUpDown"] = "domainupdown",
+        ["System.Windows.Forms.SplitContainer"] = "splitcontainer",
+        ["System.Windows.Forms.TableLayoutPanel"] = "tablelayoutpanel",
+        ["System.Windows.Forms.FlowLayoutPanel"] = "flowlayoutpanel",
         ["System.Windows.Forms.DataGridView"] = "datagridview",
         ["System.Windows.Forms.ListView"] = "listview",
         ["System.Windows.Forms.TreeView"] = "treeview",
@@ -99,6 +110,10 @@ public static class TypeTable
             "ListView" => "lvw",
             "TreeView" => "tvw",
             "Form" => "frm",
+            "LinkLabel" => "lnk", "RichTextBox" => "rtb", "MaskedTextBox" => "mtb",
+            "CheckedListBox" => "clb", "MonthCalendar" => "mcl",
+            "HScrollBar" => "hsb", "VScrollBar" => "vsb", "DomainUpDown" => "dud",
+            "SplitContainer" => "spl", "TableLayoutPanel" => "tlp", "FlowLayoutPanel" => "flp",
             _ => "ctl",
         };
     }

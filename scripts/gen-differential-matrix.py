@@ -182,6 +182,34 @@ HAS_FONT = {
     "TabPage",
 }
 
+# The per-type sizes written into matrix Designer files (#65).
+# Leaf controls with constrained or font-driven heights (TextBox, ComboBox,
+# DateTimePicker, NumericUpDown, TrackBar) MUST declare the exact size the
+# WinForms runtime produces (height 23 for single-line text inputs at default
+# 9pt font, height 45 for TrackBar) so declared and runtime sizes agree by
+# construction.
+CONTROL_SIZES = {
+    "Button": (120, 30),
+    "Label": (120, 30),
+    "TextBox": (120, 23),
+    "CheckBox": (120, 30),
+    "RadioButton": (120, 30),
+    "ComboBox": (120, 23),
+    "ListBox": (120, 96),
+    "PictureBox": (120, 30),
+    "Panel": (120, 30),
+    "GroupBox": (120, 30),
+    "TrackBar": (120, 45),
+    "ProgressBar": (120, 30),
+    "NumericUpDown": (120, 23),
+    "DateTimePicker": (120, 23),
+    "TabControl": (120, 30),
+    "TabPage": (120, 30),
+    "DataGridView": (120, 30),
+    "ListView": (120, 30),
+    "TreeView": (120, 30),
+}
+
 # Form-level properties (the Form is modelled separately from the control table).
 FORM_PROPS = ["text", "clientSize", "backColor"]
 
@@ -347,6 +375,11 @@ def _textalign_file(d, m, v, horizontal):
     if horizontal:
         return f"{m}.TextAlign = {d.forms('HorizontalAlignment')}.{v}"
     return f"{m}.TextAlign = {d.drawing('ContentAlignment')}.{v}"
+
+
+def _datetime_file(d, m, key, iso_str):
+    parts = [int(p) for p in iso_str.split("-")]
+    return f"{m}.{key} = new {d.system('DateTime')}({parts[0]}, {parts[1]}, {parts[2]}, 0, 0, 0, 0)"
 
 
 PROPERTIES = [
@@ -593,6 +626,51 @@ PROPERTIES = [
         v2=42,
         file=lambda d, m, v: f"{m}.Value = {v}",
     ),
+    dict(
+        key="format",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="Short",
+        v2="Custom",
+        file=lambda d, m, v: f"{m}.Format = {d.forms('DateTimePickerFormat')}.{v}",
+    ),
+    dict(
+        key="customFormat",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="yyyy-MM-dd",
+        v2="MM/dd/yyyy",
+        file=lambda d, m, v: f'{m}.CustomFormat = "{v}"',
+    ),
+    dict(
+        key="value",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="2026-10-06",
+        v2="2026-10-24",
+        file=lambda d, m, v: _datetime_file(d, m, "Value", v),
+    ),
+    dict(
+        key="minDate",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="2020-01-01",
+        v2="2021-06-15",
+        file=lambda d, m, v: _datetime_file(d, m, "MinDate", v),
+    ),
+    dict(
+        key="maxDate",
+        types={"DateTimePicker"},
+        insertable=True,
+        states=True,
+        v1="2030-12-31",
+        v2="2029-11-20",
+        file=lambda d, m, v: _datetime_file(d, m, "MaxDate", v),
+    ),
 ]
 
 # Form-level property values, in SCHEMA shape: the v1 the file states and the v2 the
@@ -654,6 +732,9 @@ class Dialect:
         `HorizontalAlignment`), and the two must not be conflated.
         """
         return f"System.Windows.Forms.{simple}" if self.qualified_types else simple
+
+    def system(self, simple: str) -> str:
+        return f"System.{simple}" if self.qualified_types else simple
 
 
 def subject_id(type_name: str) -> str:
@@ -772,7 +853,8 @@ def emit_case(
             f"{body}{d.member(sid)}.Location = new {d.drawing('Point')}(40, 40);"
         )
         lines.append(f'{body}{d.member(sid)}.Name = "{sid}";')
-        lines.append(f"{body}{d.member(sid)}.Size = new {d.drawing('Size')}(120, 30);")
+        sw, sh = CONTROL_SIZES.get(type_name, (120, 30))
+        lines.append(f"{body}{d.member(sid)}.Size = new {d.drawing('Size')}({sw}, {sh});")
         lines.append(f"{body}{d.member(sid)}.TabIndex = 1;")
 
         if variant == "full":

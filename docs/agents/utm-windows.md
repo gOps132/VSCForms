@@ -63,12 +63,12 @@ guest wedges, `kill -TERM` the QEMU process — the qcow2 is fine, and it reboot
 | `git` | absent | fetch a zip of the repo instead |
 | `winget` | absent | install from a direct URL |
 | VS Code | absent | the portable zip, not the installer |
-| Visual Studio 18 Community | **present**, but no .NET desktop workload | so no WinForms designer |
+| Visual Studio 18 Community | **present** with .NET desktop workload (`ManagedDesktop`) | full Windows Forms Designer (`Microsoft.Windows.Forms.Designer`, `DesignToolsServer`) verified and functional |
 
-**The MSI problem.** Both the x64 and the ARM64 Python installers fail with
-`0x80070003` (`ERROR_PATH_NOT_FOUND`) — Windows Installer does not work in this guest. That
-also breaks the Visual Studio workload add, so **the WinForms designer cannot be installed
-here**. The installers that DO work are the non-MSI ones: Git for Windows (NSIS) and the
+**The MSI problem.** In minimal bootstrap guests, both the x64 and the ARM64 Python installers can fail with
+`0x80070003` (`ERROR_PATH_NOT_FOUND`) if Windows Installer components are missing. In the primary working VM,
+Visual Studio Community 2026 is fully provisioned with the `.NET desktop development` workload (`Microsoft.VisualStudio.Workload.ManagedDesktop`).
+The installers that work universally are the non-MSI ones: Git for Windows (NSIS) and the
 VS Code portable archive.
 
 **The RID problem.** `uname -m` inside Git Bash reports `x86_64` on the ARM64 guest,
@@ -87,6 +87,39 @@ The only authority on which engine build can be LOADED is the runtime, so ask it
 **The path problem.** The shell's paths are Git Bash POSIX paths (`/c/Users/...`), which
 .NET on Windows cannot open. `cygpath -m` converts them, and it produces forward slashes,
 so no JSON string ever has to escape a backslash.
+
+### 3. The WebDAV MSBuild trap (MSB3552)
+
+The SPICE WebDAV shared folder (`~/dev/shared/windows11/` on macOS $\leftrightarrow$ `Z:\` in the guest via
+`\\localhost@9843\DavWWWRoot`) provides instant bi-directional file transport. However, building directly on
+the WebDAV drive with `dotnet build` fails:
+```
+error MSB3552: Resource file "**/*.resx" cannot be found.
+```
+The Windows WebDAV mini-redirector does not support recursive wildcard pattern evaluations (`**/*`) from MSBuild.
+**Solution**: Always sync projects from `Z:\` to native NTFS (`C:\Users\Public\`), where `dotnet build` executes
+cleanly in seconds with 0 errors and 0 warnings. `scripts/utm-vs-open.sh` automates this sync.
+
+## Visual Studio WinForms Designer Parity Workflow
+
+With Visual Studio Community 2026 and `explorer.exe` running in an interactive session, the VS designer is available
+to verify design-surface rendering, default properties, and Roslyn code generation.
+
+### Staging and Opening Solutions
+
+Run from the macOS host:
+```bash
+# Stages ~/dev/shared/windows11/VSParitySandbox to C:\Users\Public\VSParitySandbox
+# Verifies dotnet build on native NTFS, and launches/focuses Visual Studio with the solution
+scripts/utm-vs-open.sh VSParitySandbox
+```
+
+### The Parity Feedback Loop
+
+1. **Host-Side Project Generation**: Create or update forms in `~/dev/shared/windows11/<Project>` using the engine (`new` or `generate`).
+2. **Sync & Launch**: Run `scripts/utm-vs-open.sh <Project>`. The script syncs to `C:\Users\Public\<Project>`, builds, and opens in VS.
+3. **Inspect Designer & Generated Code**: Inspect the visual designer layout and the corresponding `.Designer.cs` file written by Visual Studio.
+4. **Emit Differential Fixture**: If a divergence in code dialect, property format, or default geometry is identified, capture a minimal reproduction into `fixtures/differential/<issue-id>-<name>.Designer.cs`.
 
 ## The guest's toolchain, in the order that works
 
@@ -107,16 +140,11 @@ so no JSON string ever has to escape a backslash.
    `cases.txt` — a plain `id|namespace|className|file` index — so the guest needs no JSON
    parser at all.
 
-## What the guest could NOT do
+## Visual Studio WinForms Designer Status
 
-**The Visual Studio WinForms designer.** VS 18 Community is installed in the guest, but
-without the .NET desktop development workload, so the VS tree has
-`Microsoft.VisualStudio.DesignTools.*` (the WPF/XAML designer) and **no** WindowsForms
-designer assembly. Adding the workload needs the MSI path, which is broken. The
-`Microsoft.VisualStudio.Workload.ManagedDesktop` component is therefore unavailable here.
+**The Visual Studio WinForms designer is functional in the active VM.** Visual Studio Community 2026
+has `Microsoft.VisualStudio.Workload.ManagedDesktop` installed, with the .NET WinForms designer
+out-of-process server (`DesignToolsServer`) present in `Common7\IDE\CommonExtensions\Microsoft\Windows.Forms\`.
 
-That is the one piece of the VS-parity story this guest cannot deliver, and it is worth
-being precise about why: the oracle's runtime half does not need the designer (the runtime
-IS the reference), and the designer's *rules* are MIT-readable in `dotnet/winforms`
-(`src/System.Windows.Forms.Design/.../Serialization/`). Only the designer's own pixels and
-its modern Roslyn code generator need Visual Studio itself.
+This unlocks visual parity cross-checking and reference capture against the official Visual Studio
+WinForms designer surface directly from macOS.

@@ -196,5 +196,7 @@ rather than silently overriding it.
 
 ### Agentic workflow & Differential Oracle
 
-Autonomous agent execution follows the Wayfinder loop, Builder + Auditor quality gate, and the
-Headless Differential Oracle contract. See `docs/agents/workflow.md`.
+Autonomous agent execution follows the Wayfinder loop, Builder + Auditor quality gate, the
+Headless Differential Oracle contract, and the closed dual-agent parity feedback loop
+(`winforms-feature-engineer` + `canvas-ux-auditor`). See `docs/agents/workflow.md` and
+`docs/agents/parity-feedback-loop.md`.

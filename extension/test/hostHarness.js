@@ -1214,9 +1214,9 @@ setTimeout(async () => {
     // A wrong default size is a silent quality bug: no tier sees it, the user just resizes
     // immediately, and every resize is a real write to their file.
     const LEAF = [
-        ['TrackBar', 'trk', 120, 56],
+        ['TrackBar', 'trk', 120, 45],
         ['ProgressBar', 'prg', 140, 20],
-        ['NumericUpDown', 'num', 100, 22],
+        ['NumericUpDown', 'num', 100, 23],
         ['DateTimePicker', 'dtp', 120, 23],
     ];
     for (const [simple, prefix, w, h] of LEAF) {
@@ -1272,6 +1272,47 @@ setTimeout(async () => {
     check('TrackBar inspector offers Minimum', insInputs().some((i) => i.id === 'fMinimum'));
     check('TrackBar inspector offers Maximum', insInputs().some((i) => i.id === 'fMaximum'));
     check('TrackBar inspector offers Value', insInputs().some((i) => i.id === 'fValue'));
+
+    // Check DateTimePicker properties in inspector and canvas caption formatting
+    const dtpSchema = {
+        ...schema,
+        controls: [
+            { id: 'dtpTest', type: 'System.Windows.Forms.DateTimePicker', children: [], locked: false,
+              properties: { x: 10, y: 10, width: 120, height: 23, tabIndex: 0,
+                            format: 'Custom', customFormat: 'yyyy-MM-dd', value: '2026-10-24' } },
+        ],
+    };
+    send({ type: 'load', data: dtpSchema });
+    await settled();
+    const dtpNode = ctlNode('dtpTest');
+    const dtpCaption = dtpNode.querySelector('.ctl-caption');
+    check('DateTimePicker renders formatted date value on canvas',
+        dtpCaption && dtpCaption.textContent === '2026-10-24',
+        dtpCaption ? dtpCaption.textContent : 'no caption');
+
+    dtpNode.dispatch('mousedown', { preventDefault() { }, stopPropagation() { }, clientX: 5, clientY: 5 });
+    await settled();
+    check('DateTimePicker inspector offers Format',
+        ids.inspector.querySelectorAll('select').some((s) => s.id === 'fFormat'));
+    check('DateTimePicker inspector offers CustomFormat', insInputs().some((i) => i.id === 'fCustomFormat'));
+    check('DateTimePicker inspector offers Value', insInputs().some((i) => i.id === 'fValue'));
+    check('DateTimePicker inspector offers MinDate', insInputs().some((i) => i.id === 'fMinDate'));
+    check('DateTimePicker inspector offers MaxDate', insInputs().some((i) => i.id === 'fMaxDate'));
+
+    // Test editing DateTimePicker Value commits date
+    const dtpValueInput = insInputs().find((i) => i.id === 'fValue');
+    check('DateTimePicker Value input is date type', dtpValueInput && dtpValueInput.type === 'date');
+    if (dtpValueInput) {
+        dtpValueInput.value = '2026-11-15';
+        dtpValueInput.dispatch('change', {});
+        await new Promise((r) => setTimeout(r, 400));
+        const dtpCommits = sandbox.__sent.filter((m) => m.type === 'commit');
+        const lastDtpCommit = dtpCommits[dtpCommits.length - 1];
+        const sentDtp = lastDtpCommit && lastDtpCommit.data.controls.find((c) => c.id === 'dtpTest');
+        check('Editing DateTimePicker Value commits updated date',
+            sentDtp && sentDtp.properties.value === '2026-11-15',
+            sentDtp ? sentDtp.properties.value : 'no commit');
+    }
 
     // ---- Items editor: verify it appears for ComboBox/ListBox and posts commits
     const itemsTestSchema = {
@@ -1539,6 +1580,12 @@ setTimeout(async () => {
         const selOptions = () => (selDropdown() ? selDropdown().querySelectorAll('option') : []);
         const selIds = () => canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(',');
         check('object selector dropdown is offered', !!selDropdown());
+        const cssPath = path.join(__dirname, '../media/canvas.css');
+        const cssContent = fs.readFileSync(cssPath, 'utf8');
+        check('canvas.css styles .object-selector select with theme dropdown variables',
+            /\.object-selector\s+select\s*\{[^}]*--vscode-dropdown-background/.test(cssContent));
+        check('canvas.css styles .object-selector label',
+            /\.object-selector\s+label\s*\{[^}]*text-transform:\s*uppercase/.test(cssContent));
         const flatIds = selOptions().map((o) => o.value).filter(Boolean);
         check('dropdown lists every schema control',
             flatIds.length === 3 && flatIds.includes('txtName') && flatIds.includes('btnSubmit')
@@ -1628,7 +1675,7 @@ setTimeout(async () => {
             visibleNames().join(','));
         typeFilter('TAB');
         check('filter is case-insensitive',
-            visibleNames().join(',') === 'TabControl,TabPage',
+            visibleNames().join(',') === 'TabControl,TabPage,TableLayoutPanel',
             visibleNames().join(','));
         typeFilter('zzz-no-match');
         check('a filter with no matches shows nothing', visibleNames().length === 0);
@@ -1724,6 +1771,8 @@ setTimeout(async () => {
         outlineRow('btnTop') && /btnTop/.test(outlineRow('btnTop').textContent)
             && /Button/.test(outlineRow('btnTop').textContent),
         outlineRow('btnTop') && outlineRow('btnTop').textContent);
+    check('outline row renders type hint in .outline-type-hint',
+        !!outlineRow('btnTop').querySelector('.outline-type-hint'));
     {
         const g = outlineRow('GaugeX');
         const why = g && g.querySelector('.outline-locked-reason');
@@ -1740,6 +1789,36 @@ setTimeout(async () => {
         canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(','));
     check('the outline highlights the selected row',
         outlineRow('btnIn') && outlineRow('btnIn').classList.contains('selected'));
+    check('outline row has no hardcoded inline background',
+        !outlineRow('btnIn').style.background);
+    check('locked outline row label has no hardcoded inline color',
+        !outlineRow('GaugeX').querySelector('.outline-label').style.color);
+    {
+        const cssPath = path.join(__dirname, '../media/canvas.css');
+        const cssContent = fs.readFileSync(cssPath, 'utf8');
+        check('canvas.css styles .outline with theme background and border',
+            /\.outline\s*\{[^}]*--vscode-sideBar-background/.test(cssContent)
+                && /\.outline\s*\{[^}]*border-left/.test(cssContent));
+        check('canvas.css styles .outline-row.selected with active selection variables',
+            /\.outline-row\.selected\s*\{[^}]*--vscode-list-activeSelectionBackground/.test(cssContent));
+        check('canvas.css specifies min-width for .stage-wrap',
+            /\.stage-wrap\s*\{[^}]*min-width:\s*320px/.test(cssContent));
+        check('canvas.css specifies display: none for .outline.hidden',
+            /\.outline\.hidden\s*\{[^}]*display:\s*none/.test(cssContent));
+    }
+    {
+        const outlinePanel = wb.querySelector('.outline');
+        check('outline is hidden by default', outlinePanel && outlinePanel.classList.contains('hidden'));
+        const statusTools = ids['status-tools'];
+        const toggleBtn = statusTools && statusTools.querySelector('.outline-toggle');
+        check('outline toggle button is offered in status bar', !!toggleBtn && toggleBtn.textContent.includes('Outline: off'));
+        if (toggleBtn) {
+            toggleBtn.dispatch('click', {});
+            check('clicking toggle shows outline', outlinePanel && !outlinePanel.classList.contains('hidden') && toggleBtn.textContent.includes('Outline: on'));
+            toggleBtn.dispatch('click', {});
+            check('clicking toggle again hides outline', outlinePanel && outlinePanel.classList.contains('hidden') && toggleBtn.textContent.includes('Outline: off'));
+        }
+    }
     // A locked row stays selectable (that is how its reason is readable)…
     outlineRow('GaugeX').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
     check('locked outline row still selects, so its reason is readable',

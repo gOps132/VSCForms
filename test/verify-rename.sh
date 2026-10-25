@@ -235,10 +235,12 @@ else bad "the refusal does not name the file"; fi
 
 sect "other refusals"
 D=$(stage refuse_locked)
-# `calDetails` is a MonthCalendar, which is genuinely unmodelled.
-# This assertion is also a canary: if a future change adds MonthCalendar to the Handled Types, the
-# fixture stops being locked and this case goes `not-found` instead of `locked` — which is a
-# reminder that the fixture's subject needs rechoosing, not a bug in the renamer.
+# In fa78a64 MonthCalendar became handled; use PropertyGrid as the unmodelled control for this test
+python3 -c "
+p = '$D/WiredForm.Designer.cs'
+s = open(p).read().replace('System.Windows.Forms.MonthCalendar', 'System.Windows.Forms.PropertyGrid').replace('calDetails.DateSelected +=', '// calDetails.DateSelected +=')
+open(p, 'w').write(s)
+"
 K=$(rename_cmd "$D" calDetails calMore | kind)
 [ "$K" = "locked" ] && ok "refuses to rename a Locked Control ($K)" || bad "renamed a locked control (got '$K')"
 

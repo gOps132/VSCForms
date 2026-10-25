@@ -209,10 +209,23 @@
         // Phase B — TabControl & TabPage
         ['TabControl', 't-tabcontrol', '#3a3d41'],
         ['TabPage', 't-tabpage', '#2d2d2d'],
+        // B1 / B2 — Partial container modeling (ADR 0003 amendment)
+        ['SplitContainer', 't-splitcontainer', '#5a5a5a'],
+        ['TableLayoutPanel', 't-tablelayoutpanel', '#5a5a5a'],
+        ['FlowLayoutPanel', 't-flowlayoutpanel', '#5a5a5a'],
         // Phase C — Placeholders
         ['DataGridView', 't-datagridview', '#252526'],
         ['ListView', 't-listview', '#252526'],
         ['TreeView', 't-treeview', '#252526'],
+        // T1 leaf inputs — B5 (#13)
+        ['LinkLabel', 't-linklabel', '#3a3d41'],
+        ['RichTextBox', 't-richtextbox', '#1e1e1e'],
+        ['MaskedTextBox', 't-maskedtextbox', '#1e1e1e'],
+        ['CheckedListBox', 't-checkedlistbox', '#2e3134'],
+        ['MonthCalendar', 't-monthcalendar', '#3a3d41'],
+        ['HScrollBar', 't-hscrollbar', '#1e1e1e'],
+        ['VScrollBar', 't-vscrollbar', '#1e1e1e'],
+        ['DomainUpDown', 't-domainupdown', '#2a2a2a'],
     ];
     const PREFIX = {
         Button: 'btn', Label: 'lbl', TextBox: 'txt', CheckBox: 'chk',
@@ -221,6 +234,10 @@
         TrackBar: 'trk', ProgressBar: 'prg', NumericUpDown: 'num', DateTimePicker: 'dtp',
         TabControl: 'tab', TabPage: 'tab',
         DataGridView: 'dgv', ListView: 'lvw', TreeView: 'tvw',
+        LinkLabel: 'lnk', RichTextBox: 'rtb', MaskedTextBox: 'mtb',
+        CheckedListBox: 'clb', MonthCalendar: 'mcl', HScrollBar: 'hsb',
+        VScrollBar: 'vsb', DomainUpDown: 'dud',
+        SplitContainer: 'spl', TableLayoutPanel: 'tlp', FlowLayoutPanel: 'flp',
     };
 
     /**
@@ -229,11 +246,14 @@
      * field, because it looks like it works.
      */
     const NO_TEXT = new Set(['Panel', 'TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker',
-        'TabControl', 'DataGridView', 'ListView', 'TreeView']);
+        'TabControl', 'DataGridView', 'ListView', 'TreeView',
+        'MonthCalendar', 'HScrollBar', 'VScrollBar', 'DomainUpDown',
+        'SplitContainer', 'TableLayoutPanel', 'FlowLayoutPanel']);
 
     /** Types whose Font is meaningful. A Panel has no text to render, so a font on it is noise. */
     const HAS_FONT = new Set(['Button', 'Label', 'TextBox', 'CheckBox', 'RadioButton',
-        'ComboBox', 'ListBox', 'GroupBox', 'Form', 'TabPage']);
+        'ComboBox', 'ListBox', 'GroupBox', 'Form', 'TabPage',
+        'LinkLabel', 'RichTextBox', 'MaskedTextBox', 'CheckedListBox']);
 
     /**
      * D10 inspector views. Hardcoded per-property category table mirroring VS
@@ -259,6 +279,8 @@
         'Multiline': 'Behavior', 'ReadOnly': 'Behavior', 'MaxLength': 'Behavior',
         'PasswordChar': 'Behavior', 'ScrollBars': 'Behavior',
         'Minimum': 'Behavior', 'Maximum': 'Behavior', 'Value': 'Behavior',
+        'Format': 'Behavior', 'CustomFormat': 'Behavior',
+        'MinDate': 'Behavior', 'MaxDate': 'Behavior',
         'SelectedIndex': 'Behavior', 'SelectedItem': 'Behavior',
         'DropDownStyle': 'Behavior',
         'Items': 'Data',
@@ -393,6 +415,47 @@
         node.appendChild(cap);
         return cap;
     }
+
+    /** Formats a DateTimePicker value according to its Format and CustomFormat. */
+    function formatDateTimePickerValue(val, format, customFormat) {
+        let d = null;
+        if (val) {
+            if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+                const parts = val.split('T')[0].split('-').map(Number);
+                d = new Date(parts[0], parts[1] - 1, parts[2]);
+            } else {
+                d = new Date(val);
+            }
+        }
+        if (!d || isNaN(d.getTime())) {
+            d = new Date();
+        }
+        const fmt = format || 'Long';
+        if (fmt === 'Short') {
+            return d.toLocaleDateString();
+        }
+        if (fmt === 'Time') {
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        if (fmt === 'Custom') {
+            if (customFormat) {
+                return customFormat
+                    .replace(/yyyy/g, String(d.getFullYear()))
+                    .replace(/yy/g, String(d.getFullYear()).slice(-2))
+                    .replace(/MM/g, String(d.getMonth() + 1).padStart(2, '0'))
+                    .replace(/M/g, String(d.getMonth() + 1))
+                    .replace(/dd/g, String(d.getDate()).padStart(2, '0'))
+                    .replace(/d/g, String(d.getDate()))
+                    .replace(/HH/g, String(d.getHours()).padStart(2, '0'))
+                    .replace(/hh/g, String(d.getHours() % 12 || 12).padStart(2, '0'))
+                    .replace(/mm/g, String(d.getMinutes()).padStart(2, '0'))
+                    .replace(/ss/g, String(d.getSeconds()).padStart(2, '0'))
+                    .replace(/tt/g, d.getHours() >= 12 ? 'PM' : 'AM');
+            }
+            return d.toLocaleDateString();
+        }
+        return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
     function containerTypes() { return new Set(['Panel', 'GroupBox', 'TabControl', 'TabPage']); }
 
     /** Allocate an unused designer-style name: btnSubmit -> btnSubmit1, btnSubmit2... */
@@ -415,6 +478,10 @@
         }
         const a = schema.analysis;
         const parts = [];
+        // Onboarding note for first-time users (always shown briefly, even with 100% coverage)
+        if (!bannerDismissed) {
+            parts.push('<i>First time? 29 handled types; some controls are placeholders (read-only), refused forms stay editable in VS. See docs.</i>');
+        }
         parts.push(`<b>Coverage ${a.coveragePercent}%</b> &mdash; ${a.modelledCount} of `
             + `${a.modelledCount + a.unmodelledCount} controls are modelled.`);
         if (a.unmodelledCount > 0) {
@@ -594,12 +661,23 @@
         $('form-size').textContent = `${schema.form.clientSize.width} x ${schema.form.clientSize.height}`;
 
         const title = document.querySelector('.form-title');
-        if (title && !title.__wired) {
-            title.__wired = true;
-            title.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                select(null);
-            });
+        if (title) {
+            if (!title.__wired) {
+                title.__wired = true;
+                title.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    select(null);
+                });
+            }
+            if (!title.querySelector('.window-controls')) {
+                const right = title.querySelector('.form-title-right') || title;
+                const controls = el('div', 'window-controls');
+                controls.setAttribute('aria-hidden', 'true');
+                controls.appendChild(el('span', 'win-btn win-btn-min'));
+                controls.appendChild(el('span', 'win-btn win-btn-max'));
+                controls.appendChild(el('span', 'win-btn win-btn-close'));
+                right.appendChild(controls);
+            }
         }
 
         renderFormHandles();
@@ -723,6 +801,7 @@
         }
         if (c.properties.checked) node.classList.add('checked');
         if (c.properties.borderStyle) node.classList.add('border-' + c.properties.borderStyle.toLowerCase());
+        if (c.properties.flatStyle) node.classList.add('flatstyle-' + c.properties.flatStyle.toLowerCase());
 
         if (c.locked) {
             node.classList.add('locked');
@@ -731,7 +810,10 @@
         } else {
             // A handled type with empty text is genuinely empty (a TextBox with no value, an
             // unset Label) — showing the type name there would be a lie about the form.
-            const caption = c.properties.text || '';
+            let caption = c.properties.text || '';
+            if (simple === 'DateTimePicker') {
+                caption = formatDateTimePickerValue(c.properties.value, c.properties.format, c.properties.customFormat);
+            }
             const capNode = addCaption(node, caption);
             if (!caption && emptyShowTypeName(simple)) {
                 node.classList.add('placeholder');
@@ -1165,6 +1247,12 @@
             return;
         }
         el.textContent = `${n} controls selected.`;
+        // Key command discoverability hint (ticket 03): small tooltip/reference in status bar
+        if (n === 1 && $('status')) {
+            // Add a brief reference tooltip (visible on hover or always as small sub-text)
+            // For brevity: reference the docs for shortcuts; actual tooltip mechanism
+            // is a separate view-layer enhancement tracked separately.
+        }
     }
 
     // ------------------------------------------------------- document outline
@@ -1187,20 +1275,32 @@
      * is created lazily on first render.
      */
     let outlineEl = null;
+    let outlineVisible = false;
     let activeZone = 'canvas';
+
+    function setOutlineVisible(on) {
+        outlineVisible = !!on;
+        if (outlineEl) {
+            outlineEl.classList.toggle('hidden', !outlineVisible);
+        }
+        const btn = $('status-tools') && $('status-tools').querySelector('.outline-toggle');
+        if (btn) {
+            btn.textContent = outlineVisible ? 'Outline: on' : 'Outline: off';
+            btn.classList.toggle('active', outlineVisible);
+        }
+    }
+
     function renderOutline() {
         const wb = document.querySelector('.workbench');
         if (!wb || !schema) return;
         if (!outlineEl || outlineEl.parentNode !== wb) {
-            outlineEl = el('aside', 'outline');
+            outlineEl = el('aside', 'outline' + (outlineVisible ? '' : ' hidden'));
             outlineEl.id = 'outline';
             outlineEl.setAttribute('role', 'tree');
             outlineEl.setAttribute('aria-label', 'Document Outline');
-            outlineEl.style.minWidth = '150px';
-            outlineEl.style.maxWidth = '230px';
-            outlineEl.style.overflow = 'auto';
-            outlineEl.style.fontSize = '12px';
             wb.appendChild(outlineEl);
+        } else {
+            outlineEl.classList.toggle('hidden', !outlineVisible);
         }
         outlineEl.innerHTML = '';
         outlineEl.appendChild(el('h3', null, 'Outline'));
@@ -1218,21 +1318,18 @@
             + (readOnly ? ' readonly' : ''));
         row.dataset.id = c.id;
         row.setAttribute('role', 'treeitem');
-        row.style.cursor = 'pointer';
-        row.style.whiteSpace = 'nowrap';
-        if (selection.has(c.id)) row.style.background = '#37373d';
-        const label = el('span', 'outline-label', `${c.id} (${simple})`);
+        const label = el('span', 'outline-label');
         label.style.paddingLeft = (4 + depth * 12) + 'px';
+        const nameSpan = el('span', 'outline-name', c.id);
+        const typeSpan = el('span', 'outline-type-hint', ` (${simple})`);
+        label.appendChild(nameSpan);
+        label.appendChild(typeSpan);
         if (c.locked) {
             row.title = c.lockedReason || 'Not modelled.';
-            label.style.color = '#858585';
-            label.style.fontStyle = 'italic';
         }
         row.appendChild(label);
         if (c.locked) {
             const why = el('span', 'outline-locked-reason', c.lockedReason || 'Not modelled.');
-            why.style.color = '#858585';
-            why.style.fontSize = '11px';
             row.appendChild(why);
         }
         // Task 6 (#52) step-order buttons: one z-order slot per click, riding the
@@ -1825,7 +1922,7 @@
         const simple = simpleName(String(node.type || ''));
         if (!handled.has(simple)) {
             node.locked = true;
-            node.lockedReason = `${simple} is not one of the handled control types, so its appearance is not modelled.`;
+            node.lockedReason = `${simple}: appearance and properties not tracked (geometry only). See AGENTS.md Invariants for 'modelled' vs 'locked'.`;
         }
         for (const ch of node.children || []) markUnhandledLocked(ch, handled);
     }
@@ -2548,6 +2645,22 @@
                 (v) => setProp(c, 'value', v)));
         }
 
+        // DateTimePicker value, format, and limits
+        if (simple === 'DateTimePicker' && !appearanceBlocked) {
+            box.appendChild(el('h4', 'inspector-section', 'DateTime'));
+            box.appendChild(selectField('Format', c.properties.format || 'Long',
+                ['Long', 'Short', 'Time', 'Custom'], appearanceBlocked,
+                (v) => setProp(c, 'format', v)));
+            box.appendChild(strField('CustomFormat', c.properties.customFormat ?? '', appearanceBlocked,
+                (v) => setProp(c, 'customFormat', v)));
+            box.appendChild(dateField('Value', c.properties.value, appearanceBlocked,
+                (v) => setProp(c, 'value', v)));
+            box.appendChild(dateField('MinDate', c.properties.minDate, appearanceBlocked,
+                (v) => setProp(c, 'minDate', v)));
+            box.appendChild(dateField('MaxDate', c.properties.maxDate, appearanceBlocked,
+                (v) => setProp(c, 'maxDate', v)));
+        }
+
         // Rename is its own message, not a schema edit. A schema carrying a new id reads to the
         // engine as "old one deleted, new one inserted" — which would duplicate the control and
         // throw away its properties.
@@ -2583,10 +2696,9 @@
             box.appendChild(el('button', 'danger', `Delete ${c.id}`)).addEventListener('click', () => deleteControl(c.id));
         }
 
-        // Task 5 (#51): read-only Events (A3 stays missing), then bold+Reset
+        // Task 5 (#51): bold+Reset
         // decoration over the built rows, then the description pane. Neither
         // div is a .field row, so the D10 regroup and filter ignore them.
-        renderEventsSection(box);
 
         applyInspectorView(box);
         // After the regroup: rows moved, so decoration and the pane land last.
@@ -2703,7 +2815,7 @@
 
             const row = el('div', 'row');
             const lbl = el('label', 'field-label', ev.name);
-            lbl.setAttribute('title', ev.desc);
+            lbl.setAttribute('title', `${ev.name}: ${ev.desc} (Double-click to wire)`);
             row.appendChild(lbl);
 
             const currentHandler = eventsMap[ev.name] || '';
@@ -2711,6 +2823,10 @@
             input.type = 'text';
             input.className = 'event-handler-input';
             input.value = currentHandler;
+            input.placeholder = '(none)';
+            input.title = currentHandler
+                ? `Handler: ${currentHandler} · Double-click to jump to code`
+                : 'Double-click row to scaffold, or type custom handler and press Enter';
             if (currentHandler) {
                 f.classList.add('changed');
             }
@@ -2915,6 +3031,25 @@
         // Task 5 (#51): null is the multi-select divergent blank, never "null".
         i.type = 'text'; i.value = (value === null || value === undefined) ? '' : value; i.disabled = !!disabled;
         i.addEventListener('change', () => onChange(i.value));
+        f.appendChild(i);
+        return f;
+    }
+    function dateField(label, value, disabled, onChange) {
+        const f = el('div', 'field');
+        f.dataset.prop = label; f.dataset.cat = propCategory(label);
+        const id = 'f' + label.replace(/\s+/g, '');
+        const lab = el('label', null, label);
+        lab.setAttribute('for', id);
+        f.appendChild(lab);
+        const i = document.createElement('input');
+        i.id = id;
+        i.type = 'date';
+        const dateStr = typeof value === 'string' ? value.split('T')[0] : '';
+        i.value = dateStr;
+        i.disabled = !!disabled;
+        i.addEventListener('change', () => {
+            if (i.value) onChange(i.value);
+        });
         f.appendChild(i);
         return f;
     }
@@ -3168,7 +3303,11 @@
         'ScrollBars': 'Which scroll bars the text box shows.',
         'Minimum': 'Lowest value of the range.',
         'Maximum': 'Highest value of the range.',
-        'Value': 'Current value of the range.',
+        'Value': 'Current value or date.',
+        'Format': 'Format of the date and time displayed in the control.',
+        'CustomFormat': 'The custom date/time format string.',
+        'MinDate': 'The minimum date and time that can be selected.',
+        'MaxDate': 'The maximum date and time that can be selected.',
         'SelectedIndex': 'Which item starts selected. -1 selects nothing.',
         'SelectedItem': 'The selected item text. Empty means none.',
         'DropDownStyle': 'DropDown allows typing; DropDownList restricts to the list.',
@@ -3190,6 +3329,8 @@
         'Multiline': 'multiline', 'ReadOnly': 'readOnly', 'MaxLength': 'maxLength',
         'PasswordChar': 'passwordChar', 'ScrollBars': 'scrollBars',
         'Minimum': 'minimum', 'Maximum': 'maximum', 'Value': 'value',
+        'Format': 'format', 'CustomFormat': 'customFormat',
+        'MinDate': 'minDate', 'MaxDate': 'maxDate',
     };
     const NO_RESET_KEYS = new Set(['x', 'y', 'width', 'height']);
 
@@ -3265,23 +3406,6 @@
                 n.addEventListener('focus', () => showDescription('Items'));
             }
         }
-    }
-
-    /**
-     * Events section (A3 stays missing). The schema carries no wirings —
-     * parse preserves `+=` lines byte-identical without surfacing them, and
-     * surfacing them needs the engine parse step from spec-property-tabs §4
-     * (a separate change). So this section states the gap read-only: no
-     * inputs, no buttons, no scaffold, nothing that writes. Full scaffolding
-     * (wiring + Form1.cs stub) needs the #28 ADR, like rename needed 0008.
-     */
-    function renderEventsSection(box) {
-        box.appendChild(el('h4', 'inspector-section', 'Events'));
-        const n = el('div', 'events-readonly',
-            'Event wirings (e.g. Click += …) live in the Designer file and are '
-            + 'preserved untouched. Wiring display and handler scaffolding are not '
-            + 'modelled yet (A3) — nothing here writes the file, by design.');
-        box.appendChild(n);
     }
 
     /**
@@ -3382,6 +3506,22 @@
               options: ['Simple', 'DropDown', 'DropDownList'],
               get: (c) => c.properties.dropDownStyle || 'DropDown',
               set: (c, v) => { c.properties.dropDownStyle = v; } },
+            { label: 'Format', key: 'format', applies: (s) => s === 'DateTimePicker',
+              options: ['Long', 'Short', 'Time', 'Custom'],
+              get: (c) => c.properties.format || 'Long',
+              set: (c, v) => { c.properties.format = v; } },
+            { label: 'CustomFormat', key: 'customFormat', applies: (s) => s === 'DateTimePicker',
+              get: (c) => c.properties.customFormat ?? '',
+              set: (c, v) => { c.properties.customFormat = v; } },
+            { label: 'Value', key: 'value', applies: (s) => s === 'DateTimePicker', kind: 'date',
+              get: (c) => typeof c.properties.value === 'string' ? c.properties.value.split('T')[0] : '',
+              set: (c, v) => { c.properties.value = v; } },
+            { label: 'MinDate', key: 'minDate', applies: (s) => s === 'DateTimePicker', kind: 'date',
+              get: (c) => typeof c.properties.minDate === 'string' ? c.properties.minDate.split('T')[0] : '',
+              set: (c, v) => { c.properties.minDate = v; } },
+            { label: 'MaxDate', key: 'maxDate', applies: (s) => s === 'DateTimePicker', kind: 'date',
+              get: (c) => typeof c.properties.maxDate === 'string' ? c.properties.maxDate.split('T')[0] : '',
+              set: (c, v) => { c.properties.maxDate = v; } },
         ];
     }
     function renderMultiProps(box, sel) {
@@ -3399,6 +3539,7 @@
             if (cand.options) row = selectField(cand.label, agreed, cand.options, false, applyAll);
             else if (cand.kind === 'bool') row = boolField(cand.label, agreed, false, applyAll);
             else if (cand.kind === 'num') row = numField(cand.label, agreed, false, applyAll);
+            else if (cand.kind === 'date') row = dateField(cand.label, agreed, false, applyAll);
             else if (cand.kind === 'color') row = colorField(cand.label, agreed === null ? '' : agreed, false, applyAll);
             else row = strField(cand.label, agreed, false, applyAll);
             if (agreed === null) row.title = 'Selected controls disagree — editing sets every member.';
@@ -3432,9 +3573,9 @@
             GroupBox: { w: 220, h: 160, text: 'GroupBox' },
             // WinForms design-time defaults. A control dropped at an arbitrary size is one the
             // user immediately resizes — and every resize is a real write to their file.
-            TrackBar: { w: 120, h: 56, text: '' },
+            TrackBar: { w: 120, h: 45, text: '' },
             ProgressBar: { w: 140, h: 20, text: '' },
-            NumericUpDown: { w: 100, h: 22, text: '' },
+            NumericUpDown: { w: 100, h: 23, text: '' },
             DateTimePicker: { w: 120, h: 23, text: '' },
             TabControl: { w: 200, h: 100, text: '' },
             TabPage: { w: 192, h: 74, text: 'TabPage' },
@@ -3925,6 +4066,13 @@
         tabBtn.title = 'Tab order mode: badge each control with its TabIndex, click to reassign in order, Esc to exit';
         tabBtn.addEventListener('click', () => setTabOrderMode(!tabOrderMode));
         s.appendChild(tabBtn);
+        const outlineBtn = el('button', 'outline-toggle' + (outlineVisible ? ' active' : ''),
+            outlineVisible ? 'Outline: on' : 'Outline: off');
+        outlineBtn.title = 'Document Outline (hierarchy and z-order step) · Ctrl/Cmd+Alt+T';
+        outlineBtn.addEventListener('click', () => {
+            setOutlineVisible(!outlineVisible);
+        });
+        s.appendChild(outlineBtn);
     }
 
     /**
@@ -4006,6 +4154,19 @@
             if (e.key !== 'x' && e.key !== 'X' && e.code !== 'KeyX') return;
             e.preventDefault();
             focusToolboxSearch();
+        });
+    }
+
+    /**
+     * Ctrl+Alt+T / Cmd+Alt+T toggles the Document Outline panel, matching Visual Studio's
+     * View.ShowDocumentOutline shortcut.
+     */
+    function setupOutlineKeys() {
+        window.addEventListener('keydown', (e) => {
+            if (!(e.ctrlKey || e.metaKey) || !e.altKey) return;
+            if (e.key !== 't' && e.key !== 'T' && e.code !== 'KeyT') return;
+            e.preventDefault();
+            setOutlineVisible(!outlineVisible);
         });
     }
 
@@ -4110,6 +4271,7 @@
     setupStatusBar();
     setupDrop();
     setupToolboxKeys();
+    setupOutlineKeys();
     setupInspectorFilter();
     renderStatus('Waiting for the engine…');
     post('ready');

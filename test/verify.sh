@@ -272,6 +272,36 @@ grep -q "this.ClientSize = new System.Drawing.Size(350, 250);" "$FILE" \
 grep -q "this.BackColor = System.Drawing.Color.FromArgb(128, 0, 128);" "$FILE" \
   && ok "form BackColor inserted" || bad "form BackColor not inserted"
 
+sect "[roslyn] default form bounds fallback when ClientSize is omitted (#75)"
+work wired WiredForm
+send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys; d=json.load(sys.stdin)['schema']
+cs = d['form']['clientSize']
+assert cs == {'width': 340, 'height': 300}, f'Expected 340x300, got {cs}'" \
+  && ok "form without ClientSize computes fallback enclosing child controls with margin" \
+  || bad "fallback ClientSize computation failed"
+
+cp "$FILE" /tmp/mf-wired-orig.cs
+python_tweak "pass" >/dev/null
+if diff -q /tmp/mf-wired-orig.cs "$FILE" >/dev/null; then
+  ok "untouched form without ClientSize round-trips byte-identical"
+else
+  bad "no-op generate rewrote the form without ClientSize"
+fi
+
+python_tweak "s['form']['clientSize'] = {'width': 500, 'height': 400}" >/dev/null
+grep -qE "this\.ClientSize = new System\.Drawing\.Size\(500, 400\);" "$FILE" \
+  && ok "form ClientSize inserted on a form that had none" \
+  || bad "form ClientSize not inserted"
+
+work invisible SizeOnlyForm
+send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}" | python3 -c "
+import json,sys; d=json.load(sys.stdin)['schema']
+cs = d['form']['clientSize']
+assert cs == {'width': 300, 'height': 140}, f'Expected 300x140 from Size, got {cs}'" \
+  && ok "form with Size but without ClientSize falls back to Size" \
+  || bad "Size fallback failed"
+
 sect "[roslyn] extended control properties: Checked, ForeColor, TextAlign, BorderStyle, ScrollBars"
 work simple SimpleDialog
 python_tweak "
@@ -415,9 +445,9 @@ assert s['analysis']['coveragePercent']==100.0, s['analysis']
 " && ok "all four parse as modelled at 100% coverage" || bad "leaf widgets not modelled"
 
 sect "[roslyn] adding each leaf widget emits the right lines and prefix"
-for spec in "System.Windows.Forms.TrackBar:trk:120:56" \
+for spec in "System.Windows.Forms.TrackBar:trk:120:45" \
             "System.Windows.Forms.ProgressBar:prg:140:20" \
-            "System.Windows.Forms.NumericUpDown:num:100:22" \
+            "System.Windows.Forms.NumericUpDown:num:100:23" \
             "System.Windows.Forms.DateTimePicker:dtp:120:23"; do
   IFS=':' read -r type prefix w h <<< "$spec"
   simple="${type##*.}"
@@ -599,6 +629,43 @@ grep -qF 'this.progressLoad.Maximum = 200;' "$FILE" \
   && ok "ProgressBar Maximum inserted" || bad "ProgressBar Maximum not inserted"
 grep -qF 'this.numQuantity.Value = 25;' "$FILE" \
   && ok "NumericUpDown Value inserted" || bad "NumericUpDown Value not inserted"
+
+sect "[roslyn] dateTimePicker: format, customFormat, value, minDate, maxDate parse, replace, insert"
+work leafwidgets LeafForm
+OUT=$(send "{\"id\":1,\"cmd\":\"parse\",\"path\":\"$FILE\"}")
+echo "$OUT" | python3 -c "
+import json,sys
+s=json.load(sys.stdin)['schema']
+byid={c['id']: c for c in s['controls']}
+dtp=byid['dtpDue']
+p=dtp['properties']
+assert p['format']=='Custom', p
+assert p['customFormat']=='yyyy-MM-dd', p
+assert p['value']=='2026-10-06', p
+" && ok "DateTimePicker parses format, customFormat, and value" || bad "DateTimePicker parse failed"
+
+python_tweak "
+for c in s['controls']:
+    if c['id']=='dtpDue':
+        c['properties'].update(format='Short', customFormat='MM/dd/yyyy', value='2026-10-24', minDate='2020-01-01', maxDate='2030-12-31')" >/dev/null
+grep -qF 'this.dtpDue.Format = System.Windows.Forms.DateTimePickerFormat.Short;' "$FILE" \
+  && ok "DateTimePicker Format replaced" || bad "Format not replaced"
+grep -qF 'this.dtpDue.CustomFormat = "MM/dd/yyyy";' "$FILE" \
+  && ok "DateTimePicker CustomFormat replaced" || bad "CustomFormat not replaced"
+grep -qF 'this.dtpDue.Value = new DateTime(2026, 10, 24);' "$FILE" \
+  && ok "DateTimePicker Value arguments replaced without churning type" || bad "Value not replaced"
+grep -qF 'this.dtpDue.MinDate = new System.DateTime(2020, 1, 1, 0, 0, 0, 0);' "$FILE" \
+  && ok "DateTimePicker MinDate inserted" || bad "MinDate not inserted"
+grep -qF 'this.dtpDue.MaxDate = new System.DateTime(2030, 12, 31, 0, 0, 0, 0);' "$FILE" \
+  && ok "DateTimePicker MaxDate inserted" || bad "MaxDate not inserted"
+
+LEAF_MOD_BUILD=$(cd "$LEAF_SRC" && dotnet build -v q --nologo 2>&1)
+if echo "$LEAF_MOD_BUILD" | grep -q "Build succeeded"; then
+  ok "LeafForm with patched DateTimePicker compiles as real WinForms"
+else
+  bad "LeafForm FAILED to compile after DateTimePicker patch"
+  echo "$LEAF_MOD_BUILD" | grep -E "error" | head -4 | sed 's/^/        /'
+fi
 
 sect "[roslyn] containers: TabControl, TabPage nesting and placeholders"
 work containers ContainerForm
@@ -829,7 +896,7 @@ MISSING=""
 for keep in "FlatStyle = System.Windows.Forms.FlatStyle.Flat" \
             "Cursors.Hand" \
             "TabStop = false" \
-            "MonthCalendar calPick" \
+            "PropertyGrid calPick" \
             "this.btnBack.Location = new System.Drawing.Point(60, 80);"; do
   grep -qF "$keep" "$FILE" || MISSING="$MISSING"$'\n'"        - $keep"
 done
@@ -851,7 +918,7 @@ assert adds==['btnMid','btnBack','calPick','pnlNest','btnFront'], adds" \
 CHANGED=$(diff /tmp/mf-zo-orig.cs "$FILE" | grep -c '^[<>]')
 [ "$CHANGED" -eq 2 ] && ok "send to back = exactly 2 changed lines" || bad "send to back touched $CHANGED lines (expected 2)"
 grep -qF "this.calPick.Location = new System.Drawing.Point(180, 20);" "$FILE" \
-  && grep -qF "private System.Windows.Forms.MonthCalendar calPick;" "$FILE" \
+  && grep -qF "private System.Windows.Forms.PropertyGrid calPick;" "$FILE" \
   && ok "the locked control's statements survive verbatim" || bad "locked control disturbed"
 
 sect "[roslyn] z-order: nested reorder moves only within the container"

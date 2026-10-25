@@ -113,7 +113,11 @@ interface ControlProperties {
   scrollBars?: string          // TextBox only: 'None' | 'Horizontal' | 'Vertical' | 'Both'
   minimum?: number             // TrackBar, ProgressBar, NumericUpDown
   maximum?: number             // TrackBar, ProgressBar, NumericUpDown
-  value?: number               // TrackBar, ProgressBar, NumericUpDown
+  value?: number | string      // TrackBar, ProgressBar, NumericUpDown (number); DateTimePicker (ISO 8601 date string)
+  format?: string              // DateTimePicker only: 'Long' | 'Short' | 'Time' | 'Custom'
+  customFormat?: string        // DateTimePicker only: format string (e.g. 'yyyy-MM-dd')
+  minDate?: string             // DateTimePicker only: ISO 8601 date string
+  maxDate?: string             // DateTimePicker only: ISO 8601 date string
   checked?: boolean            // CheckBox, RadioButton
   textAlign?: string           // see the two TextAligns below
   borderStyle?: string         // Panel, GroupBox, PictureBox, Label: BorderStyle

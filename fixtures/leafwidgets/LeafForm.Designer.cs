@@ -33,7 +33,7 @@ partial class LeafForm
         //
         this.trackVolume.Location = new System.Drawing.Point(24, 24);
         this.trackVolume.Name = "trackVolume";
-        this.trackVolume.Size = new System.Drawing.Size(120, 56);
+        this.trackVolume.Size = new System.Drawing.Size(120, 45);
         this.Controls.Add(this.trackVolume);
         this.trackVolume.TabIndex = 0;
         //
@@ -49,7 +49,7 @@ partial class LeafForm
         //
         this.numQuantity.Location = new System.Drawing.Point(24, 140);
         this.numQuantity.Name = "numQuantity";
-        this.numQuantity.Size = new System.Drawing.Size(100, 22);
+        this.numQuantity.Size = new System.Drawing.Size(100, 23);
         this.Controls.Add(this.numQuantity);
         this.numQuantity.TabIndex = 2;
         //

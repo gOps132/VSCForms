@@ -343,29 +343,26 @@ internal static class Program
                     Check(id, "Location.Y", props.GetProperty("y").GetInt32(), found.Top);
                 }
 
-                // Size is only comparable for controls that do not compute their own. An
-                // AutoSize control sizes itself from the font, so asserting our declared width
-                // against it would fail for a reason that has nothing to do with VSCForms.
-                // MonthCalendar is the same shape without the flag: it snaps Size to the
-                // month grid at runtime, so the designer's Size never survives verbatim.
-                bool autoSize = found is Label or CheckBox or RadioButton or LinkLabel
-                                || found is MonthCalendar
-                                || found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b;
-                // UpDownBase (NumericUpDown, DomainUpDown) clamps its HEIGHT to the font's
-                // preferred height, so a declared Size.Height never survives runtime either —
-                // the same class of snap as MonthCalendar, but only on the height axis (the
-                // width IS designer-controlled). A ComboBox (its height is the drop-down's)
-                // and a DateTimePicker (its height is the picker's) are the same shape.
-                // Skip what the runtime overrides; the point of this tier is VSCForms'
-                // geometry, not WinForms' internal font metrics.
-                bool heightSnapped = found is UpDownBase
-                                     || found is ComboBox
-                                     || found is DateTimePicker;
-                if (!autoSize && !tabPage)
+                // Genuinely un-simulatable cases:
+                // 1. TabPage: geometry is owned and laid out by the TabControl in its display area.
+                // 2. MonthCalendar: runtime discretely snaps Size to the month calendar grid.
+                // 3. Text-driven AutoSize controls (Label, LinkLabel, and CheckBox/RadioButton
+                //    when AutoSize is true): runtime computes Width and Height from GDI font
+                //    measurement of Text, which VSCForms does not simulate (ADR 0006).
+                //
+                // Leaf inputs (TextBox, ComboBox, DateTimePicker, NumericUpDown, TrackBar)
+                // have font- or chrome-constrained heights (23 for 9pt text inputs, 45 for
+                // TrackBar), but are NOT text-sized. The generator writes their exact runtime
+                // size, so they are verified with NO EXCLUSIONS on either axis (#65).
+                bool textDrivenAutoSize = found is Label or LinkLabel
+                                          || (found is CheckBox or RadioButton &&
+                                              found.GetType().GetProperty("AutoSize")?.GetValue(found) is bool b && b);
+                bool gridSnapped = found is MonthCalendar;
+
+                if (!textDrivenAutoSize && !gridSnapped && !tabPage)
                 {
                     Check(id, "Size.Width", props.GetProperty("width").GetInt32(), found.Width);
-                    if (!heightSnapped)
-                        Check(id, "Size.Height", props.GetProperty("height").GetInt32(), found.Height);
+                    Check(id, "Size.Height", props.GetProperty("height").GetInt32(), found.Height);
                 }
             }
 
