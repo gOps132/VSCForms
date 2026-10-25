@@ -812,13 +812,22 @@ body { display: flex; flex-direction: column; }
    switching views never touches the file, so the pressed button is the only state. */
 .inspector-view { display: flex; gap: 3px; }
 .inspector-view-btn {
-  cursor: pointer; font-size: 11px; padding: 2px 6px;
+  cursor: pointer; font-size: 11px; padding: 3px 6px;
+  display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--muted);
   border: 1px solid var(--border); border-radius: 3px;
+  line-height: 1;
+}
+.inspector-view-btn:hover {
+  color: var(--fg);
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 .inspector-view-btn[aria-pressed="true"] {
   background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-focusBorder, var(--accent));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--accent)) inset;
+  font-weight: 600;
 }
 .inspector-cat, .inspector-section {
   margin: 10px 0 2px; font-size: 10px; text-transform: uppercase;

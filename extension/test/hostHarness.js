@@ -2418,7 +2418,7 @@ setTimeout(async () => {
         await settled();
         {
             const viewBtn = (label) => ids.inspector.querySelectorAll('button')
-                .find((b) => String(b.textContent || '') === label);
+                .find((b) => String(b.textContent || '') === label || b.getAttribute('aria-label') === label || b.dataset.view === label.toLowerCase());
             const setView = (label) => viewBtn(label).dispatch('click', {});
             const fieldLabels = () => ids.inspector.querySelectorAll('.field')
                 .filter((f) => f.dataset && f.dataset.prop).map((f) => String(f.dataset.prop));
@@ -2429,6 +2429,9 @@ setTimeout(async () => {
 
             check('inspector offers all three view modes',
                 !!viewBtn('Flat') && !!viewBtn('Categorized') && !!viewBtn('Alphabetical'));
+            check('inspector view toggles use hollow SVG icons',
+                [...ids.inspector.querySelectorAll('.inspector-view-btn')].length === 3 &&
+                [...ids.inspector.querySelectorAll('.inspector-view-btn')].every((b) => !!b.querySelector('.codicon-wrap')));
             check('flat is the default view',
                 viewBtn('Flat').getAttribute('aria-pressed') === 'true');
             check('flat keeps the current row order (geometry first)',
