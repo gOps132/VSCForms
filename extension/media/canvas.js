@@ -2815,7 +2815,7 @@
 
             const row = el('div', 'row');
             const lbl = el('label', 'field-label', ev.name);
-            lbl.setAttribute('title', ev.desc);
+            lbl.setAttribute('title', `${ev.name}: ${ev.desc} (Double-click to wire)`);
             row.appendChild(lbl);
 
             const currentHandler = eventsMap[ev.name] || '';
@@ -2823,6 +2823,10 @@
             input.type = 'text';
             input.className = 'event-handler-input';
             input.value = currentHandler;
+            input.placeholder = '(none)';
+            input.title = currentHandler
+                ? `Handler: ${currentHandler} · Double-click to jump to code`
+                : 'Double-click row to scaffold, or type custom handler and press Enter';
             if (currentHandler) {
                 f.classList.add('changed');
             }

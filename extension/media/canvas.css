@@ -642,9 +642,20 @@ body { display: flex; flex-direction: column; }
 
 /* ------------------------------------------------------------------ inspector */
 .inspector {
-  width: 210px; flex: 0 0 210px; padding: 4px 8px 12px;
-  border-left: 1px solid var(--border); overflow-y: auto;
-  display: flex; flex-direction: column;
+  width: 270px;
+  flex: 0 0 270px;
+  min-width: 240px;
+  max-width: 380px;
+  padding: 4px 8px 12px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden !important;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+.inspector * {
+  box-sizing: border-box;
 }
 .inspector-search-wrap {
   flex: 0 0 auto; margin: 4px 0 8px 0;
@@ -654,6 +665,7 @@ body { display: flex; flex-direction: column; }
   background: var(--vscode-input-background); color: var(--fg);
   border: 1px solid var(--vscode-input-border, var(--border));
   border-radius: 2px; font-family: inherit;
+  box-sizing: border-box;
 }
 .inspector-search:focus {
   outline: 1px solid var(--accent);
@@ -661,6 +673,11 @@ body { display: flex; flex-direction: column; }
 }
 #inspector {
   flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+#inspector > button {
+  width: 100%;
 }
 .object-selector {
   margin: 4px 0 8px;
@@ -686,7 +703,7 @@ body { display: flex; flex-direction: column; }
   color: var(--vscode-dropdown-foreground, var(--fg));
 }
 .inspector .empty { color: var(--muted); font-size: 12px; padding: 8px 4px; }
-.field { margin: 6px 0; }
+.field { margin: 6px 0; min-width: 0; }
 .field label {
   display: block; font-size: 10px; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); margin-bottom: 2px;
@@ -696,13 +713,14 @@ body { display: flex; flex-direction: column; }
   background: var(--vscode-input-background); color: var(--fg);
   border: 1px solid var(--vscode-input-border, var(--border));
   border-radius: 2px; font-family: inherit;
+  box-sizing: border-box;
 }
 .field input[disabled], .field select[disabled] { opacity: .5; cursor: not-allowed; }
 .field input:focus, .field select:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 .field .note { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
 .field .note.warn { color: var(--warn-br); }
-.row { display: flex; gap: 6px; }
-.row .field { flex: 1; }
+.row { display: flex; gap: 6px; min-width: 0; }
+.row .field { flex: 1; min-width: 0; }
 
 .danger {
   margin-top: 12px; width: 100%; padding: 5px; cursor: pointer;
@@ -726,16 +744,42 @@ body { display: flex; flex-direction: column; }
 .status .err { color: var(--err-br); }
 .status .ok { color: var(--fg); }
 /* --------------------------------------------------------------- inspector rows */
-.field .row { display: flex; align-items: center; gap: 6px; }
+.field .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
 .field h4 {
   margin: 10px 0 2px; font-size: 10px; text-transform: uppercase;
   color: var(--muted); font-weight: 600;
 }
-.field .row label { flex: 1 1 auto; }
+.field .row label {
+  flex: 0 0 100px;
+  min-width: 0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0;
+}
+.field .row input, .field .row select {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 0;
+}
+.field .row .prop-reset {
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 2px 6px;
+  font-size: 10px;
+}
 .field input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 .field input[type="color"] {
   width: 34px; height: 20px; padding: 0; border: 1px solid var(--border);
   background: transparent; border-radius: 3px;
+  flex: 0 0 34px;
 }
 .field button {
   cursor: pointer; font-size: 10px; padding: 1px 6px;
@@ -748,9 +792,9 @@ body { display: flex; flex-direction: column; }
 
 /* D10 inspector view toggle: presentational sort/group switch. View state only —
    switching views never touches the file, so the pressed button is the only state. */
-.inspector-view { display: flex; gap: 4px; margin: 6px 0; }
+.inspector-view { display: flex; gap: 3px; }
 .inspector-view-btn {
-  cursor: pointer; font-size: 11px; padding: 2px 8px;
+  cursor: pointer; font-size: 11px; padding: 2px 6px;
   background: transparent; color: var(--muted);
   border: 1px solid var(--border); border-radius: 3px;
 }
@@ -789,27 +833,56 @@ body.vscode-light {
   border-top: 1px solid var(--border);
   font-size: 11px; color: var(--muted); line-height: 1.4;
   min-height: 28px;
+  word-break: break-word;
 }
-.events-readonly {
-  font-size: 11px; color: var(--muted); line-height: 1.4;
-  padding: 4px 6px; margin: 2px 0 6px;
-  border: 1px solid var(--border); border-radius: 2px;
+.inspector-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  flex-wrap: wrap;
 }
-.inspector-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0; }
-.inspector-tabs { display: flex; gap: 4px; }
+.inspector-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--vscode-editor-background);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
 .inspector-tab-btn {
-  cursor: pointer; font-size: 12px; padding: 2px 6px;
-  background: transparent; color: var(--muted);
-  border: 1px solid var(--border); border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 3px;
   line-height: 1.2;
+}
+.inspector-tab-btn:hover {
+  color: var(--fg);
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 .inspector-tab-btn[aria-pressed="true"] {
   background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-focusBorder, var(--accent));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--accent)) inset;
+  font-weight: 600;
 }
 .event-row { cursor: default; }
 .event-row:hover { background: rgba(255, 255, 255, 0.03); }
-.event-handler-input { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; }
+.event-handler-input {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+.event-handler-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+  font-style: italic;
+}
 
 /* -------------------------------------------------------------------- outline */
 .outline {
