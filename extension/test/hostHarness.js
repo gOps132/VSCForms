@@ -318,6 +318,9 @@ check('banner states unmodelled count', /1 shown as locked boxes/.test(bannerHtm
 check('banner is visible (not hidden)', !ids.banner.classList.contains('hidden'));
 const bannerCloseBtn = ids.banner.querySelector('.banner-close');
 check('banner offers dismiss/cancel button', !!bannerCloseBtn);
+const bannerCloseIcon = bannerCloseBtn && bannerCloseBtn.querySelector('.codicon-wrap');
+check('banner close button uses hollow SVG icon, not raw unicode character',
+    !!bannerCloseIcon && !bannerCloseBtn.textContent.includes('✕') && /<svg/.test(bannerCloseIcon.innerHTML));
 if (bannerCloseBtn) {
     bannerCloseBtn.dispatch('click', {});
     check('clicking dismiss hides the banner', ids.banner.classList.contains('hidden'));
@@ -3380,6 +3383,14 @@ setTimeout(async () => {
         const eventTabBtn = () => [...tabBtns()].find((b) => b.dataset.tab === 'events');
         check('inspector offers Properties and Events tab switcher', !!propTabBtn() && !!eventTabBtn());
         check('properties tab is initially active', propTabBtn().getAttribute('aria-pressed') === 'true');
+        const propIcon = propTabBtn().querySelector('.codicon-wrap');
+        const eventIcon = eventTabBtn().querySelector('.codicon-wrap');
+        check('inspector tabs use hollow SVG icons, not emojis',
+            !!propIcon && !!eventIcon &&
+            !propTabBtn().textContent.includes('🔧') &&
+            !eventTabBtn().textContent.includes('⚡') &&
+            /<svg/.test(propIcon.innerHTML) &&
+            /<svg/.test(eventIcon.innerHTML));
 
         // Switch to Events tab
         eventTabBtn().dispatch('click', {});
