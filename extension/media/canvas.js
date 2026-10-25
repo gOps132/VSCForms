@@ -1275,16 +1275,32 @@
      * is created lazily on first render.
      */
     let outlineEl = null;
+    let outlineVisible = false;
     let activeZone = 'canvas';
+
+    function setOutlineVisible(on) {
+        outlineVisible = !!on;
+        if (outlineEl) {
+            outlineEl.classList.toggle('hidden', !outlineVisible);
+        }
+        const btn = $('status-tools') && $('status-tools').querySelector('.outline-toggle');
+        if (btn) {
+            btn.textContent = outlineVisible ? 'Outline: on' : 'Outline: off';
+            btn.classList.toggle('active', outlineVisible);
+        }
+    }
+
     function renderOutline() {
         const wb = document.querySelector('.workbench');
         if (!wb || !schema) return;
         if (!outlineEl || outlineEl.parentNode !== wb) {
-            outlineEl = el('aside', 'outline');
+            outlineEl = el('aside', 'outline' + (outlineVisible ? '' : ' hidden'));
             outlineEl.id = 'outline';
             outlineEl.setAttribute('role', 'tree');
             outlineEl.setAttribute('aria-label', 'Document Outline');
             wb.appendChild(outlineEl);
+        } else {
+            outlineEl.classList.toggle('hidden', !outlineVisible);
         }
         outlineEl.innerHTML = '';
         outlineEl.appendChild(el('h3', null, 'Outline'));
@@ -4064,6 +4080,13 @@
         tabBtn.title = 'Tab order mode: badge each control with its TabIndex, click to reassign in order, Esc to exit';
         tabBtn.addEventListener('click', () => setTabOrderMode(!tabOrderMode));
         s.appendChild(tabBtn);
+        const outlineBtn = el('button', 'outline-toggle' + (outlineVisible ? ' active' : ''),
+            outlineVisible ? 'Outline: on' : 'Outline: off');
+        outlineBtn.title = 'Document Outline (hierarchy and z-order step) · Ctrl/Cmd+Alt+T';
+        outlineBtn.addEventListener('click', () => {
+            setOutlineVisible(!outlineVisible);
+        });
+        s.appendChild(outlineBtn);
     }
 
     /**
@@ -4145,6 +4168,19 @@
             if (e.key !== 'x' && e.key !== 'X' && e.code !== 'KeyX') return;
             e.preventDefault();
             focusToolboxSearch();
+        });
+    }
+
+    /**
+     * Ctrl+Alt+T / Cmd+Alt+T toggles the Document Outline panel, matching Visual Studio's
+     * View.ShowDocumentOutline shortcut.
+     */
+    function setupOutlineKeys() {
+        window.addEventListener('keydown', (e) => {
+            if (!(e.ctrlKey || e.metaKey) || !e.altKey) return;
+            if (e.key !== 't' && e.key !== 'T' && e.code !== 'KeyT') return;
+            e.preventDefault();
+            setOutlineVisible(!outlineVisible);
         });
     }
 
@@ -4249,6 +4285,7 @@
     setupStatusBar();
     setupDrop();
     setupToolboxKeys();
+    setupOutlineKeys();
     setupInspectorFilter();
     renderStatus('Waiting for the engine…');
     post('ready');

@@ -827,6 +827,9 @@ body.vscode-light {
   display: flex;
   flex-direction: column;
 }
+.outline.hidden {
+  display: none !important;
+}
 .outline-hint {
   font-size: 11px;
   color: var(--muted);

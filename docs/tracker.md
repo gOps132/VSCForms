@@ -49,7 +49,8 @@ fixed, `SCHEMA.md`'s `textAlign` shape documented). Re-verify by reading
   with live snap guides, dblclick/Enter populate, dragover guides),
   containers drag-reparent (hover highlight, drop reparent with coordinate
   conversion, TabPage targeting, locked/refused guards, one commit via ADR 0010),
-  Document Outline one-slot step-order buttons (▲▼, riding A1 move),
+  Document Outline hidden by default (toggleable via status bar button or
+  `Ctrl/Cmd+Alt+T`, with one-slot step-order ▲▼ buttons riding A1 move),
   `Cmd/Ctrl+D` duplicate, zoom
   (`Cmd/Ctrl`+wheel, `+/-`/`0`, Fit, 0.25–4.0), space/middle-drag pan, rulers,
   zoom bar, Escape deselect, tab-strip activation, drill-down selection for
@@ -135,7 +136,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D3 | Make Same Size / Center in Form (pure-geometry arrange ops) | shipped | S | `spec-vs-parity.md` §1–2 | Same-size copies schema-order-first extents, position kept; center is per-control within immediate parent frame. One commit per op; no ADR. Equal Spacing already covered by Distribute (raw gaps). (#22) |
 | D4 | Keyboard move/resize + container clamp (plain arrows move, Ctrl fine step, Shift resize) | shipped | S | `spec-vs-parity.md` §1–2 | Plain arrows move by GRID; Ctrl/Cmd is the 1px fine step (the old GRID*5 jump was inverted); Shift resizes all four ways — Right/Down grow, Left/Up shrink, top-left anchored — Ctrl+Shift resizes by 1px. Same TextChanges as drag/resize-handle; no ADR. Drag/nudge clamp to the parent frame (one shared delta, group moves as a block; a fully-blocked nudge posts no commit so untouched files stay byte-identical). Resize floors at max(2, MinimumSize when surfaced — opportunistic, no schema change). (#23, #48) |
 | D5 | Toolbox upgrade (search, Choose Items, custom controls, Ctrl+Alt+X) | shipped (Choose Items parked) | M | `spec-vs-parity.md` §1 | Search/filter + Ctrl/Cmd+Alt+X focus through existing addControl; drag-to-add unchanged. Choose Items / custom controls need engine type discovery (ADR-sized). (#33) |
-| D6 | Document Outline (hierarchy + F2 rename) + workbench min-width protection | shipped | M | `spec-vs-parity.md` §1 | Read-only hierarchy (locked annotated, refused read-only) + F2 through rename path. Clean theme variable styling, no hardcoded colors, structured right sidebar, and `.stage-wrap` min-width (320px) protection (#34, #74). |
+| D6 | Document Outline (hierarchy + F2 rename) + workbench min-width protection | shipped | M | `spec-vs-parity.md` §1 | Read-only hierarchy (locked annotated, refused read-only) + F2 through rename path. Hidden by default to preserve canvas space (matching Visual Studio behavior); toggled via status bar button or `Ctrl/Cmd+Alt+T`. Clean theme variable styling, no hardcoded colors, structured right sidebar, and `.stage-wrap` min-width (320px) protection (#34, #74). |
 | D7 | Smart tags / action lists | removed (#44, was #35) | — | `spec-vs-parity.md` §1 | Per-control ▾ dropdowns removed as redundant: every action already lives on its own surface (Ctrl+D, inspector Delete/Arrange/rows, items editor, container drop). No engine/schema change. |
 | D8 | Modal type editors (Font dialog etc.) | shipped | M | `spec-vs-parity.md` §1 | Font modal through existing setProp/INSERT path (no-op emits nothing, `Regular` kept). Colors already have native pickers; Margin/Padding stays out (C3). (#36) |
 | D9 | Object selector dropdown (jump to hidden/buried control) | shipped | S | `spec-property-tabs.md` §7 | Pathed flat list over all controls; change → select() only, no commit; locked select-readable alone. (#37) |

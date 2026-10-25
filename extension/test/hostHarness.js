@@ -1803,6 +1803,21 @@ setTimeout(async () => {
             /\.outline-row\.selected\s*\{[^}]*--vscode-list-activeSelectionBackground/.test(cssContent));
         check('canvas.css specifies min-width for .stage-wrap',
             /\.stage-wrap\s*\{[^}]*min-width:\s*320px/.test(cssContent));
+        check('canvas.css specifies display: none for .outline.hidden',
+            /\.outline\.hidden\s*\{[^}]*display:\s*none/.test(cssContent));
+    }
+    {
+        const outlinePanel = wb.querySelector('.outline');
+        check('outline is hidden by default', outlinePanel && outlinePanel.classList.contains('hidden'));
+        const statusTools = ids['status-tools'];
+        const toggleBtn = statusTools && statusTools.querySelector('.outline-toggle');
+        check('outline toggle button is offered in status bar', !!toggleBtn && toggleBtn.textContent.includes('Outline: off'));
+        if (toggleBtn) {
+            toggleBtn.dispatch('click', {});
+            check('clicking toggle shows outline', outlinePanel && !outlinePanel.classList.contains('hidden') && toggleBtn.textContent.includes('Outline: on'));
+            toggleBtn.dispatch('click', {});
+            check('clicking toggle again hides outline', outlinePanel && outlinePanel.classList.contains('hidden') && toggleBtn.textContent.includes('Outline: off'));
+        }
     }
     // A locked row stays selectable (that is how its reason is readable)…
     outlineRow('GaugeX').dispatch('mousedown', { preventDefault() { }, stopPropagation() { } });
