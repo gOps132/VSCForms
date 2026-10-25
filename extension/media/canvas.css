@@ -47,6 +47,24 @@ html, body {
   border-color: var(--border);
 }
 
+/* ------------------------------------------------------------------ icons */
+.codicon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  vertical-align: middle;
+  flex-shrink: 0;
+  color: inherit;
+}
+.codicon-wrap svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
 /* ------------------------------------------------------------------ workbench */
 /* body is a column: banner (auto) + workbench (flex:1) + status (24px). No measurement. */
 body { display: flex; flex-direction: column; }
@@ -854,12 +872,15 @@ body.vscode-light {
 .inspector-tab-btn {
   cursor: pointer;
   font-size: 13px;
-  padding: 2px 8px;
+  padding: 3px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   color: var(--muted);
   border: 1px solid transparent;
   border-radius: 3px;
-  line-height: 1.2;
+  line-height: 1;
 }
 .inspector-tab-btn:hover {
   color: var(--fg);

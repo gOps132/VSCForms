@@ -296,6 +296,28 @@
         return n;
     };
 
+    /**
+     * Centralized 16x16 hollow line icon registry (VS Code Codicon-standard).
+     * Paths use currentColor and inherit active/hover themes.
+     */
+    const ICONS = {
+        close: '<path fill-rule="evenodd" clip-rule="evenodd" d="M8 7.293l3.146-3.147a.5.5 0 0 1 .708.708L8.707 8l3.147 3.146a.5.5 0 0 1-.708.708L8 8.707l-3.146 3.147a.5.5 0 0 1-.708-.708L7.293 8 4.146 4.854a.5.5 0 1 1 .708-.708L8 7.293z"/>',
+        wrench: '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.615 1.385a3.5 3.5 0 0 0-4.735.215L7.26 4.22a.5.5 0 0 0 .04.743l1.737 1.737a.5.5 0 0 0 .743.04l2.62-2.62a3.5 3.5 0 0 0 .215-4.735zm-5.44 3.542l2.122-2.121a2.5 2.5 0 1 1 3.535 3.535l-2.121 2.122-3.536-3.536zM6.553 4.927l-5.168 5.17a2.5 2.5 0 0 0 0 3.535l.707.707a2.5 2.5 0 0 0 3.536 0l5.168-5.17-4.243-4.242zm-.707 7.998a1.5 1.5 0 0 1-2.122 0l-.707-.707a1.5 1.5 0 0 1 0-2.122l4.46-4.463 2.83 2.83-4.46 4.462z"/>',
+        zap: '<path fill-rule="evenodd" clip-rule="evenodd" d="M9.36 1.15l-6.84 8.2a.5.5 0 0 0 .38.82h4.53l-1.85 4.68a.5.5 0 0 0 .86.44l6.84-8.2a.5.5 0 0 0-.38-.82H8.36l1.85-4.68a.5.5 0 0 0-.85-.44zM4.35 9.17l5.06-6.07-1.4 3.57a.5.5 0 0 0 .47.69h3.17l-5.06 6.07 1.4-3.57a.5.5 0 0 0-.47-.69H4.35z"/>',
+        properties: '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.615 1.385a3.5 3.5 0 0 0-4.735.215L7.26 4.22a.5.5 0 0 0 .04.743l1.737 1.737a.5.5 0 0 0 .743.04l2.62-2.62a3.5 3.5 0 0 0 .215-4.735zm-5.44 3.542l2.122-2.121a2.5 2.5 0 1 1 3.535 3.535l-2.121 2.122-3.536-3.536zM6.553 4.927l-5.168 5.17a2.5 2.5 0 0 0 0 3.535l.707.707a2.5 2.5 0 0 0 3.536 0l5.168-5.17-4.243-4.242zm-.707 7.998a1.5 1.5 0 0 1-2.122 0l-.707-.707a1.5 1.5 0 0 1 0-2.122l4.46-4.463 2.83 2.83-4.46 4.462z"/>',
+        events: '<path fill-rule="evenodd" clip-rule="evenodd" d="M9.36 1.15l-6.84 8.2a.5.5 0 0 0 .38.82h4.53l-1.85 4.68a.5.5 0 0 0 .86.44l6.84-8.2a.5.5 0 0 0-.38-.82H8.36l1.85-4.68a.5.5 0 0 0-.85-.44zM4.35 9.17l5.06-6.07-1.4 3.57a.5.5 0 0 0 .47.69h3.17l-5.06 6.07 1.4-3.57a.5.5 0 0 0-.47-.69H4.35z"/>',
+    };
+
+    /** Create a hollow line icon element from the registry. */
+    function icon(name, extraClass) {
+        const path = ICONS[name];
+        if (!path) return null;
+        const span = el('span', 'codicon-wrap' + (extraClass ? ' ' + extraClass : ''));
+        span.dataset.icon = name;
+        span.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">${path}</svg>`;
+        return span;
+    }
+
     // ---------------------------------------------------------------- helpers
     function allControls(list) {
         const out = [];
@@ -500,7 +522,9 @@
 
         banner.innerHTML = parts.join('<br>');
 
-        const closeBtn = el('button', 'banner-close', '✕');
+        const closeBtn = el('button', 'banner-close');
+        const closeIcon = icon('close');
+        if (closeIcon) closeBtn.appendChild(closeIcon);
         closeBtn.title = 'Dismiss banner';
         closeBtn.setAttribute('aria-label', 'Dismiss banner');
         closeBtn.addEventListener('click', () => {
@@ -2781,13 +2805,15 @@
         const tabs = el('div', 'inspector-tabs');
         tabs.setAttribute('role', 'group');
         tabs.title = 'Switch between Properties and Events';
-        for (const [tab, icon, label] of [['properties', '🔧', 'Properties'], ['events', '⚡', 'Events']]) {
-            const b = el('button', 'inspector-tab-btn', icon);
+        for (const [tab, iconName, label] of [['properties', 'properties', 'Properties'], ['events', 'events', 'Events']]) {
+            const b = el('button', 'inspector-tab-btn');
             b.dataset.tab = tab;
             b.setAttribute('aria-label', label);
             if (inspectorTab === tab) b.setAttribute('aria-pressed', 'true');
             else b.setAttribute('aria-pressed', 'false');
-            b.title = `${label} view (${icon}). Switching tabs never touches the file.`;
+            b.title = `${label} view. Switching tabs never touches the file.`;
+            const ic = icon(iconName);
+            if (ic) b.appendChild(ic);
             b.addEventListener('click', () => {
                 if (inspectorTab === tab) return;
                 inspectorTab = tab;
