@@ -341,6 +341,10 @@ for (const t of ['TrackBar', 'ProgressBar', 'NumericUpDown', 'DateTimePicker',
                  'TabControl', 'TabPage', 'DataGridView', 'ListView', 'TreeView']) {
     check('the toolbox offers ' + t, toolNames.includes(t), toolNames.join(','));
 }
+check('all toolbox tools render hollow line icons instead of color swatches',
+    tools.length > 0 && tools.every((t) => !!t.querySelector('.codicon-wrap') && !t.querySelector('.swatch')));
+const searchWrap = ids.toolbox.querySelector('.toolbox-search-wrap');
+check('toolbox search input has search icon', !!searchWrap && !!searchWrap.querySelector('.toolbox-search-icon'));
 
 // NOTE ON SCOPE: the two-list rule is enforced properly in test/verify.sh, which compares the
 // REAL engine file against the REAL canvas file in both directions. A check here could only
