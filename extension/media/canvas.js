@@ -661,12 +661,23 @@
         $('form-size').textContent = `${schema.form.clientSize.width} x ${schema.form.clientSize.height}`;
 
         const title = document.querySelector('.form-title');
-        if (title && !title.__wired) {
-            title.__wired = true;
-            title.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                select(null);
-            });
+        if (title) {
+            if (!title.__wired) {
+                title.__wired = true;
+                title.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    select(null);
+                });
+            }
+            if (!title.querySelector('.window-controls')) {
+                const right = title.querySelector('.form-title-right') || title;
+                const controls = el('div', 'window-controls');
+                controls.setAttribute('aria-hidden', 'true');
+                controls.appendChild(el('span', 'win-btn win-btn-min'));
+                controls.appendChild(el('span', 'win-btn win-btn-max'));
+                controls.appendChild(el('span', 'win-btn win-btn-close'));
+                right.appendChild(controls);
+            }
         }
 
         renderFormHandles();
@@ -790,6 +801,7 @@
         }
         if (c.properties.checked) node.classList.add('checked');
         if (c.properties.borderStyle) node.classList.add('border-' + c.properties.borderStyle.toLowerCase());
+        if (c.properties.flatStyle) node.classList.add('flatstyle-' + c.properties.flatStyle.toLowerCase());
 
         if (c.locked) {
             node.classList.add('locked');

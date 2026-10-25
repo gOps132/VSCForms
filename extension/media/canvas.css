@@ -5,8 +5,8 @@
   --border: var(--vscode-panel-border, rgba(128,128,128,.35));
   --accent: var(--vscode-focusBorder);
   --sel: var(--vscode-editor-selectionBackground, rgba(0,120,215,.28));
-  --locked: rgba(128,128,128,.22);
-  --locked-fg: var(--vscode-descriptionForeground);
+  --locked: rgba(128,128,128,.10);
+  --locked-fg: var(--vscode-foreground, var(--fg));
   --warn-bg: var(--vscode-inputValidation-warningBackground, rgba(210,153,34,.14));
   --warn-br: var(--vscode-inputValidation-warningBorder, #d29922);
   --err-bg: var(--vscode-inputValidation-errorBackground, rgba(211,47,47,.14));
@@ -185,8 +185,10 @@ body { display: flex; flex-direction: column; }
 /* ----------------------------------------------------------------- form frame */
 .form-frame {
   grid-column: 2; grid-row: 2; margin: 20px;
-  border: 1px solid var(--border); background: var(--bg);
-  box-shadow: 0 2px 12px rgba(0,0,0,.28);
+  border: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+  background: var(--bg);
+  box-shadow: 0 4px 18px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.15);
   flex: 0 0 auto;
   position: relative;
   /* transform + transform-origin are set by canvas.js so zoom grows the frame from its
@@ -194,11 +196,113 @@ body { display: flex; flex-direction: column; }
      from the pointer the user is zooming about. */
 }
 .form-title {
-  height: 22px; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 6px; font-size: 11px;
-  background: var(--vscode-titleBar-activeBackground, var(--bg));
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vscode-titleBar-activeForeground, #cccccc);
+  background: var(--vscode-titleBar-activeBackground, #2d2d2d);
   border-bottom: 1px solid var(--border);
-  cursor: default; user-select: none;
+  border-radius: 3px 3px 0 0;
+  cursor: default;
+  user-select: none;
+}
+.form-title-lead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#form-title-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#form-title-text::before {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  opacity: 0.8;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 1h10v2H3V4zm0 3v6h10V7H3z' fill='%23000'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 1h10v2H3V4zm0 3v6h10V7H3z' fill='%23000'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+.form-title-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  flex: 0 0 auto;
+}
+.form-title .form-size {
+  color: var(--vscode-titleBar-activeForeground, var(--muted));
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  margin-right: 8px;
+}
+.window-controls {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}
+.win-btn {
+  position: relative;
+  width: 32px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+  cursor: default;
+  user-select: none;
+}
+.win-btn:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.2);
+}
+.win-btn-min::after {
+  content: '';
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+}
+.win-btn-max::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+  box-sizing: border-box;
+}
+.win-btn-close {
+  position: relative;
+}
+.win-btn-close:hover {
+  background: #e81123 !important;
+  color: #ffffff !important;
+  opacity: 1;
+}
+.win-btn-close::before,
+.win-btn-close::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 1.2px;
+  background: currentColor;
+}
+.win-btn-close::before {
+  transform: rotate(45deg);
+}
+.win-btn-close::after {
+  transform: rotate(-45deg);
 }
 .form-size { color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -254,7 +358,46 @@ body { display: flex; flex-direction: column; }
 }
 
 /* Approximate WinForms look. NOT pixel parity — see CONTEXT.md. */
-.ctl.t-button  { background: var(--vscode-button-secondaryBackground, linear-gradient(180deg,#3a3d41,#2e3134)); border-radius: 2px; }
+.ctl.t-button {
+  background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(0, 0, 0, 0.08) 100%);
+  color: var(--vscode-button-secondaryForeground, var(--fg));
+  border: 1px solid var(--vscode-button-border, var(--border));
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18), inset -1px -1px 0 rgba(0, 0, 0, 0.22);
+}
+.ctl.t-button > .ctl-caption {
+  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.ctl.t-button:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+.ctl.t-button:active {
+  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.35), inset -1px -1px 0 rgba(255, 255, 255, 0.12);
+}
+.ctl.t-button.flat,
+.ctl.t-button.border-none,
+.ctl.t-button.flatstyle-flat {
+  background-image: none;
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+.ctl.t-button.flatstyle-popup {
+  background-image: none;
+  box-shadow: none;
+  border: 1px solid transparent;
+}
+.ctl.t-button.flatstyle-popup:hover {
+  border: 1px solid var(--vscode-button-border, var(--border));
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18), inset -1px -1px 0 rgba(0, 0, 0, 0.22);
+}
+.ctl.t-button.flatstyle-standard {
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18), inset -1px -1px 0 rgba(0, 0, 0, 0.22);
+}
 .ctl.t-label   { background: transparent; border-color: transparent; overflow: visible; }
 .ctl.t-textbox { background: var(--vscode-input-background, #1e1e1e); }
 .ctl.t-checkbox,.ctl.t-radio { background: transparent; border-color: transparent; }
@@ -403,11 +546,41 @@ body { display: flex; flex-direction: column; }
 
 /* Locked = parsed fine, deliberately not modelled. Never editable, never rewritten. */
 .ctl.locked {
-  background: var(--locked); border: 1px dashed var(--muted);
-  color: var(--locked-fg); cursor: not-allowed; justify-content: center;
-  font-style: italic; font-size: 11px;
+  background-color: var(--vscode-editor-background, #1e1e1e);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23888888' fill-opacity='0.12'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 6V4a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V4zm-1 3v7h8V7H5zm4 3.5a1 1 0 1 0-2 0v1a1 1 0 1 0 2 0v-1z'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(
+      45deg,
+      rgba(128, 128, 128, 0.08),
+      rgba(128, 128, 128, 0.08) 10px,
+      transparent 10px,
+      transparent 20px
+    );
+  background-repeat: no-repeat, repeat;
+  background-position: calc(100% - 6px) calc(100% - 6px), 0 0;
+  background-size: 26px 26px, auto;
+  border: 1px solid var(--border);
+  color: var(--locked-fg);
+  cursor: not-allowed;
+  font-style: italic;
+  font-size: 11px;
 }
-.ctl.locked::before { content: '\🔒'; margin-right: 4px; font-style: normal; }
+.ctl.locked > .ctl-caption {
+  gap: 5px;
+  justify-content: center;
+  align-items: center;
+}
+.ctl.locked > .ctl-caption::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 6V4a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V4zm-1 3v7h8V7H5zm4 3.5a1 1 0 1 0-2 0v1a1 1 0 1 0 2 0v-1z' fill='%23000'/%3E%3C/svg%3E") no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 6V4a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V4zm-1 3v7h8V7H5zm4 3.5a1 1 0 1 0-2 0v1a1 1 0 1 0 2 0v-1z' fill='%23000'/%3E%3C/svg%3E") no-repeat center / contain;
+  opacity: 0.85;
+}
 
 /* Active container (drill-down mode) — distinct ring to show scope. */
 .ctl.active-container {
