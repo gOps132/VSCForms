@@ -306,6 +306,9 @@
         zap: '<path fill-rule="evenodd" clip-rule="evenodd" d="M9.36 1.15l-6.84 8.2a.5.5 0 0 0 .38.82h4.53l-1.85 4.68a.5.5 0 0 0 .86.44l6.84-8.2a.5.5 0 0 0-.38-.82H8.36l1.85-4.68a.5.5 0 0 0-.85-.44zM4.35 9.17l5.06-6.07-1.4 3.57a.5.5 0 0 0 .47.69h3.17l-5.06 6.07 1.4-3.57a.5.5 0 0 0-.47-.69H4.35z"/>',
         properties: '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.615 1.385a3.5 3.5 0 0 0-4.735.215L7.26 4.22a.5.5 0 0 0 .04.743l1.737 1.737a.5.5 0 0 0 .743.04l2.62-2.62a3.5 3.5 0 0 0 .215-4.735zm-5.44 3.542l2.122-2.121a2.5 2.5 0 1 1 3.535 3.535l-2.121 2.122-3.536-3.536zM6.553 4.927l-5.168 5.17a2.5 2.5 0 0 0 0 3.535l.707.707a2.5 2.5 0 0 0 3.536 0l5.168-5.17-4.243-4.242zm-.707 7.998a1.5 1.5 0 0 1-2.122 0l-.707-.707a1.5 1.5 0 0 1 0-2.122l4.46-4.463 2.83 2.83-4.46 4.462z"/>',
         events: '<path fill-rule="evenodd" clip-rule="evenodd" d="M9.36 1.15l-6.84 8.2a.5.5 0 0 0 .38.82h4.53l-1.85 4.68a.5.5 0 0 0 .86.44l6.84-8.2a.5.5 0 0 0-.38-.82H8.36l1.85-4.68a.5.5 0 0 0-.85-.44zM4.35 9.17l5.06-6.07-1.4 3.57a.5.5 0 0 0 .47.69h3.17l-5.06 6.07 1.4-3.57a.5.5 0 0 0-.47-.69H4.35z"/>',
+        'list-flat': '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 3h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1zm0 4h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1zm0 4h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1z"/>',
+        'list-tree': '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1H2v3.5h3.5a.5.5 0 0 1 0 1H2V11h3.5a.5.5 0 0 1 0 1H1.5a.5.5 0 0 1-.5-.5v-9zm6 1h6.5a.5.5 0 0 1 0 1H7.5a.5.5 0 0 1 0-1zm0 4.5h6.5a.5.5 0 0 1 0 1H7.5a.5.5 0 0 1 0-1zm0 4.5h6.5a.5.5 0 0 1 0 1H7.5a.5.5 0 0 1 0-1z"/>',
+        'sort-asc': '<path fill-rule="evenodd" clip-rule="evenodd" d="M3.707 2.293a.5.5 0 0 0-.708 0l-2 2a.5.5 0 1 0 .708.708L3 3.707V13.5a.5.5 0 0 0 1 0V3.707l1.293 1.294a.5.5 0 0 0 .708-.708l-2-2zM7 3.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>',
     };
 
     /** Create a hollow line icon element from the registry. */
@@ -2785,14 +2788,17 @@
         const wrap = el('div', 'inspector-view');
         wrap.setAttribute('role', 'group');
         wrap.title = 'Inspector view. Switching views never touches the file.';
-        for (const [mode, label] of [['flat', 'Flat'], ['categorized', 'Categorized'], ['alphabetical', 'Alphabetical']]) {
-            const b = el('button', 'inspector-view-btn', label);
+        for (const [mode, iconName, label] of [['flat', 'list-flat', 'Flat'], ['categorized', 'list-tree', 'Categorized'], ['alphabetical', 'sort-asc', 'Alphabetical']]) {
+            const b = el('button', 'inspector-view-btn');
             b.dataset.view = mode;
+            b.setAttribute('aria-label', label);
             if (inspectorView === mode) b.setAttribute('aria-pressed', 'true');
             else b.setAttribute('aria-pressed', 'false');
             b.title = mode === 'flat'
                 ? 'Flat view (current order). Switching views never touches the file.'
                 : `${label} view. Switching views never touches the file.`;
+            const ic = icon(iconName);
+            if (ic) b.appendChild(ic);
             b.addEventListener('click', () => {
                 if (inspectorView === mode) return;
                 inspectorView = mode;
