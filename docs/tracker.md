@@ -110,12 +110,12 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 
 | # | Gap | Status | Cost | Note |
 |---|---|---|---|---|
-| B1 | `SplitContainer` | deferred+ADR | M/L | Needs `Panel1/Panel2.Controls.Add` parser mapping + optional `SplitterDistance` schema addition. |
-| B2 | `TableLayoutPanel` / `FlowLayoutPanel` | deferred+ADR | L | Rendering children absolutely contradicts ADR 0003. Honest options: new `layout-panel` refusal, or full simulation. Do not start without an ADR amendment. |
+| B1 | `SplitContainer` | shipped (partial) | M | Unblocked by ADR 0003 amendment (`docs/adr/0003-amendment-partial-container.md`). Basic container structure modelled (geometry + `SplitterDistance`); children preserved-but-invisible. Dock/Anchor refusal unchanged. Fixture: fixtures/differential/B1-ADR-requirement.md. |
+| B2 | `TableLayoutPanel` / `FlowLayoutPanel` | shipped (partial) | L | Unblocked by ADR 0003 amendment. Basic container structure (`RowCount`/`ColumnCount`) modelled; children preserved-but-invisible with C2 warning. Full simulation deferred. Fixture: fixtures/differential/B2-ADR-requirement.md. |
 | B3 | `MenuStrip` / `ToolStrip` / `StatusStrip` / `ContextMenuStrip` / `BindingNavigator` | missing | M | Items are not `Control`s (no `Location`/`Size`) — unmodellable without a new schema shape. Cosmetic; host forms usually refuse anyway. |
-| B4 | `DataGridView` columns (6 types), `ListView`/`TreeView` nodes+items, `PropertyGrid`, `WebBrowser`, `BindingSource` | partial | M | Placeholders shipped (§1). Contents are collections the schema cannot express; interior stays preserved-but-invisible. Document as visibility win, not editing. |
-| B5 | T1 leaf inputs: `LinkLabel`, `RichTextBox`, `MaskedTextBox`, `CheckedListBox`, `MonthCalendar`, `H/VScrollBar`, `DomainUpDown` | missing | S each | Template-only per type (TypeTable row + canvas row + renderer + fixture). `CheckedListBox`/`DomainUpDown` need their own collection spec — not covered by `spec-items.md`. Pick by fresh-corpus frequency, not by guess. |
-| B6 | `ToolStripContainer`/`ToolStripPanel`, `Splitter` | missing | M | Same layout-simulation caveat as B2 at lower frequency. |
+| B4 | `DataGridView` columns (6 types), `ListView`/`TreeView` nodes+items, `PropertyGrid`, `WebBrowser`, `BindingSource` | partial | M | Placeholders shipped (§1). Interior contents preserved-but-invisible; full editing requires new collection schema shape. Expanded placeholder: fixtures/differential/B4-placeholder.md. |
+| B5 | T1 leaf inputs: `LinkLabel`, `RichTextBox`, `MaskedTextBox`, `CheckedListBox`, `MonthCalendar`, `H/VScrollBar`, `DomainUpDown` | shipped | S each | Template-only per type: TypeTable + HANDLED + renderer + fixture. `CheckedListBox`/`DomainUpDown` collections deferred. Committed `fa78a64`. |
+| B6 | `ToolStripContainer`/`ToolStripPanel`, `Splitter` | missing | M | Same layout-simulation caveat as B2 at lower frequency; deferred pending ADR 0003 amendment (same as B1/B2). Placeholder note added in fixtures/differential/B6-placeholder.md. |
 | B7 | `DateTimePicker` value/format (`Value`, `Format`, `CustomFormat`, `MinDate`, `MaxDate`) | shipped | S–M | Shipped leaf set now models DateTimePicker formatting and value/limits: `Format` (Long/Short/Time/Custom), `CustomFormat`, `Value`, `MinDate`, `MaxDate` with surgical argument-level replacement and ISO 8601 schema representation. |
 
 ### C. Silent-divergence risks (zero handling today)
@@ -124,7 +124,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 |---|---|---|---|
 | C1 | `RightToLeft` mirroring | `spec-example-compatibility.md` B2 | Warns via `analysis.warnings` (banner); form stays editable, shown LTR. No mirroring simulation. (#16) |
 | C2 | `TableLayoutPanel` children with default `Dock`/`Anchor` shown flat | `spec-example-compatibility.md` B2 | Flat rendering contradicts layout semantics. Feeds the B2 refusal decision. |
-| C3 | Preserved-but-invisible form props: `AutoScaleMode/Dimensions`, `AutoSize`, `Margin/Padding`, `ClientSize` vs `Size` | `spec-example-compatibility.md` B2 | Warns on surprises only (explicit Margin/Padding, AutoSize where unmodelled, non-Font AutoScaleMode, Size-without-ClientSize); standard files stay quiet. Read-only disclosure, no editing. (#18) |
+| C3 | Preserved-but-invisible form props: `AutoScaleMode/Dimensions`, `AutoSize`, `Margin/Padding`, `ClientSize` vs `Size` | `spec-example-compatibility.md` B2 | Warns on surprises only (explicit Margin/Padding, AutoSize where unmodelled, non-Font AutoScaleMode, Size-without-ClientSize); standard files stay quiet. Default design-time Form bounds fallback (300x300 or child bounds + margin) when ClientSize omitted, with dual insert/replace patch path (#75). Read-only disclosure, no editing. (#18) |
 
 ### D. Canvas QoL (from `spec-vs-parity.md` — PROPOSED reasoning, this file is state)
 
@@ -135,7 +135,7 @@ exists) · `deferred+ADR` (do not start without an ADR amendment).
 | D3 | Make Same Size / Center in Form (pure-geometry arrange ops) | shipped | S | `spec-vs-parity.md` §1–2 | Same-size copies schema-order-first extents, position kept; center is per-control within immediate parent frame. One commit per op; no ADR. Equal Spacing already covered by Distribute (raw gaps). (#22) |
 | D4 | Keyboard move/resize + container clamp (plain arrows move, Ctrl fine step, Shift resize) | shipped | S | `spec-vs-parity.md` §1–2 | Plain arrows move by GRID; Ctrl/Cmd is the 1px fine step (the old GRID*5 jump was inverted); Shift resizes all four ways — Right/Down grow, Left/Up shrink, top-left anchored — Ctrl+Shift resizes by 1px. Same TextChanges as drag/resize-handle; no ADR. Drag/nudge clamp to the parent frame (one shared delta, group moves as a block; a fully-blocked nudge posts no commit so untouched files stay byte-identical). Resize floors at max(2, MinimumSize when surfaced — opportunistic, no schema change). (#23, #48) |
 | D5 | Toolbox upgrade (search, Choose Items, custom controls, Ctrl+Alt+X) | shipped (Choose Items parked) | M | `spec-vs-parity.md` §1 | Search/filter + Ctrl/Cmd+Alt+X focus through existing addControl; drag-to-add unchanged. Choose Items / custom controls need engine type discovery (ADR-sized). (#33) |
-| D6 | Document Outline (hierarchy + F2 rename) | shipped | M | `spec-vs-parity.md` §1 | Read-only hierarchy (locked annotated, refused read-only) + F2 through rename path. Drag-reparent / Z-order gated on A1 patcher move. (#34) |
+| D6 | Document Outline (hierarchy + F2 rename) + workbench min-width protection | shipped | M | `spec-vs-parity.md` §1 | Read-only hierarchy (locked annotated, refused read-only) + F2 through rename path. Clean theme variable styling, no hardcoded colors, structured right sidebar, and `.stage-wrap` min-width (320px) protection (#34, #74). |
 | D7 | Smart tags / action lists | removed (#44, was #35) | — | `spec-vs-parity.md` §1 | Per-control ▾ dropdowns removed as redundant: every action already lives on its own surface (Ctrl+D, inspector Delete/Arrange/rows, items editor, container drop). No engine/schema change. |
 | D8 | Modal type editors (Font dialog etc.) | shipped | M | `spec-vs-parity.md` §1 | Font modal through existing setProp/INSERT path (no-op emits nothing, `Regular` kept). Colors already have native pickers; Margin/Padding stays out (C3). (#36) |
 | D9 | Object selector dropdown (jump to hidden/buried control) | shipped | S | `spec-property-tabs.md` §7 | Pathed flat list over all controls; change → select() only, no commit; locked select-readable alone. (#37) |
@@ -194,3 +194,9 @@ matrix tier in "Verifying" and in the "which tier proves what" list.
 3. Discovering a new gap (new corpus form, new divergence)? Add a row with
    status + cheapest spec pointer, even if the fix is out of scope. An
    unfiled gap is how silent discards ship.
+
+## Verification tier reference (from review Agent 2)
+- `compile`: builds patched file as real WinForms (`net10.0-windows`) — proves C# syntax valid
+- `roslyn`: surgical patch accuracy (exact changed lines, untouched structures survive)
+- `matrix` (headless): property coverage over all permutations (4,135 assertions, all platforms)
+- `layout` (Windows CI): runtime geometry comparison against real VS WinForms designer pixels

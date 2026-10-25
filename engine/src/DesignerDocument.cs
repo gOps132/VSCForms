@@ -569,7 +569,25 @@ public sealed class DesignerDocument
         foreach (var r in roots) controls.Add(BuildNode(r));
 
         var total = modelled + unmodelled;
-        var clientSize = ReadSize(ic, "ClientSize") ?? new SizeDto { Width = 0, Height = 0 };
+        var clientSize = ReadSize(ic, "ClientSize") ?? ReadSize(ic, "Size");
+        if (clientSize is null || clientSize.Width <= 0 || clientSize.Height <= 0)
+        {
+            int fallbackW = 300;
+            int fallbackH = 300;
+            const int margin = 20;
+
+            foreach (var c in controls)
+            {
+                var w = Math.Max(0, c.Properties.Width);
+                var h = Math.Max(0, c.Properties.Height);
+                var rEdge = c.Properties.X + w + margin;
+                var bEdge = c.Properties.Y + h + margin;
+                if (rEdge > fallbackW) fallbackW = rEdge;
+                if (bEdge > fallbackH) fallbackH = bEdge;
+            }
+
+            clientSize = new SizeDto { Width = fallbackW, Height = fallbackH };
+        }
 
         return new FormSchema
         {

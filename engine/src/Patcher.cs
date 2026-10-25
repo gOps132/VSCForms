@@ -64,7 +64,7 @@ public sealed class Patcher
         var doc = _doc;
 
         if (incoming.Analysis?.Refuses is { Count: > 0 } refuses)
-            return PatchResult.Refused(string.Join("; ", refuses));
+            return PatchResult.Refused(string.Join("; ", refuses) + ". Escape hatch: use the 'Open as Text' VS Code command to edit this file directly.");
 
         var parentMap = BuildParentMap(incoming.Controls);
         var incomingById = Flatten(incoming.Controls).ToDictionary(c => c.Id, StringComparer.Ordinal);
@@ -932,6 +932,34 @@ public sealed class Patcher
                 ReplaceCreationArgs(a.Right, $"({newSize.Width.ToString(CultureInfo.InvariantCulture)}, {newSize.Height.ToString(CultureInfo.InvariantCulture)})");
                 return;
             }
+
+        foreach (var stmt in _doc.InitializeComponent?.Body?.Statements ?? default)
+            if (stmt is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+                && TryGetFormProperty(a.Left, out var name) && name == "Size")
+            {
+                ReplaceCreationArgs(a.Right, $"({newSize.Width.ToString(CultureInfo.InvariantCulture)}, {newSize.Height.ToString(CultureInfo.InvariantCulture)})");
+                return;
+            }
+
+        var stmts = _doc.InitializeComponent?.Body?.Statements;
+        var anchor = stmts?.FirstOrDefault(s => s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax a }
+            && TryGetFormProperty(a.Left, out var n) && n is "AutoScaleMode" or "AutoScaleDimensions" or "Text" or "Name" or "BackColor");
+        if (anchor is null)
+        {
+            anchor = stmts?.LastOrDefault(s => s is ExpressionStatementSyntax { Expression: InvocationExpressionSyntax inv }
+                && inv.Expression.ToString().Contains("Controls.Add", StringComparison.Ordinal));
+            if (anchor is null)
+            {
+                anchor = stmts?.FirstOrDefault(s => s is ExpressionStatementSyntax { Expression: InvocationExpressionSyntax inv }
+                    && inv.Expression is MemberAccessExpressionSyntax m && m.Name.Identifier.Text == "SuspendLayout");
+            }
+        }
+        if (anchor is not null)
+        {
+            var indent = BodyIndent();
+            var prefix = This;
+            InsertLineAfter(anchor, $"{indent}{prefix}ClientSize = {SizeLiteral(newSize.Width, newSize.Height)};");
+        }
     }
 
     private void PatchFormBackColor(string? newColor)
