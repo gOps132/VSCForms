@@ -199,10 +199,16 @@ else
 fi
 
 DIR=$(stage locked_ctl)
+# In fa78a64 MonthCalendar became handled; use PropertyGrid as the unmodelled control for this test
+python3 -c "
+p = '$DIR/WiredForm.Designer.cs'
+s = open(p).read().replace('System.Windows.Forms.MonthCalendar', 'System.Windows.Forms.PropertyGrid').replace('calDetails.DateSelected +=', '// calDetails.DateSelected +=')
+open(p, 'w').write(s)
+"
 RES=$(wire_cmd "$DIR" "calDetails" "DateChanged" "calDetails_DateChanged")
 K=$(echo "$RES" | kind)
 if [ "$K" = "locked" ]; then
-  ok "refuses when control is locked (MonthCalendar is unmodelled)"
+  ok "refuses when control is locked (PropertyGrid is unmodelled)"
 else
   bad "expected locked, got: $RES"
 fi
