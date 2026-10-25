@@ -1780,6 +1780,13 @@ setTimeout(async () => {
         outlineRow('btnTop') && outlineRow('btnTop').textContent);
     check('outline row renders type hint in .outline-type-hint',
         !!outlineRow('btnTop').querySelector('.outline-type-hint'));
+    check('outline row renders control wireframe icon',
+        !!outlineRow('btnTop').querySelector('.outline-icon'));
+    check('locked outline row renders lock icon',
+        !!outlineRow('GaugeX').querySelector('.outline-icon'));
+    const hintEl = wb.querySelector('.outline-hint');
+    check('outline hint does not contain unicode arrows',
+        hintEl && !hintEl.textContent.includes('▲') && !hintEl.textContent.includes('▼'));
     {
         const g = outlineRow('GaugeX');
         const why = g && g.querySelector('.outline-locked-reason');
@@ -1899,6 +1906,11 @@ setTimeout(async () => {
         check('unlocked outline rows offer exactly the two step buttons',
             stepBtns('btnTop').length === 2 && stepBtns('btnIn').length === 2,
             'btnTop=' + stepBtns('btnTop').length + ' btnIn=' + stepBtns('btnIn').length);
+        const fwdBtn = outlineRow('btnTop').querySelector('.outline-step-fwd');
+        const backBtn = outlineRow('btnTop').querySelector('.outline-step-back');
+        check('outline step buttons use hollow chevron SVG icons instead of raw unicode arrows',
+            fwdBtn && fwdBtn.querySelector('.codicon-wrap') && !fwdBtn.textContent.includes('▲')
+            && backBtn && backBtn.querySelector('.codicon-wrap') && !backBtn.textContent.includes('▼'));
         check('outline rows offer no other buttons (no reparent actions)',
             outlineRows().every((r) => rowBtns(r).length
                 === (r.dataset.id === 'GaugeX' ? 0 : 2)),

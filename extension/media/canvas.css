@@ -642,11 +642,29 @@ body { display: flex; flex-direction: column; }
 
 /* Task 6 (#52) outline step buttons: small, quiet, one slot per click. */
 .outline-step-fwd, .outline-step-back {
-  margin-left: 4px; padding: 0 4px; font-size: 10px; line-height: 1.4;
-  background: transparent; border: 1px solid var(--border); border-radius: 3px;
-  color: var(--muted); cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  cursor: pointer;
 }
 .outline-step-fwd:hover, .outline-step-back:hover { color: inherit; border-color: var(--accent); }
+.outline-step-fwd .codicon-wrap, .outline-step-back .codicon-wrap {
+  width: 12px;
+  height: 12px;
+}
+.outline-step-fwd svg, .outline-step-back svg {
+  width: 12px;
+  height: 12px;
+}
 
 .handle {
   position: absolute; width: 7px; height: 7px;
@@ -997,10 +1015,24 @@ body.vscode-light {
 .outline-label {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.outline-label .outline-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  opacity: .75;
+}
+.outline-label .outline-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.outline-row.selected .outline-label .outline-icon {
+  opacity: 1;
 }
 .outline-type-hint {
   color: var(--muted);

@@ -1370,7 +1370,7 @@
         }
         outlineEl.innerHTML = '';
         outlineEl.appendChild(el('h3', null, 'Outline'));
-        outlineEl.appendChild(el('div', 'outline-hint', 'Click to select · F2 to rename · ▲▼ step order'));
+        outlineEl.appendChild(el('div', 'outline-hint', 'Click to select · F2 to rename · step order'));
         const tree = el('div', 'outline-tree');
         tree.setAttribute('role', 'group');
         for (const c of schema.controls) appendOutlineRow(tree, c, 0);
@@ -1386,6 +1386,10 @@
         row.setAttribute('role', 'treeitem');
         const label = el('span', 'outline-label');
         label.style.paddingLeft = (4 + depth * 12) + 'px';
+        const ctrlIcon = c.locked
+            ? icon('lock', 'outline-icon')
+            : (icon(simple.toLowerCase(), 'outline-icon') || icon('panel', 'outline-icon'));
+        if (ctrlIcon) label.appendChild(ctrlIcon);
         const nameSpan = el('span', 'outline-name', c.id);
         const typeSpan = el('span', 'outline-type-hint', ` (${simple})`);
         label.appendChild(nameSpan);
@@ -1403,14 +1407,18 @@
         // a Locked Control is never written) and never on refused forms — and the
         // row itself is never draggable, so outline order is stepped, never faked.
         if (!c.locked && !readOnly) {
-            const fwd = el('button', 'outline-step-fwd', '▲');
+            const fwd = el('button', 'outline-step-fwd');
+            const upIcon = icon('chevron-up');
+            if (upIcon) fwd.appendChild(upIcon);
             fwd.title = 'Move ' + c.id + ' one step toward the front';
             fwd.setAttribute('aria-label', 'Move ' + c.id + ' toward front');
             fwd.addEventListener('click', (e) => {
                 if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
                 stepControl(c.id, 'forward');
             });
-            const back = el('button', 'outline-step-back', '▼');
+            const back = el('button', 'outline-step-back');
+            const downIcon = icon('chevron-down');
+            if (downIcon) back.appendChild(downIcon);
             back.title = 'Move ' + c.id + ' one step toward the back';
             back.setAttribute('aria-label', 'Move ' + c.id + ' toward back');
             back.addEventListener('click', (e) => {
