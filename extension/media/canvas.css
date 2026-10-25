@@ -489,6 +489,29 @@ body { display: flex; flex-direction: column; }
 #inspector {
   flex: 1 1 auto;
 }
+.object-selector {
+  margin: 4px 0 8px;
+}
+.object-selector label {
+  display: block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 2px;
+}
+.object-selector select {
+  box-sizing: border-box; width: 100%; padding: 3px 5px; font-size: 12px;
+  font-family: inherit;
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--fg));
+  border: 1px solid var(--vscode-dropdown-border, var(--border));
+  border-radius: 2px;
+}
+.object-selector select:focus {
+  outline: 1px solid var(--vscode-focusBorder, var(--accent));
+  outline-offset: -1px;
+}
+.object-selector select option {
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--fg));
+}
 .inspector .empty { color: var(--muted); font-size: 12px; padding: 8px 4px; }
 .field { margin: 6px 0; }
 .field label {

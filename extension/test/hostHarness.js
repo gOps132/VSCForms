@@ -1580,6 +1580,12 @@ setTimeout(async () => {
         const selOptions = () => (selDropdown() ? selDropdown().querySelectorAll('option') : []);
         const selIds = () => canvasEl.querySelectorAll('.ctl.selected').map((n) => n.dataset.id).join(',');
         check('object selector dropdown is offered', !!selDropdown());
+        const cssPath = path.join(__dirname, '../media/canvas.css');
+        const cssContent = fs.readFileSync(cssPath, 'utf8');
+        check('canvas.css styles .object-selector select with theme dropdown variables',
+            /\.object-selector\s+select\s*\{[^}]*--vscode-dropdown-background/.test(cssContent));
+        check('canvas.css styles .object-selector label',
+            /\.object-selector\s+label\s*\{[^}]*text-transform:\s*uppercase/.test(cssContent));
         const flatIds = selOptions().map((o) => o.value).filter(Boolean);
         check('dropdown lists every schema control',
             flatIds.length === 3 && flatIds.includes('txtName') && flatIds.includes('btnSubmit')
@@ -1669,7 +1675,7 @@ setTimeout(async () => {
             visibleNames().join(','));
         typeFilter('TAB');
         check('filter is case-insensitive',
-            visibleNames().join(',') === 'TabControl,TabPage',
+            visibleNames().join(',') === 'TabControl,TabPage,TableLayoutPanel',
             visibleNames().join(','));
         typeFilter('zzz-no-match');
         check('a filter with no matches shows nothing', visibleNames().length === 0);
