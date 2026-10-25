@@ -301,6 +301,7 @@
      * Paths use currentColor and inherit active/hover themes.
      */
     const ICONS = {
+        search: '<path fill-rule="evenodd" clip-rule="evenodd" d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0zm-.82 4.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04z"/>',
         close: '<path fill-rule="evenodd" clip-rule="evenodd" d="M8 7.293l3.146-3.147a.5.5 0 0 1 .708.708L8.707 8l3.147 3.146a.5.5 0 0 1-.708.708L8 8.707l-3.146 3.147a.5.5 0 0 1-.708-.708L7.293 8 4.146 4.854a.5.5 0 1 1 .708-.708L8 7.293z"/>',
         wrench: '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.615 1.385a3.5 3.5 0 0 0-4.735.215L7.26 4.22a.5.5 0 0 0 .04.743l1.737 1.737a.5.5 0 0 0 .743.04l2.62-2.62a3.5 3.5 0 0 0 .215-4.735zm-5.44 3.542l2.122-2.121a2.5 2.5 0 1 1 3.535 3.535l-2.121 2.122-3.536-3.536zM6.553 4.927l-5.168 5.17a2.5 2.5 0 0 0 0 3.535l.707.707a2.5 2.5 0 0 0 3.536 0l5.168-5.17-4.243-4.242zm-.707 7.998a1.5 1.5 0 0 1-2.122 0l-.707-.707a1.5 1.5 0 0 1 0-2.122l4.46-4.463 2.83 2.83-4.46 4.462z"/>',
         zap: '<path fill-rule="evenodd" clip-rule="evenodd" d="M9.36 1.15l-6.84 8.2a.5.5 0 0 0 .38.82h4.53l-1.85 4.68a.5.5 0 0 0 .86.44l6.84-8.2a.5.5 0 0 0-.38-.82H8.36l1.85-4.68a.5.5 0 0 0-.85-.44zM4.35 9.17l5.06-6.07-1.4 3.57a.5.5 0 0 0 .47.69h3.17l-5.06 6.07 1.4-3.57a.5.5 0 0 0-.47-.69H4.35z"/>',
@@ -309,7 +310,43 @@
         'list-flat': '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 3h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1zm0 4h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1zm0 4h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1z"/>',
         'list-tree': '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1H2v3.5h3.5a.5.5 0 0 1 0 1H2V11h3.5a.5.5 0 0 1 0 1H1.5a.5.5 0 0 1-.5-.5v-9zm6 1h6.5a.5.5 0 0 1 0 1H7.5a.5.5 0 0 1 0-1zm0 4.5h6.5a.5.5 0 0 1 0 1H7.5a.5.5 0 0 1 0-1zm0 4.5h6.5a.5.5 0 0 1 0 1H7.5a.5.5 0 0 1 0-1z"/>',
         'sort-asc': '<path fill-rule="evenodd" clip-rule="evenodd" d="M3.707 2.293a.5.5 0 0 0-.708 0l-2 2a.5.5 0 1 0 .708.708L3 3.707V13.5a.5.5 0 0 0 1 0V3.707l1.293 1.294a.5.5 0 0 0 .708-.708l-2-2zM7 3.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>',
+        // WinForms Control wireframe icons
+        button: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4zm2 5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3A.5.5 0 0 1 6 8z"/>',
+        label: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 3a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V3.5h-4V13h1.5a.5.5 0 0 1 0 1h-4a.5.5 0 0 1 0-1H8V3.5H4V6a.5.5 0 0 1-1 0V3z"/>',
+        linklabel: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 2.5a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 .5.5v2.5a.5.5 0 0 1-1 0V3.5h-4V11h1.5a.5.5 0 0 1 0 1h-4a.5.5 0 0 1 0-1H8V3.5H4V5a.5.5 0 0 1-1 0V2.5zm0 11a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z"/>',
+        textbox: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 4a1.5 1.5 0 0 1 1.5-1.5h10A1.5 1.5 0 0 1 14.5 4v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4zm1.5-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V4a.5.5 0 0 0-.5-.5H3zm2 2.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V6.5a.5.5 0 0 1 .5-.5z"/>',
+        checkbox: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11zM3 13V3h10v10H3zm8.354-7.854a.5.5 0 0 0-.708 0L6.5 9.293 4.854 7.646a.5.5 0 1 0-.708.708l2 2a.5.5 0 0 0 .708 0l4.5-4.5a.5.5 0 0 0 0-.708z"/>',
+        radiobutton: '<path fill-rule="evenodd" clip-rule="evenodd" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM2.5 8a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0zm5.5-2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>',
+        combobox: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 4a1.5 1.5 0 0 1 1.5-1.5h10A1.5 1.5 0 0 1 14.5 4v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4zm1.5-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V4a.5.5 0 0 0-.5-.5H3zm7.5 1v7h1V4.5H12zm1.646 2.646a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1-.708.708l-.646-.647-.646.647a.5.5 0 0 1-.708-.708l1-1z"/>',
+        listbox: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 2.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11zm1 .5v10h10V3H3zm2 2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 5zm0 3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 8zm0 3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5z"/>',
+        picturebox: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 2.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11zm1 .5v10h10V3H3zm2 3a1 1 0 1 1 2 0 1 1 0 0 1-2 0zm6.5 5.5l-2.5-3-2 2.5-1-1.2-2 2.7h8a.5.5 0 0 0 .5-.5z"/>',
+        panel: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 0v10h10V3H3z"/>',
+        groupbox: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3.5a.5.5 0 0 1 .5-.5H4v1H3v9h10V4h-1V3h1.5a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-10zM5 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>',
+        trackbar: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 7.5a.5.5 0 0 1 .5-.5h12a.5.5 0 0 1 0 1H2a.5.5 0 0 1-.5-.5zM7 4.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v5l-1 1.5-1-1.5v-5zm1 .5v4.25l.5.75.5-.75V5H8z"/>',
+        progressbar: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V5zm1 0v6h11V5h-11zm2 1.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-3zm4 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-3z"/>',
+        numericupdown: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 4a1.5 1.5 0 0 1 1.5-1.5h10A1.5 1.5 0 0 1 14.5 4v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4zm1.5-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V4a.5.5 0 0 0-.5-.5H3zm8 1.5h-1v6h1v-6zm1.146 1.854a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1-.708.708L12.5 7.707l-.646.647a.5.5 0 0 1-.708-.708l1-1zm0 3a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1-.708.708l-.646-.647-.646.647a.5.5 0 0 1-.708-.708l1-1z"/>',
+        datetimepicker: '<path fill-rule="evenodd" clip-rule="evenodd" d="M4 1.5a.5.5 0 0 1 .5.5v1h7V2a.5.5 0 0 1 1 0v1h1a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H2.5A1.5 1.5 0 0 1 1 13.5v-9A1.5 1.5 0 0 1 2.5 3h1V2a.5.5 0 0 1 .5-.5zM2 6v7.5a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V6H2zm0-1h12V4.5a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5V5zm3 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm4 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm-4 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm4 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5z"/>',
+        tabcontrol: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 3a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v1h1V3a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v1h1.5a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-12a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5H2V3a.5.5 0 0 1-.5 0zm1 1h3V3.5h-3V4zm5 0h3V3.5h-3V4zM2 5v8h12V5H2z"/>',
+        tabpage: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 3.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5V5h4.5a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10zm1 .5v1h4V4h-4zm0 2v7h9V6h-9z"/>',
+        splitcontainer: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 0v10h4V3H3zm5 0v10h5V3H8z"/>',
+        tablelayoutpanel: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 0v4.5h4.5V3H3zm5.5 0v4.5H13V3H8.5zM3 8.5V13h4.5V8.5H3zm5.5 0V13H13V8.5H8.5z"/>',
+        flowlayoutpanel: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 0v10h10V3H3zm1.5 2a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5V5zm4 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5V5zm-4 4a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5V9z"/>',
+        datagridview: '<path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 3a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V3zm1 0v2.5H6V3H2.5zm4.5 0v2.5h6.5V3H7zM2.5 6.5V13H6V6.5H2.5zm4.5 0V13h6.5V6.5H7z"/>',
+        listview: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3zm1 0v10h10V3H3zm1.5 2a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm-3 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm-3 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>',
+        treeview: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2 3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H3v4.5h2.5a.5.5 0 0 1 0 1H3V13h3a.5.5 0 0 1 0 1h-3.5a.5.5 0 0 1-.5-.5V3zm5 .5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0 4.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm1 4.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5z"/>',
+        scrollbar: '<path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 3a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V3zm1 0v10h9V3h-9zm3 2a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5V5z"/>',
+        lock: '<path fill-rule="evenodd" clip-rule="evenodd" d="M4 6V4a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V4zm-1 3v7h8V7H5zm4 3.5a1 1 0 1 0-2 0v1a1 1 0 1 0 2 0v-1z"/>',
+        'chevron-up': '<path fill-rule="evenodd" clip-rule="evenodd" d="M3.146 10.854a.5.5 0 0 0 .708 0L8 6.707l4.146 4.147a.5.5 0 0 0 .708-.708l-4.5-4.5a.5.5 0 0 0-.708 0l-4.5 4.5a.5.5 0 0 0 0 .708z"/>',
+        'chevron-down': '<path fill-rule="evenodd" clip-rule="evenodd" d="M3.146 5.146a.5.5 0 0 1 .708 0L8 9.293l4.146-4.147a.5.5 0 0 1 .708.708l-4.5 4.5a.5.5 0 0 1-.708 0l-4.5-4.5a.5.5 0 0 1 0-.708z"/>',
     };
+    // Aliases
+    ICONS.richtextbox = ICONS.textbox;
+    ICONS.maskedtextbox = ICONS.textbox;
+    ICONS.checkedlistbox = ICONS.checkbox;
+    ICONS.domainupdown = ICONS.numericupdown;
+    ICONS.monthcalendar = ICONS.datetimepicker;
+    ICONS.hscrollbar = ICONS.scrollbar;
+    ICONS.vscrollbar = ICONS.scrollbar;
 
     /** Create a hollow line icon element from the registry. */
     function icon(name, extraClass) {
@@ -559,13 +596,15 @@
         if (!search || !list) {
             box.innerHTML = '';
             box.appendChild(el('h3', null, 'Controls'));
+            const searchWrap = el('div', 'toolbox-search-wrap');
+            const searchIcon = icon('search', 'toolbox-search-icon');
+            if (searchIcon) searchWrap.appendChild(searchIcon);
             search = document.createElement('input');
             search.type = 'search';
             search.className = 'toolbox-search';
             search.placeholder = 'Filter controls…';
             search.setAttribute('aria-label', 'Filter toolbox controls');
             search.title = 'Filter controls (Ctrl+Alt+X)';
-            search.style.cssText = 'width:100%;box-sizing:border-box;margin:2px 0 6px;padding:4px 6px;font-size:12px;';
             search.addEventListener('input', () => {
                 toolboxFilter = search.value;
                 applyToolboxFilter();
@@ -573,7 +612,8 @@
             // Typing in the toolbox must not drive the canvas: without this, Delete would
             // delete the selection and arrows would nudge it mid-search.
             search.addEventListener('keydown', (e) => e.stopPropagation());
-            box.appendChild(search);
+            searchWrap.appendChild(search);
+            box.appendChild(searchWrap);
             list = el('div', 'toolbox-list');
             box.appendChild(list);
             const note = el('div');
@@ -592,9 +632,8 @@
             t.dataset.simple = name;
             // Keyboard access to the dblclick/Enter populate path below.
             t.tabIndex = 0;
-            const sw = el('span', 'swatch');
-            sw.style.background = colour;
-            t.appendChild(sw);
+            const toolIcon = icon(name.toLowerCase()) || icon('panel');
+            if (toolIcon) t.appendChild(toolIcon);
             t.appendChild(el('span', null, name));
             if (readOnly) t.setAttribute('disabled', '');
             if (armedTool === name) t.classList.add('armed');
