@@ -706,6 +706,7 @@
     // for unknown types, which is a separate, ADR-sized change. See the D5 report.
 
     function renderCanvas() {
+        clearGuides();
         const canvas = $('canvas');
         canvas.innerHTML = '';
         if (!schema) return;
@@ -2236,8 +2237,16 @@
     }
 
     // --------------------------------------------------------------- guides
-    let guides = [];
-    function clearGuides() { for (const g of guides) g.remove(); guides = []; }
+    let activeGuides = [];
+    function clearGuides() {
+        for (const g of activeGuides) g.remove();
+        activeGuides = [];
+        const canvas = $('canvas');
+        if (canvas) {
+            const leftover = canvas.querySelectorAll('.guide');
+            for (let i = 0; i < leftover.length; i++) leftover[i].remove();
+        }
+    }
     /**
      * Task 3 (#49) SnapLines: VS-style edge/center/baseline alignment with magnetic
      * pull. Render-only drag math + guide divs — the committed schema carries plain
@@ -2334,37 +2343,63 @@
      * Snap a proposed move rect: every rect edge (left/center/right,
      * top/middle/bottom) plus the single-control baseline competes, and the
      * nearest match per axis wins (edges first on exact ties — deterministic).
-     * Guides render at every match within SNAP, positioned in canvas units.
+     * Guides render at matches that align with the applied delta, positioned in canvas units.
      */
     function snapMoveRect(x, y, w, h, bl, exclude, parent, origin) {
         const c = snapCandidates(exclude, parent);
         const found = [];
         let dx = 0, dy = 0;
         let best = null;
+        const matchesX = [];
         for (const e of [x, x + w / 2, x + w]) {
             const m = nearestSnap(e, c.xs);
             if (m) {
-                found.push({ dir: 'v', pos: origin.x + m.at });
+                matchesX.push(m);
                 if (best === null || Math.abs(m.d) < Math.abs(best)) best = m.d;
             }
         }
         dx = best === null ? 0 : best;
+        if (best !== null) {
+            const seen = new Set();
+            for (const m of matchesX) {
+                if (Math.abs(m.d - dx) < 0.001 && !seen.has(m.at)) {
+                    seen.add(m.at);
+                    found.push({ dir: 'v', pos: origin.x + m.at });
+                }
+            }
+        }
+
         best = null;
+        const matchesY = [];
         for (const e of [y, y + h / 2, y + h]) {
             const m = nearestSnap(e, c.ys);
             if (m) {
-                found.push({ dir: 'h', pos: origin.y + m.at });
+                matchesY.push(m);
                 if (best === null || Math.abs(m.d) < Math.abs(best)) best = m.d;
             }
         }
+        let baseMatch = null;
         if (bl !== null && bl !== undefined) {
             const m = nearestSnap(bl, c.baselines);
             if (m) {
-                found.push({ dir: 'h', pos: origin.y + m.at, baseline: true });
+                baseMatch = m;
                 if (best === null || Math.abs(m.d) < Math.abs(best)) best = m.d;
             }
         }
         dy = best === null ? 0 : best;
+        if (best !== null) {
+            const seen = new Set();
+            for (const m of matchesY) {
+                if (Math.abs(m.d - dy) < 0.001 && !seen.has(m.at)) {
+                    seen.add(m.at);
+                    found.push({ dir: 'h', pos: origin.y + m.at });
+                }
+            }
+            if (baseMatch && Math.abs(baseMatch.d - dy) < 0.001 && !seen.has(baseMatch.at)) {
+                seen.add(baseMatch.at);
+                found.push({ dir: 'h', pos: origin.y + baseMatch.at, baseline: true });
+            }
+        }
         return { dx, dy, guides: found };
     }
     /**
@@ -2412,10 +2447,11 @@
     function renderSnapGuides(found) {
         clearGuides();
         const canvas = $('canvas');
-        if (!canvas || !found.length) return;
+        if (!canvas || !found || !found.length) return;
         for (const g of found) {
             const n = makeGuide(g.dir, g.pos, g.dir === 'h' ? canvas.clientWidth : canvas.clientHeight);
             if (g.baseline) n.classList.add('baseline');
+            activeGuides.push(n);
         }
     }
     function makeGuide(dir, pos, extent) {
@@ -4428,6 +4464,7 @@
                 return;
             }
             if (e.key === 'Escape') {
+                clearGuides();
                 // The sticky tool disarms first; the existing exit/clear below
                 // still runs, so one Escape both disarms and deselects.
                 if (armedTool) setArmedTool(null);

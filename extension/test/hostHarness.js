@@ -2803,6 +2803,7 @@ setTimeout(async () => {
         check('a vertical guide renders at the matched edge',
             guides().some((g) => g.classList.contains('v')), String(guides().length));
         endDrag();
+        check('guides are cleared when dragging ends', guides().length === 0, String(guides().length));
         await settled();
         {
             const commits = sandbox.__sent.filter((m) => m.type === 'commit');
@@ -3055,6 +3056,7 @@ setTimeout(async () => {
             `w=${ctlNode('btnR').style.width} (grid alone gives 112)`);
         check('resize pull renders a guide', guides().length > 0, String(guides().length));
         endDrag();
+        check('guides are cleared when resize ends', guides().length === 0, String(guides().length));
         await settled();
         {
             const commits = sandbox.__sent.filter((m) => m.type === 'commit');
