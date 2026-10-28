@@ -688,11 +688,16 @@ body { display: flex; flex-direction: column; }
 .form-handle.se { right: -4px; bottom: -4px; cursor: nwse-resize; }
 
 /* Snap guides */
-.guide { position: absolute; background: #f14c4c; z-index: 20; pointer-events: none; }
+.guide {
+  position: absolute;
+  background: rgba(248, 113, 113, 0.75);
+  z-index: 1000;
+  pointer-events: none;
+}
 .guide.v { width: 1px; top: 0; bottom: 0; }
 .guide.h { height: 1px; left: 0; right: 0; }
 /* Text baselines read blue against the red edge guides, like VS. */
-.guide.baseline { background: #4c9df1; }
+.guide.baseline { background: rgba(96, 165, 250, 0.8); }
 
 .drop-hint {
   position: absolute; border: 1px dashed var(--accent);
